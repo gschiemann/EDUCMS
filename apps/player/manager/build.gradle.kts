@@ -16,6 +16,7 @@
  * either component upgrade cleanly without signature mismatches.
  */
 import java.io.File
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -57,8 +58,44 @@ android {
         // (setLockTaskPackages for the Player + Manager pair) so the Player's
         // LockTaskController can pin the kiosk. Also release-signed with the
         // real VenueOS key from this build onward.
-        versionCode = 10024 // 1*10000 + 0*100 + 23
-        versionName = "1.0.24"
+        // ONE RELEASE UNIT (2026-11-08): never typed here. `manager.version` in
+        // apps/player/versions.properties (the Player reads `unit.version` from the
+        // same file). The Manager APK ships inside the Player APK (:app
+        // bundleManagerApk) and is installed by the Player's ManagerBootstrap only
+        // when this versionCode is newer than the one on the device — so this
+        // version moves ONLY in a release that changes this module, and an
+        // unchanged companion is never reinstalled. 1.0.24 (10024) was the last
+        // hand-typed Manager; scripts/check-apk-versions.cjs refuses anything at
+        // or below it, or above unit.version.
+        val unitVersions = Properties().also { p: Properties ->
+            rootProject.file("versions.properties").inputStream().use { p.load(it) }
+        }
+        val unitVersion = (unitVersions.getProperty("unit.version") ?: "").trim()
+        val managerVersion = (unitVersions.getProperty("manager.version") ?: "").trim()
+        val stable = Regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]?)\\.(0|[1-9][0-9]?)$")
+        val m = stable.matchEntire(managerVersion)
+            ?: error("versions.properties manager.version must be x.y.z (got '$managerVersion')")
+        val managerCode = m.groupValues[1].toInt() * 10000 + m.groupValues[2].toInt() * 100 + m.groupValues[3].toInt()
+        require(managerCode > 10024) { "manager.version must be above 1.0.24, the last hand-typed Manager" }
+        versionCode = managerCode
+        versionName = managerVersion
+
+        // A field candidate of the UNIT (-PplayerFieldCandidate=x.y.z-field.N) renames
+        // the Manager too — but only when the Manager changed in this line
+        // (manager.version == unit.version). Otherwise the companion keeps its
+        // stable version and code, exactly as on a stable build, and the Player's
+        // bootstrap finds nothing newer to install.
+        val fieldCandidate = project.findProperty("playerFieldCandidate") as? String
+        if (!fieldCandidate.isNullOrEmpty() && managerVersion == unitVersion) {
+            val fm = Regex("^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]?)\\.(0|[1-9][0-9]?)-field\\.([1-9][0-9]*)$").matchEntire(fieldCandidate)
+                ?: error("playerFieldCandidate must be x.y.z-field.N")
+            val major = fm.groupValues[1].toLongOrNull() ?: error("candidate major too large")
+            require(major <= 214747L) { "candidate major too large" }
+            val candidateCode = major * 10000L + fm.groupValues[2].toLong() * 100L + fm.groupValues[3].toLong()
+            require(candidateCode > managerCode && candidateCode <= Int.MAX_VALUE) { "candidate install code must exceed the stable manager" }
+            versionCode = candidateCode.toInt()
+            versionName = fieldCandidate
+        }
 
         // Override at build time to point at a non-default API:
         //   -PmanagerApiRoot="https://staging.venue-os.app"
@@ -216,4 +253,8 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     testImplementation("junit:junit:4.13.2")
+    // TEST-ONLY (2026-11-08): android.jar's org.json is a throwing stub on the
+    // JVM; the real implementation lets the health-report and outbox contract
+    // tests run against the parser the device uses. Never reaches the APK.
+    testImplementation("org.json:json:20231013")
 }

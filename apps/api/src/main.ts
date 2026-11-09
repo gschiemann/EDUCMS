@@ -247,7 +247,7 @@ async function bootstrap() {
   // Redis absent (local dev, a Railway deploy with no Redis plugin) →
   // DOCUMENTED FALLBACK to the in-memory store, i.e. today's behaviour, with
   // a loud line in the boot log. The API must still boot without Redis
-  // (CLAUDE.md: "Redis missing → API boots anyway").
+  // (docs/DEPLOY.md: "Redis missing → API boots anyway").
   //
   // Everything here is wrapped so that NO failure to build the store can stop
   // the API booting — a session store is not worth a crashloop.

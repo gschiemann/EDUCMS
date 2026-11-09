@@ -24,6 +24,8 @@ object UsbCacheIndex {
         val assetCount: Int,
         val totalBytes: Long,
         val cacheRoot: File,
+        /** state.json `ingestedAt`: when a person last brought this package in (import or re-insertion). */
+        val importedAt: Long,
     )
 
     private val current = AtomicReference<Snapshot?>(null)
@@ -82,6 +84,7 @@ object UsbCacheIndex {
                 assetCount = stateJson?.optInt("assetCount", 0) ?: urlMap.size,
                 totalBytes = stateJson?.optLong("totalBytes", 0L) ?: 0L,
                 cacheRoot = root,
+                importedAt = stateJson?.optLong("ingestedAt", 0L) ?: 0L,
             )
         )
         Log.i("UsbCacheIndex", "Reloaded — ${urlMap.size} URL mappings (${shaMap.size} sha mappings)")
@@ -89,6 +92,15 @@ object UsbCacheIndex {
 
     /** The verified package manifest the page reads (usb-cache/manifest.json), or null. */
     fun packageManifest(): File? = root?.let { File(it, "manifest.json") }?.takeIf { it.isFile && current.get() != null }
+
+    /**
+     * When the served package was last brought in by a person (an import, or
+     * the same package re-inserted / imported again from the Back menu), or
+     * null. The page reads it from the package response's
+     * `X-VenueOS-USB-Imported-At` header (UsbWebResponses): a NEW value means
+     * the stick is the newest thing a person did, even over a server publish.
+     */
+    fun importedAt(): Long? = current.get()?.importedAt?.takeIf { it > 0L }
 
     /** Returns the local File for an asset URL, or null if not USB-cached. */
     fun lookup(url: String): File? = current.get()?.urlToFile?.get(url)

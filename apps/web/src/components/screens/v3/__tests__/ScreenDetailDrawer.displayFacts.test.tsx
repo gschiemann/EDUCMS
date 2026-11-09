@@ -1,5 +1,5 @@
 /**
- * "A green test is not proof of a mount" (CLAUDE.md #9): this renders the REAL
+ * "A green test is not proof of a mount" (apps/web/CLAUDE.md #9): this renders the REAL
  * ScreenDetailDrawer and asks whether the Overview tab shows the "Panel and
  * playback pacing" section — for a screen that has a native report, and not at
  * all for one that has none. Every fixture is made up.
@@ -21,6 +21,7 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenPlaybackCapability: () => ({ data: undefined, isLoading: false, isError: false }),
   // The Overview's interruptions section (2026-10-18): nothing recorded yet.
   useScreenInterruptions: () => ({ data: undefined, isLoading: false, isError: false }),
+  useScreenUsbEvents: () => ({ data: undefined, isLoading: false, isError: false }),
   useClearPlaybackDemotion: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock('@/lib/store', () => ({

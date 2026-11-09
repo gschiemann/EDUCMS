@@ -8,7 +8,7 @@
  *   DENY  — user session (GET and POST), API-key-shaped principal, device
  *           MUTATION, and device READ once the grace window has lapsed.
  *   ALLOW — device GET/HEAD inside the grace window (the manifest backstop,
- *           CLAUDE.md emergency safeguard #4), and nothing else.
+ *           apps/api/src/emergency/CLAUDE.md emergency safeguard #4), and nothing else.
  *
  * The end-to-end lane drives the real `JwtAuthGuard` against a real
  * `RedisService` whose Redis is absent and whose Postgres throws — the exact

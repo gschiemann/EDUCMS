@@ -1,4 +1,4 @@
-version: 1.0.0
-sha256: fc88cb68dd89fa2fe838a2eeb924010dd564a993bc791dfea2cdfb154828feea
+version: 1.0.1
+sha256: 456de6da5238e91ca379ad9b038df229a429dd1261b4d901dd1372a55756d81f
 source: gschiemann/foundry-standard
-vendored: 2026-10-31T22:17:12Z
+vendored: 2026-11-09T02:23:51Z

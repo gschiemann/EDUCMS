@@ -9,7 +9,7 @@
  * that measures its own box (`useScaleToFit` and friends) renders NOTHING and
  * every assertion about it passes vacuously. A jsdom sweep of all 702 variants
  * reported 230 of them "blank" — every one of those was the harness, not the
- * widget. CLAUDE.md rule #9 is the same lesson in a different costume: a green
+ * widget. apps/web/CLAUDE.md rule #9 is the same lesson in a different costume: a green
  * check against a surface nobody renders proves nothing.
  *
  * So: a page that mounts a widget through the SAME `WidgetPreview` path the

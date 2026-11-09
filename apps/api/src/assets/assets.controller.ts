@@ -66,7 +66,7 @@ import {
 // ONE table, shared with the storage bucket's MIME list and every dashboard
 // upload entry point: `@cms/api-types` upload-formats.ts. Every asset still has
 // to play on Mac Safari + Windows Edge + Android WebView with the same file
-// (CLAUDE.md "Cross-browser support") — what changed is HOW a format gets there.
+// (apps/web/CLAUDE.md "Cross-browser support") — what changed is HOW a format gets there.
 // Until 2026-10-05 this file refused QuickTime `.mov` and AVI outright ("export
 // as MP4") and knew nothing of MKV, WMV, MPG, 3GP, MPEG-TS or HEIC. The reason
 // was real (2026-05-13: an iPhone IMG_*.mov shipped to a Taurus controller, the

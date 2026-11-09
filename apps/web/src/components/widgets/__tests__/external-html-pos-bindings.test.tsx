@@ -1,7 +1,7 @@
 /**
  * POS-A (2026-09-23) — what an EXTERNAL_HTML board is actually sent about its
  * POS bindings, through the REAL WidgetPreview (the path BuilderZone and the
- * player both render through — CLAUDE.md #9).
+ * player both render through — apps/web/CLAUDE.md #9).
  *
  *   1. A `{{pos.item:…}}` token never reaches a board: not in the `?text=` URL,
  *      not in any postMessage. (Before: it rode both, verbatim.)

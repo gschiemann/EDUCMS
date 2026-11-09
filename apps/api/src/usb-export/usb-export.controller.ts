@@ -10,8 +10,9 @@
  * durations, countdown dates, menu items — all carried in
  * template.zones[*].defaultConfig.
  *
- * ZIP layout (matches CLAUDE.md Sprint 7 spec):
- *   edu-cms-content/
+ * ZIP layout (matches docs/roadmap/ROADMAP.md Sprint 7 spec):
+ *   edu-cms-content/   (or venueos-content/ with USB_EXPORT_FOLDER_NAME=venueos —
+ *                       usb-export-folder.ts; players up to 1.1.65 read only the old name)
  *     manifest.json      ← JSON, includes template + zones + config
  *     manifest.sig       ← HMAC-SHA256(manifest.json, tenant.usbIngestKey)
  *     assets/<sha256>.<ext>   ← one file per unique asset
@@ -32,6 +33,7 @@
  * legacy `asset` sub-object stays for older readers.
  */
 
+import { usbExportFolderName } from './usb-export-folder';
 import {
   Controller,
   Post,
@@ -384,7 +386,8 @@ export class UsbExportController {
 
     // ───────── Download assets + assemble ZIP ─────────
     const zip = new JSZip();
-    const root = zip.folder('edu-cms-content')!;
+    const folderName = usbExportFolderName();
+    const root = zip.folder(folderName)!;
     const assetsDir = root.folder('assets')!;
     const seenHashes = new Set<string>();
     // The flat top-level asset array the Android player reads (deduped by
@@ -640,7 +643,7 @@ export class UsbExportController {
         skipped ? `${skipped} file(s) could not be downloaded and were left out.` : '',
         '',
         'How to use:',
-        '  1. Copy this file (or the whole edu-cms-content folder) onto a USB stick.',
+        `  1. Copy this file (or the whole ${folderName} folder) onto a USB stick.`,
         '  2. Plug the stick into a VenueOS screen that has been paired once.',
         '  3. The screen finds the playlist, checks it, copies it and starts',
         '     playing it. You can remove the stick afterwards.',

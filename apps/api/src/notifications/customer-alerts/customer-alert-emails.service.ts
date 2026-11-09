@@ -45,6 +45,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { PlatformAlertMailer } from '../../email/platform-alert-mailer.service';
 import { degradedPlatformComponents } from '../../health/platform-degradation';
+import { unitLastAliveAt } from '../../screens/screen-faces';
 import { ScreenWedgeDetectorCron } from '../../screens/screen-wedge-detector.cron';
 import { DISPLAY_AUDIT_ACTIONS } from '../../display/display.service';
 import type { OfflineScanResult, OfflineSnapshotScreen } from '../notifications.service';
@@ -53,6 +54,7 @@ import {
   ConsecutiveScans,
   effectivePowerCommand,
   intendedDowntime,
+  dailyPatternReason,
   isFlapping,
   lastPowerCommandOf,
   missedOnTime,
@@ -104,6 +106,8 @@ export interface TenantMeta {
   otaWindowStart: string | null;
   otaWindowEnd: string | null;
   otaWindowTimezone: string | null;
+  /** The location's own time zone (IANA), for the clock times emails state. */
+  timezone?: string | null;
 }
 
 interface Recipient {
@@ -121,6 +125,7 @@ interface IncidentRow {
   kind: string;
   open: boolean;
   state: string;
+  reason?: string | null;
   emailedMode: string | null;
   screenName: string;
   startedAt: Date;
@@ -356,15 +361,41 @@ export class CustomerAlertEmailsService {
     for (const id of scan.infraEventTenantIds ?? []) this.infraAt.set(id, now);
     for (const [id, at] of this.infraAt) if (now - at > 2 * 60 * MIN) this.infraAt.delete(id);
 
-    const snapshot = scan.offline.filter(
+    // A BACK FACE is offline only when its UNIT is (2026-11-02): its own page
+    // ping can stop while the unit is up. Judge it from the unit's liveness
+    // (own ping, or the front face's ping / native heartbeat); a unit that is
+    // alive is not offline — if the face shows nothing that is a NO_CONTENT
+    // problem, found below. A read that failed drops the faces (silence).
+    const rawSnapshot = scan.offline.filter(
       (s): s is OfflineSnapshotScreen & { tenantId: string; lastPingAt: Date } => !!s.tenantId && !!s.lastPingAt,
     );
+    const unitAlive = await this.unitAliveFor(rawSnapshot);
+    const snapshot: Array<OfflineSnapshotScreen & { tenantId: string; lastPingAt: Date }> = [];
+    for (const s of rawSnapshot) {
+      if (!s.faceOfScreenId) {
+        snapshot.push(s);
+        continue;
+      }
+      const alive = unitAlive?.get(s.id);
+      if (!alive) continue;
+      if (now - alive.getTime() <= ALERT_RULES.PING_FRESH_MS) continue;
+      snapshot.push({ ...s, lastPingAt: alive });
+    }
     const offlineById = new Map(snapshot.map((s) => [s.id, s]));
 
     const incidents = await this.loadTrackedIncidents();
     const open = (kind: ProblemKind) =>
       new Map(incidents.filter((i) => i.open && i.kind === kind).map((i) => [i.screenId, i]));
-    const openOffline = open('OFFLINE');
+    // A SILENT row recording the screen's usual nightly dark spell is NOT a
+    // reason to stop looking: it is judged again every scan, so a screen that
+    // does not come back is emailed once it is 60 minutes past its learned
+    // return (2026-11-01). Every other open row still means "already handled".
+    const isPatternRow = (i: { state: string; reason?: string | null }) =>
+      i.state === 'SILENT' && (i.reason === 'daily-pattern' || (i.reason ?? '').startsWith('daily-pattern:'));
+    const patternRows = new Map(incidents.filter((i) => i.open && i.kind === 'OFFLINE' && isPatternRow(i)).map((i) => [i.screenId, i]));
+    const openOffline = new Map([...open('OFFLINE')].filter(([id]) => !patternRows.has(id)));
+    const maxAgeOf = (id: string) =>
+      patternRows.has(id) ? ALERT_RULES.DAILY_DARK_MAX_MS + ALERT_RULES.DAILY_DARK_RETURN_SLACK_MS : ALERT_RULES.OFFLINE_MAX_AGE_MS;
     const openNoContent = open('NO_CONTENT');
 
     // ── When each offline screen's problem STARTED (2026-10-25) ──
@@ -392,7 +423,7 @@ export class CustomerAlertEmailsService {
     }
     const startOf = (s: { id: string; lastPingAt: Date }) => missedById.get(s.id)?.onAtMs ?? s.lastPingAt.getTime();
     const ageOf = (s: { id: string; lastPingAt: Date }) => now - startOf(s);
-    result.offlineTooOld = snapshot.filter((s) => ageOf(s) > ALERT_RULES.OFFLINE_MAX_AGE_MS).length;
+    result.offlineTooOld = snapshot.filter((s) => ageOf(s) > maxAgeOf(s.id)).length;
 
     // ── Platform gate: restart / degraded / incident quiet window ──
     const gateInput = {
@@ -425,7 +456,7 @@ export class CustomerAlertEmailsService {
 
     // ── Candidates (observed every scan, so confirmation counts are honest) ──
     const offlineDueNow = snapshot.filter(
-      (s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && !openOffline.has(s.id),
+      (s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= maxAgeOf(s.id) && !openOffline.has(s.id),
     );
     result.offlineDue = offlineDueNow.length;
     result.offlineMissedOnTime = offlineDueNow.filter((s) => missedById.has(s.id)).length;
@@ -455,7 +486,7 @@ export class CustomerAlertEmailsService {
     const offlineActionable = new Map(offlineConfirmed.map((s) => [s.id, s]));
     for (const s of snapshot) {
       if (offlineActionable.has(s.id) || openOffline.has(s.id) || !confirmedTenants.has(s.tenantId)) continue;
-      if (ageOf(s) >= ALERT_RULES.STRAGGLER_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS) offlineActionable.set(s.id, s);
+      if (ageOf(s) >= ALERT_RULES.STRAGGLER_MS && ageOf(s) <= maxAgeOf(s.id)) offlineActionable.set(s.id, s);
     }
     const noContentActionable = noContentDueNow.filter((c) => this.noContentDue.confirmed(c.row.id));
     result.offlineCandidates = offlineActionable.size;
@@ -466,7 +497,7 @@ export class CustomerAlertEmailsService {
 
     // ── Tenants (names, hierarchy, update windows) for everything we may touch ──
     const tenantIds = new Set<string>([
-      ...snapshot.filter((s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS).map((s) => s.tenantId),
+      ...snapshot.filter((s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= maxAgeOf(s.id)).map((s) => s.tenantId),
       ...noContent.map((c) => c.row.tenantId as string),
       ...incidents.map((i) => i.tenantId),
     ]);
@@ -514,7 +545,7 @@ export class CustomerAlertEmailsService {
         // pattern chain survives the row being rewritten, and so the
         // recovery closes quietly — no "back online" note for a problem that
         // was never emailed.
-        await this.upsertIncident(p, { state: 'SILENT', reason: 'daily-pattern', emailed: false, mode });
+        if (!patternRows.has(p.screenId)) await this.upsertIncident(p, { state: 'SILENT', reason: dailyPatternReason(f.facts.offlineHistory, p.missedOnTime ? p.missedOnTime.onAtMs : p.startedAtMs), emailed: false, mode });
         result.silenced++;
         defer(reason);
         continue;
@@ -574,7 +605,7 @@ export class CustomerAlertEmailsService {
       const near = (t: number) => real.some((p) => Math.abs(p.startedAtMs - t) <= W);
       const nearby: NewProblem[] = [
         ...snapshot
-          .filter((s) => ageOf(s) <= ALERT_RULES.OFFLINE_MAX_AGE_MS && near(startOf(s)))
+          .filter((s) => ageOf(s) <= maxAgeOf(s.id) && near(startOf(s)))
           .map((s) => ({
             screenId: s.id,
             tenantId: s.tenantId,
@@ -669,6 +700,37 @@ export class CustomerAlertEmailsService {
     return result;
   }
 
+  // ─── Back faces: the unit's liveness ────────────────────────────────────
+
+  /**
+   * For every FACE row given, when its unit last proved it was alive
+   * (`unitLastAliveAt` — its own ping or the front face's ping / native
+   * heartbeat). Only faces appear in the map. Null when the read failed: the
+   * caller must then leave faces alone (a doubt is silence).
+   */
+  private async unitAliveFor(
+    rows: ReadonlyArray<{ id: string; tenantId: string | null; lastPingAt: Date | null; faceOfScreenId?: string | null }>,
+  ): Promise<Map<string, Date | null> | null> {
+    const faces = rows.filter((r) => !!r.faceOfScreenId);
+    const out = new Map<string, Date | null>();
+    if (faces.length === 0) return out;
+    try {
+      const primaries = await this.prisma.client.screen.findMany({
+        where: {
+          id: { in: [...new Set(faces.map((f) => f.faceOfScreenId as string))] },
+          tenantId: { in: [...new Set(faces.map((f) => f.tenantId).filter((t): t is string => !!t))] },
+        },
+        select: { id: true, lastPingAt: true, nativeRuntimeReportAt: true },
+      });
+      const byId = new Map(primaries.map((p) => [p.id, p]));
+      for (const f of faces) out.set(f.id, unitLastAliveAt(f, byId.get(f.faceOfScreenId as string)));
+      return out;
+    } catch (e) {
+      this.logger.warn(`[alert-email] unit liveness read failed: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
   // ─── No-content candidates ──────────────────────────────────────────────
 
   private async findNoContentCandidates(
@@ -696,13 +758,37 @@ export class CustomerAlertEmailsService {
         select: FACT_SELECT,
         take: 2_000,
       })) as FactRow[];
+      // Back faces whose OWN ping stopped while their unit is up (2026-11-02):
+      // judged below on the unit's liveness and their own render proof.
+      const faceRows = (await this.prisma.client.screen.findMany({
+        where: {
+          tenantId: { not: null },
+          status: { not: 'REVOKED' },
+          tenant: { is: { archivedAt: null } },
+          faceOfScreenId: { not: null },
+          lastPingAt: { lt: new Date(now - ALERT_RULES.PING_FRESH_MS) },
+          lastRenderedAt: { not: null, gte: new Date(now - 48 * 60 * MIN) },
+        },
+        select: FACT_SELECT,
+        take: 500,
+      })) as FactRow[];
+      rows = [...rows, ...faceRows];
     } catch (e) {
       this.logger.warn(`[alert-email] no-content read failed: ${(e as Error).message}`);
       return [];
     }
+    const alive = await this.unitAliveFor(rows);
     const out: Array<{ row: FactRow; verdict: any }> = [];
-    for (const row of rows) {
-      if (openNoContent.has(row.id)) continue;
+    for (const original of rows) {
+      if (openNoContent.has(original.id)) continue;
+      let row = original;
+      if (original.faceOfScreenId) {
+        const at = alive?.get(original.id);
+        if (!at) continue;
+        row = { ...original, lastPingAt: at };
+        // The unit must be up NOW, else this is an OFFLINE matter, not content.
+        if (now - at.getTime() > ALERT_RULES.PING_FRESH_MS) continue;
+      }
       const grade = gradeScreenRow(row, now, ALERT_RULES.PING_FRESH_MS);
       const verdict = noContentVerdict(grade, row.lastRenderedAt);
       if (verdict.blank) out.push({ row, verdict });
@@ -953,8 +1039,14 @@ export class CustomerAlertEmailsService {
       return out;
     }
     const byId = new Map(rows.map((r) => [r.id, r]));
-    const pingFresh = (r: FactRow) =>
-      !!r.lastPingAt && now - r.lastPingAt.getTime() <= ALERT_RULES.PING_FRESH_MS && r.lastPingAt.getTime() <= now + MIN;
+    // A back face is back when its UNIT is (2026-11-02) — same liveness the
+    // offline decision used. Unreadable → the face's own ping (never healthier).
+    const unitAlive = await this.unitAliveFor(rows);
+    const aliveAt = (r: FactRow): Date | null => (r.faceOfScreenId ? unitAlive?.get(r.id) ?? r.lastPingAt : r.lastPingAt);
+    const pingFresh = (r: FactRow) => {
+      const at = aliveAt(r);
+      return !!at && now - at.getTime() <= ALERT_RULES.PING_FRESH_MS && at.getTime() <= now + MIN;
+    };
 
     for (const i of [...maybeUp, ...noContentOpen]) {
       const r = byId.get(i.screenId);
@@ -971,7 +1063,7 @@ export class CustomerAlertEmailsService {
           if (i.recoveringSince) await this.setRecovering(i, null);
           continue;
         }
-        const grade = gradeScreenRow(r, now, ALERT_RULES.PING_FRESH_MS);
+        const grade = gradeScreenRow({ ...r, lastPingAt: aliveAt(r) }, now, ALERT_RULES.PING_FRESH_MS);
         if (grade === 'idle' || grade === 'paused') {
           // The content was taken off (or paused on the glass) — "showing
           // content again" would be false. Close without a note.
@@ -1093,6 +1185,8 @@ export class CustomerAlertEmailsService {
             screenName: p.screenName,
             locationName: location?.name ?? '—',
             minutes: Math.max(1, Math.round((now - p.startedAtMs) / MIN)),
+            sinceMs: p.startedAtMs,
+            timeZone: location?.timezone ?? null,
             contentUnavailable: p.contentUnavailable,
             missedOnTime: p.missedOnTime,
           })),
@@ -1115,7 +1209,7 @@ export class CustomerAlertEmailsService {
           render: (locale, _covered, r) =>
             renderScreenAlertEmail(
               locale,
-              { kind: g.kind, locationName: location?.name ?? '—', items, siteWide },
+              { kind: g.kind, locationName: location?.name ?? '—', items, siteWide, nowMs: this.now() },
               { screensUrl: this.url(`/${location?.slug ?? r.homeSlug}/screens`), manageUrl: this.manageUrl(r) },
             ),
         });
@@ -1149,7 +1243,14 @@ export class CustomerAlertEmailsService {
     const heldRecoveries: IncidentRow[] = [];
     for (const h of args.held) {
       if (h.state === 'HELD') {
-        items.push({ tenantId: h.tenantId, kind: h.kind as ScreenItemKind, screenName: h.screenName, locationName: nameOf(h.tenantId) });
+        items.push({
+          tenantId: h.tenantId,
+          kind: h.kind as ScreenItemKind,
+          screenName: h.screenName,
+          locationName: nameOf(h.tenantId),
+          sinceMs: h.startedAt.getTime(),
+          timeZone: tenants.get(h.tenantId)?.timezone ?? null,
+        });
       } else if (mode === 'shadow' || h.emailedMode === 'on') {
         // A customer hears "back online" only if the problem email reached them.
         heldRecoveries.push(h);
@@ -1170,6 +1271,8 @@ export class CustomerAlertEmailsService {
         screenName: p.screenName,
         locationName: nameOf(p.tenantId),
         missedOnTime: p.missedOnTime,
+        sinceMs: p.startedAtMs,
+        timeZone: tenants.get(p.tenantId)?.timezone ?? null,
       });
     }
     for (const r of args.recoveries) {
@@ -1194,7 +1297,7 @@ export class CustomerAlertEmailsService {
         if (mine.length === 0) return null;
         return renderDigestEmail(
           locale,
-          { orgName, items: mine },
+          { orgName, items: mine, nowMs: this.now() },
           { screensUrl: this.url(`/${r.homeSlug}/screens`), manageUrl: this.manageUrl(r) },
         );
       },
@@ -1396,6 +1499,7 @@ export class CustomerAlertEmailsService {
           otaWindowStart: true,
           otaWindowEnd: true,
           otaWindowTimezone: true,
+          timezone: true,
         },
       })) as TenantMeta[];
       for (const r of rows) out.set(r.id, r);

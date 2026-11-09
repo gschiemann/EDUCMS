@@ -38,7 +38,7 @@
  * The old key is migrated once and deleted (see `useEnablementMigration`).
  *
  * SCOPE: configuration only. Nothing here touches the trigger / all-clear /
- * manifest path (CLAUDE.md "Emergency System (Load-Bearing)").
+ * manifest path (apps/api/src/emergency/CLAUDE.md "Emergency System (Load-Bearing)").
  *
  * The operator contract this page inherited (2026-05-25) is unchanged: the
  * operator never leaves this URL while configuring, floor-plan upload and

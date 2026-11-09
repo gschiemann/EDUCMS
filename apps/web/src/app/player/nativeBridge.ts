@@ -171,6 +171,15 @@ export const NATIVE_VOID_METHODS = [
   // channel WebView could be an older APK with no such arm, so the Back menu
   // shows the entry only when `nativeHas` proves it (manifest or UA floor).
   'openNetworkScreen',
+  // 2026-10-26 (APK ≥ 1.1.55) — the Back menu's "Import from USB" (M43 on
+  // site: "inserted a USB … nothing happens"). Reads the USB drive again and
+  // shows the APK's USB card: what it found, and the fix on its focused button.
+  // Fire-and-forget; grants nothing, skips no verification, and the APK refuses
+  // it over an alert. THREE-FILE ATOMIC CHANGE with the Kotlin METHODS array +
+  // dispatch arm and the drift-guard canary count. Deliberately EXCLUDED from
+  // KNOWN_METHODS below (rule 9): the Back menu shows the entry only when
+  // `nativeHas` proves it (manifest or UA floor).
+  'importFromUsb',
   // ⚠️ LIFE SAFETY — the display-control EMERGENCY INTERLOCK (2026-08-13).
   // See ./emergencyHold.ts. The Kotlin allowlist
   // (`NativeBridgeChannel.METHODS`, commit 3e9f7cd1) carries it, so this
@@ -228,6 +237,8 @@ export const NATIVE_VOID_METHODS = [
   // direction and is not.
   'webTabsShow',
   'webTabsHide',
+  // Manager wave 3 (#8): the dashboard's Clear quarantine, relayed to the companion Manager.
+  'clearUpdateQuarantine',
 ] as const;
 
 /**
@@ -290,6 +301,12 @@ const KNOWN_METHODS: readonly string[] = [
   //
   // 2026-10-23 — `openNetworkScreen` likewise (first APK: 1.1.53). Remove it
   // from this filter only when the fleet floor is ≥1.1.53.
+  //
+  // 2026-10-26 — `importFromUsb` likewise (first APK: 1.1.55). Remove it from
+  // this filter only when the fleet floor is ≥1.1.55.
+  //
+  // 2026-11-08 — `clearUpdateQuarantine` likewise (first APK: 1.1.66). Remove it from
+  // this filter only when the fleet floor is ≥1.1.66.
 ].filter(
   (m) =>
     m !== 'heartbeatV2' &&
@@ -299,6 +316,8 @@ const KNOWN_METHODS: readonly string[] = [
     m !== 'webTabsShow' &&
     m !== 'webTabsHide' &&
     m !== 'openNetworkScreen' &&
+    m !== 'importFromUsb' &&
+    m !== 'clearUpdateQuarantine' &&
     m !== 'sharedVideoPrepare' && m !== 'sharedVideoCommit' && m !== 'sharedVideoStop' && m !== 'sharedVideoState',
 );
 
@@ -336,6 +355,10 @@ const METHOD_FLOORS: Readonly<Record<string, readonly [number, number, number]>>
   webTabsHide: [1, 1, 19],
   // The Back menu's Network entry ships in the 1.1.53 field candidate.
   openNetworkScreen: [1, 1, 53],
+  // The Back menu's "Import from USB" ships in the 1.1.55 field candidate.
+  importFromUsb: [1, 1, 55],
+  // Manager wave 3: the dashboard's Clear quarantine ships in the first APK after 1.1.65.
+  clearUpdateQuarantine: [1, 1, 66],
 };
 
 /** `EduCmsPlayer/1.1.16` → [1, 1, 16]; anything else → null. */

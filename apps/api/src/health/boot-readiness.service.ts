@@ -30,7 +30,7 @@
  * the difference between this and `/health/ready` — which re-checks the DB on
  * every call and would therefore hand Railway a reason to fail a deploy (or,
  * on a platform that re-probes, to cycle a pod) during exactly the Supabase
- * blip CLAUDE.md's "never add DB checks to liveness" rule exists to survive.
+ * blip CLAUDE.md §10's "never add DB checks to liveness" rule exists to survive.
  * `/health` itself is untouched: still always 200, still the liveness probe.
  *
  * • **Bounded.** If the DB never comes back, the latch opens anyway after

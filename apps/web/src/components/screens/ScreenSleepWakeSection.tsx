@@ -5,7 +5,7 @@
  * what its player last PROVED (2026-10-11). The rules live in
  * ./sleep-wake.ts (pure, tested); this only renders them.
  *
- * Copy discipline (CLAUDE.md player rule 10 — "copy states what the evidence
+ * Copy discipline (apps/web/src/app/player/CLAUDE.md player rule 10 — "copy states what the evidence
  * proves"): "asleep" only from Android's own report, "turned off" only when
  * the player saw it, and a black overlay is always called a black screen
  * with the backlight on — never "off".
@@ -60,6 +60,7 @@ const KNOWN_DECISIONS = [
 export function ScreenSleepWakeSection({
   screen,
   nowMs = Date.now(),
+  view = 'all',
 }: {
   screen: {
     playerVersion?: string | null;
@@ -69,8 +70,16 @@ export function ScreenSleepWakeSection({
     nativePowerOnAt?: string | null;
   } | null | undefined;
   nowMs?: number;
+  /**
+   * 'summary' (2026-11-01, drawer's Advanced section): plain words only —
+   * how Sleep works on this screen, whether it is asleep now, and what
+   * still works while it is. 'history': the evidence lines, shown under
+   * diagnostics. 'all': both (the original layout).
+   */
+  view?: 'all' | 'summary' | 'history';
 }) {
   const t = useTranslations('screens.sleepWake');
+  const tab = useTranslations('screens.settingsTab');
   const locale = useLocale();
   if (!screen) return null;
   const s = summarizeSleepWake({
@@ -107,55 +116,73 @@ export function ScreenSleepWakeSection({
     ? s.lastRestore.decision
     : 'OTHER';
 
+  const showSummary = view !== 'history';
+  const showHistory = view !== 'summary';
+  // Summary view lists only what DOES work — a "needs player 1.1.22+" row is
+  // an engineer's table, and an unknown row says nothing.
+  const visibleRows = view === 'all' ? rows : rows.filter((r) => r.value === 'yes');
+  const plain = view !== 'all';
+
   return (
-    <div className="border-t border-slate-100" data-testid="sleep-wake-section">
+    <div className={view === 'all' ? 'border-t border-slate-100' : ''} data-testid="sleep-wake-section">
       <div className="px-3.5 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
-            <Moon className="w-3.5 h-3.5 text-slate-400" />
-            {t('title')}
-          </span>
-          {s.androidRelease && (
-            <span className="text-[10px] text-slate-500">{t('android', { release: s.androidRelease })}</span>
-          )}
-        </div>
-
-        <p className="text-[10px] text-slate-600 leading-snug mt-1" data-testid="sleep-wake-mechanism">
-          {t(`mech.${s.mechanism}`)}
-        </p>
-        <p className="text-[10px] text-slate-400 leading-snug mt-0.5">{t('blankNote')}</p>
-
-        {s.now && (
-          <p
-            className={`text-[10px] font-semibold leading-snug mt-1.5 ${s.now.asleep ? 'text-slate-700' : 'text-emerald-700'}`}
-            data-testid="sleep-wake-now"
-          >
-            {s.now.asleep
-              ? s.now.sinceMs
-                ? t('now.asleepSince', { since: ago(s.now.sinceMs) })
-                : t('now.asleep')
-              : t('now.on')}
-          </p>
-        )}
-        {s.nativeGlass && (
-          // Native-first §4.4: the app's own engine, independent of the page.
-          <p className="text-[10px] text-emerald-700 leading-snug mt-0.5" data-testid="sleep-wake-native-glass">
-            {t('now.nativeGlass', { ago: ago(s.nativeGlass.frameAtMs) })}
-          </p>
-        )}
-
-        <div className="mt-2 space-y-1">
-          {rows.map((r) => (
-            <div key={r.key} className="flex items-center justify-between gap-2">
-              <span className="text-[11px] text-slate-600">{r.label}</span>
-              <span className={`text-[10px] font-semibold shrink-0 ${supportClass(r.value)}`}>
-                {supportText(r.value, r.min)}
+        {showSummary && (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-[13px] font-bold text-slate-700">
+                <Moon className="w-3.5 h-3.5 text-slate-400" />
+                {plain ? tab('sleepHeading') : t('title')}
               </span>
+              {!plain && s.androidRelease && (
+                <span className="text-[10px] text-slate-500">{t('android', { release: s.androidRelease })}</span>
+              )}
             </div>
-          ))}
-        </div>
 
-        <div className="mt-2 space-y-0.5" data-testid="sleep-wake-proof">
+            {(!plain || s.mechanism !== 'unknown') && (
+              <p className="text-[12px] text-slate-600 leading-snug mt-1" data-testid="sleep-wake-mechanism">
+                {t(`mech.${s.mechanism}`)}
+              </p>
+            )}
+            {!plain && <p className="text-[10px] text-slate-400 leading-snug mt-0.5">{t('blankNote')}</p>}
+
+            {s.now && (
+              <p
+                className={`text-[12px] font-semibold leading-snug mt-1.5 ${s.now.asleep ? 'text-slate-700' : 'text-emerald-700'}`}
+                data-testid="sleep-wake-now"
+              >
+                {s.now.asleep
+                  ? s.now.sinceMs
+                    ? t('now.asleepSince', { since: ago(s.now.sinceMs) })
+                    : t('now.asleep')
+                  : t('now.on')}
+              </p>
+            )}
+            {!plain && s.nativeGlass && (
+              // Native-first §4.4: the app's own engine, independent of the page.
+              <p className="text-[10px] text-emerald-700 leading-snug mt-0.5" data-testid="sleep-wake-native-glass">
+                {t('now.nativeGlass', { ago: ago(s.nativeGlass.frameAtMs) })}
+              </p>
+            )}
+
+            {visibleRows.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {visibleRows.map((r) => (
+                  <div key={r.key} className="flex items-center justify-between gap-2">
+                    <span className="text-[12px] text-slate-600">{r.label}</span>
+                    {!plain && (
+                      <span className={`text-[10px] font-semibold shrink-0 ${supportClass(r.value)}`}>
+                        {supportText(r.value, r.min)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {showHistory && (
+          <div className="mt-2 space-y-0.5" data-testid="sleep-wake-proof">
           {s.lastSleep && (
             <p className="text-[10px] text-slate-500 leading-snug">
               {t('proof.lastSleep', { outcome: outcomeText(s.lastSleep.outcome), ago: ago(s.lastSleep.atMs) })}
@@ -198,7 +225,8 @@ export function ScreenSleepWakeSection({
           )}
           {turnOnLine && <p className="text-[10px] text-slate-500 leading-snug">{turnOnLine}</p>}
           {s.noEvidence && <p className="text-[10px] text-slate-400 leading-snug">{t('noEvidence')}</p>}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

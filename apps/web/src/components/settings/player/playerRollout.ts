@@ -13,7 +13,7 @@
  * every age on a render is measured against one instant and every branch is
  * unit-testable.
  *
- * ── Evidence boundary (CLAUDE.md "Player Reliability" rule 10) ───────
+ * ── Evidence boundary (apps/web/src/app/player/CLAUDE.md "Player Reliability" rule 10) ───────
  * Every field below is something a `Screen` row or a tenant policy row
  * actually carries. There is no invented telemetry and no inference:
  *   • A version is EVIDENCE only while the device's own report is fresh.

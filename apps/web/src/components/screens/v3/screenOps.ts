@@ -53,6 +53,10 @@ import {
 import { deriveBundleSkew, type BundleSkewVariant } from '../bundleSkew';
 import { contentBehindCause, PUSH_CONFIRM_GRACE_MS } from '@/components/dashboard/district/fleetCommand';
 import { isWindowOpen } from '@/app/player/scheduleWindow';
+import { desiredOnAt } from '@/app/player/softSchedule';
+import { windowsForScreen, type DisplayScheduleRow } from '@/components/dashboard/district/uptime';
+import { derivePanelPowerState, nativeHardOff } from '../display-capabilities';
+import { nativeReportAsleep, sleepingReason, type SleepingReason } from '../sleep-awake';
 import { templatePosterUrl } from '@/lib/template-poster';
 import { templatePreviewOf, type TemplatePreview } from '@/lib/template-preview';
 import {
@@ -145,6 +149,9 @@ export interface OpsScreen {
   /** `Screen.playerVersion` / `managerVersion` — the APK pair the device last reported. */
   playerVersion?: string | null;
   managerVersion?: string | null;
+  /** 2026-11-08 — the companion's own health, carried by the Player's signed heartbeat (companionHealth.ts). */
+  managerHealth?: import('./companionHealth').ManagerHealthReport | null;
+  managerHealthAt?: string | null;
   orientation?: string | null;
   deviceFingerprint?: string | null;
   emergencyStatus?: string | null;
@@ -162,6 +169,9 @@ export interface OpsScreen {
   lastCrashAt?: string | null;
   lastCrashMessage?: string | null;
   lastCrashVersion?: string | null;
+  /** Native sleep report (`sleep.vb`, `interactive`) — read by the Sleeping status. */
+  nativeRuntimeReport?: unknown;
+  nativeRuntimeReportAt?: string | null;
 }
 
 /** One row of `GET /schedules` (schedules.controller.ts list()). */
@@ -197,7 +207,10 @@ export interface OpsPlaylist {
     sequenceOrder?: number | null;
     durationMs?: number | null;
     asset?: {
+      id?: string | null;
       fileUrl?: string | null;
+      fileHash?: string | null;
+      originalName?: string | null;
       mimeType?: string | null;
       /** A video's poster frame (`Asset.posterUrl`, 2026-09-11). */
       posterUrl?: string | null;
@@ -248,6 +261,7 @@ export const STATUS_ORDER = [
   'connecting', // alive, still fetching its schedule
   'content-loading', // alive, opening the first item of its schedule
   'idle', // alive, nothing scheduled
+  'sleeping', // dark on purpose: on/off schedule, Sleep command or standby
   'unknown', // no evidence capability
   'current', // earned positive evidence
 ] as const;
@@ -340,6 +354,8 @@ export interface DeriveStatusInput {
    *  identity the player actually reloads on; preferred over the SHA when
    *  both sides report one. */
   deployedBundleId?: string | null;
+  /** On/off schedule rows — lets a scheduled-off screen read "Sleeping". */
+  displaySchedules?: DisplayScheduleRow[] | null;
   now: number;
 }
 
@@ -354,6 +370,42 @@ export interface DeriveStatusInput {
  * and this page's "syncing" are the same window.
  */
 export { PUSH_CONFIRM_GRACE_MS };
+
+/** Why this screen is asleep on purpose right now, or null (see `sleepingReason`). */
+export function sleepReasonOf(
+  screen: OpsScreen,
+  grade: RenderTrustGrade,
+  displaySchedules: DisplayScheduleRow[] | null | undefined,
+  now: number,
+): SleepingReason | null {
+  const windows = displaySchedules?.length
+    ? windowsForScreen(
+        { id: screen.id, screenGroup: screen.screenGroup ? { id: screen.screenGroup.id } : null },
+        displaySchedules,
+      )
+    : [];
+  return sleepingReason({
+    panelState: derivePanelPowerState(grade),
+    hardOff: nativeHardOff(screen.nativeRuntimeReport, screen.nativeRuntimeReportAt, now),
+    reportAsleep: nativeReportAsleep(screen.nativeRuntimeReport, screen.nativeRuntimeReportAt, now),
+    scheduleOff: windows.length > 0 && desiredOnAt(windows, now) === false,
+  });
+}
+
+export function sleepingDescriptor(reason: SleepingReason): StatusDescriptor {
+  const bySchedule = reason === 'schedule';
+  const label = copy(bySchedule ? 'screens.contentState.sleepingSchedule' : 'screens.contentState.sleeping');
+  const detail = copy(bySchedule ? 'screens.contentState.sleepingScheduleDetail' : 'screens.contentState.sleepingDetail');
+  return {
+    key: 'sleeping',
+    tone: 'neutral',
+    label: label.en,
+    action: 'View',
+    needsAttention: false,
+    detail: detail.en,
+    messages: { label: label.message, detail: detail.message },
+  };
+}
 
 /**
  * Collapse every independent truth about one screen into the single
@@ -390,6 +442,7 @@ export function deriveScreenStatus({
   screen,
   deployedSha,
   deployedBundleId,
+  displaySchedules,
   now,
 }: DeriveStatusInput): StatusDescriptor {
   const status = screen.status ?? null;
@@ -407,9 +460,9 @@ export function deriveScreenStatus({
   if (grade === 'alert-not-painted') {
     return {
       key: 'alert-not-painted', tone: 'bad',
-      label: 'Alert raised · no on-glass proof',
+      label: 'Alert sent · waiting for this screen to confirm',
       action: 'Troubleshoot', needsAttention: true,
-      detail: 'The alert was raised, but the page has not confirmed painting its overlay. Delivery is not confirmed.',
+      detail: "This screen hasn't confirmed it is showing the alert yet. If it doesn't confirm within a minute, check it in person.",
       messages: {
         label: { key: 'screens.trust.alertNotPainted' },
         detail: { key: 'screens.trust.alertNotPaintedTitle' },
@@ -429,6 +482,15 @@ export function deriveScreenStatus({
       detail:
         'This screen is holding an emergency alert it has not been able to re-confirm with the server. Holding is correct — but an all-clear cannot reach it until it reconnects.',
     };
+  }
+
+  // 1b ── dark ON PURPOSE (on/off schedule, Sleep command, vendor standby).
+  // Same evidence as the Sleep / Awake buttons (`sleep-awake.ts`); an
+  // intended sleep is never "No picture confirmed" — the same call the alert
+  // emails make (`intendedDowntime`: display-schedule-off / standby).
+  if (status === 'ONLINE' && grade !== 'repair-required') {
+    const reason = sleepReasonOf(screen, grade, displaySchedules, now);
+    if (reason) return sleepingDescriptor(reason);
   }
 
   // 2 ── reachable, but the picture is not advancing.
@@ -842,6 +904,52 @@ export interface ExpectedContent {
    * the screen is told to show. `name` carries its label.
    */
   game?: { id: string; label: string; status: string | null } | null;
+  /**
+   * The video files of the scheduled playlist (the manifest's current items),
+   * so the Technical details can show measurements for the file playing NOW
+   * and nothing older. Absent/empty = no video is scheduled.
+   */
+  videoFiles?: CurrentVideoFile[];
+}
+
+/** One video the screen is scheduled to play — matched by hash, id, url or name. */
+export interface CurrentVideoFile {
+  assetId?: string | null;
+  hash?: string | null;
+  url?: string | null;
+  name?: string | null;
+}
+
+/** The video items of a playlist, in the shape the matchers below read. */
+export function videoFilesOf(pl: OpsPlaylist | undefined): CurrentVideoFile[] {
+  return (pl?.items ?? [])
+    .filter((i) => i.asset?.fileUrl && (i.asset.mimeType ?? '').startsWith('video/'))
+    .map((i) => ({
+      assetId: i.asset?.id ?? null,
+      hash: i.asset?.fileHash ?? null,
+      url: i.asset?.fileUrl ?? null,
+      name: i.asset?.originalName ?? null,
+    }));
+}
+
+/**
+ * Is this measured file one of the videos the screen is playing now? Matches
+ * on hash, asset id, URL, then file name. No scheduled video = nothing is
+ * current, so every older measurement is "earlier" (never shown as live).
+ */
+export function isCurrentVideo(
+  f: { sha256?: string | null; assetId?: string | null; url?: string | null; name?: string | null },
+  current: CurrentVideoFile[] | null | undefined,
+): boolean {
+  if (!current || current.length === 0) return false;
+  const fname = f.name ?? (f.url ? videoSampleName(f.url) : null);
+  return current.some((c) => {
+    if (c.hash && f.sha256 && c.hash === f.sha256) return true;
+    if (c.assetId && f.assetId && c.assetId === f.assetId) return true;
+    if (c.url && f.url && c.url.split(/[?#]/)[0] === f.url.split(/[?#]/)[0]) return true;
+    const names = [c.name, c.url ? videoSampleName(c.url) : null].filter(Boolean);
+    return !!fname && names.includes(fname);
+  });
 }
 
 /** The honest empty answer: nothing scheduled, nothing to preview. */
@@ -982,6 +1090,7 @@ export function deriveExpectedContent(
     thumbnailKind: preview.kind,
     thumbnailTint: preview.tint,
     posterUrl: preview.posterUrl,
+    videoFiles: videoFilesOf(pl),
     viaGroup: !winner.screenId,
     windowClosed: !open,
   };
@@ -1074,9 +1183,13 @@ export function imageUrlOfPreview(preview: { url: string | null; kind: ExpectedT
  * match; anything it cannot match is "a playlist", never an accusation. The
  * app-version fact survives as its own line (`app`).
  */
+/** A pending resync older than this is a warning, not "in progress". */
+export const UPDATE_STUCK_MS = 2 * 60_000;
+
 export type ReportedState =
   | 'confirmed' // playing exactly what is scheduled
   | 'playing' // playing a playlist or board that cannot be matched to the schedule
+  | 'updating' // a resync was sent and the screen has not confirmed yet (under 2 min)
   | 'behind' // an update is outstanding, or the schedule is not on the glass yet
   | 'idle' // the waiting screen, with nothing scheduled (or the window closed)
   | 'paused' // paused on the screen itself
@@ -1190,12 +1303,12 @@ export function deriveReportedContent(
   // An outstanding update outranks whatever is on the glass: until the screen
   // echoes it back, what it shows may be the previous content.
   if (pendingMs != null) {
-    return {
-      state: 'behind',
-      line: 'Update not confirmed',
-      detail: `Sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago; waiting for the screen to confirm it.`,
-      app,
-    };
+    if (now - pendingMs < UPDATE_STUCK_MS) {
+      const line = copy('screens.contentState.updating');
+      return { state: 'updating', line: line.en, app, messages: { line: line.message } };
+    }
+    const line = copy('screens.contentState.updatingStuck');
+    return { state: 'behind', line: line.en, app, messages: { line: line.message } };
   }
 
   // ── What the idle proofs and the download snapshot say (2026-09-27) ──
@@ -1283,7 +1396,7 @@ export function deriveReportedContent(
   if (proof.startsWith('tpl:')) {
     const boardId = proof.slice('tpl:'.length).split(':')[0];
     if (expected?.templateId && boardId === expected.templateId) {
-      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('The board on the glass is the one you scheduled.'), app });
+      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, app });
     }
     return withBackground({
       state: 'playing',
@@ -1298,7 +1411,7 @@ export function deriveReportedContent(
   }
   if (proof.startsWith('pl:')) {
     if (renderProofMatches(expected?.renderSignature ?? null, proof)) {
-      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, detail: dated('Item for item, what you scheduled.'), app });
+      return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, app });
     }
     return withBackground({
       state: 'playing',
@@ -1435,7 +1548,7 @@ export function deriveRecovery(input: {
     return {
       state: 'waiting-ack',
       heading: 'Resync in progress',
-      body: `Request recorded ${wordyAge(pendingMs, now) ?? 'just now'} ago; waiting for this screen to confirm it.`,
+      body: '',
     };
   }
   if (justSent) {
@@ -1535,6 +1648,11 @@ export interface VideoPlayback {
   atMs?: number | null;
   /** Total time spent paused to buffer, when it paused. */
   stalledMs?: number | null;
+  /** The file the sample was taken on, for matching against the current item. */
+  sha256?: string | null;
+  url?: string | null;
+  /** Pauses to buffer / reported stalls, for the plain one-line verdict. */
+  stalls?: number | null;
 }
 
 /**
@@ -1624,7 +1742,8 @@ export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayba
       size, age ? `${age} ago` : null,
     ].filter(Boolean).join(' · ');
     return { grade: 'native', name: s.sha256 && s.sha256 === native.sha256 ? videoSampleName(s.url) : 'Native video',
-      headline: VIDEO_HEADLINE.native, detail, droppedPct: null, totalFrames: callbacks, droppedFrames: drops, age, atMs: nativeAt };
+      headline: VIDEO_HEADLINE.native, detail, droppedPct: null, totalFrames: callbacks, droppedFrames: drops, age, atMs: nativeAt, stalledMs: null, stalls: nativeStalls,
+      sha256: typeof native.sha256 === 'string' ? native.sha256 : null, url: s.sha256 && s.sha256 === native.sha256 ? s.url ?? null : null };
   }
   const total = typeof s.totalFrames === 'number' && Number.isFinite(s.totalFrames) ? Math.max(0, Math.floor(s.totalFrames)) : 0;
   if (total <= 0) return null;
@@ -1652,7 +1771,18 @@ export function deriveVideoPlayback(screen: OpsScreen, now: number): VideoPlayba
   // its dropped-frame share, and lift "too short to judge" as well.
   const grade: VideoPlaybackGrade = gradePlaybackSample({ totalFrames: total, droppedFrames: dropped, stalls, stalledMs });
   return { grade, name, headline: VIDEO_HEADLINE[grade], detail, droppedPct, totalFrames: total, droppedFrames: dropped, age,
-    atMs: Number.isFinite(atMs as number) ? (atMs as number) : null, stalledMs };
+    atMs: Number.isFinite(atMs as number) ? (atMs as number) : null, stalledMs, stalls, sha256: s.sha256 ?? null, url: s.url ?? null };
+}
+
+/**
+ * Does the last video sample describe what the screen is playing NOW? A live
+ * hardware-video report (fresh by construction) always does; a web sample only
+ * when its file is one of the playlist's current videos.
+ */
+export function videoSampleIsCurrent(video: VideoPlayback | null | undefined, current: CurrentVideoFile[] | null | undefined): boolean {
+  if (!video) return false;
+  if (video.grade === 'native') return true;
+  return isCurrentVideo({ sha256: video.sha256, url: video.url, name: video.name }, current);
 }
 
 /** A web video sample older than this is history, not news (2026-10-22). */
@@ -1722,17 +1852,18 @@ export function buildScreenOps(input: {
   deployedSha: string | null;
   /** Deployed client-bundle identity (2026-09-21) — see `DeriveStatusInput`. */
   deployedBundleId?: string | null;
+  displaySchedules?: DisplayScheduleRow[] | null;
   /** Keeps the selected screen's group open even when it is healthy (§8). */
   selectedScreenId?: string | null;
   now: number;
 }): ScreenOps {
-  const { screens, schedules, playlists, deployedSha, deployedBundleId, now } = input;
+  const { screens, schedules, playlists, deployedSha, deployedBundleId, displaySchedules, now } = input;
 
   const playlistById = new Map<string, OpsPlaylist>();
   for (const p of playlists) if (p?.id) playlistById.set(p.id, p);
 
   const rows: OpsRow[] = screens.map((screen) => {
-    const status = deriveScreenStatus({ screen, deployedSha, deployedBundleId, now });
+    const status = deriveScreenStatus({ screen, deployedSha, deployedBundleId, displaySchedules, now });
     const expected = deriveExpectedContent(screen, schedules, playlistById, now);
     return {
       screen,
@@ -1965,12 +2096,107 @@ export function contentStatusLine(reported: ReportedContent): string {
 }
 
 export interface DeviceFact {
-  key: 'panel' | 'device' | 'browser' | 'player' | 'network' | 'contact' | 'paired' | 'cache' | 'crash';
+  key: 'panel' | 'device' | 'browser' | 'player' | 'companion' | 'alertWatch' | 'network' | 'contact' | 'paired' | 'cache' | 'crash';
   label: string;
   value: string;
   /** A second, quieter line. */
   hint?: string;
   tone?: 'warn';
+  /**
+   * Translated forms (2026-11-08). When present the drawer renders the message
+   * instead of the English literal beside it; the literal stays as the test
+   * fixture's and the fallback's text.
+   */
+  labelMsg?: OpsMessage;
+  valueMsg?: OpsMessage;
+  hintMsg?: OpsMessage;
+}
+
+/**
+ * The companion Manager's verdict on the Player's NATIVE ALERT WATCH (Manager
+ * wave 5, 2026-11-08) — `nativeRuntimeReport.alertWatchWatchdog`, carried by
+ * the Player's signed heartbeat. Pure. Null when the report carries none, or
+ * when its shape is not the one the API stores. The copy states what the
+ * device reported — "a re-arm was sent", "the stamp is N old" — never that the
+ * watch is fixed. `ageMs` values are the device's own ages when the heartbeat
+ * left; the report's age on the server is added so "ago" is honest.
+ */
+export function alertWatchWatchdogFact(report: unknown, reportAt: string | null | undefined, now: number): DeviceFact | null {
+  if (!report || typeof report !== 'object') return null;
+  const w = (report as { alertWatchWatchdog?: unknown }).alertWatchWatchdog;
+  if (!w || typeof w !== 'object') return null;
+  const r = w as Record<string, unknown>;
+  const verdict = typeof r.verdict === 'string' ? r.verdict : null;
+  const mode = r.mode === 'on' || r.mode === 'observe' ? r.mode : null;
+  if (!verdict || !mode || r.v !== 1) return null;
+  const verdictKeys: Record<string, string> = {
+    'panel-on': 'panelOn', healthy: 'healthy', 'no-stamp': 'noStamp', 'deferred-liveness': 'deferredLiveness', hold: 'hold',
+    'not-watchable': 'notWatchable', 'silent-observed': 'silentObserved', 'silent-backoff': 'silentBackoff',
+    'silent-capped': 'silentCapped', 'rearm-sent': 'rearmSent', 'restart-sent': 'restartSent', recovered: 'recovered',
+    unrecovered: 'unrecovered',
+  };
+  const vk = verdictKeys[verdict];
+  if (!vk) return null;
+  const reportMs = msOf(reportAt) ?? now;
+  const serverAge = Math.max(0, now - reportMs);
+  const n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+  const ageOf = (deviceAgeMs: number | null): string | undefined =>
+    deviceAgeMs == null ? undefined : (wordyAge(now - (deviceAgeMs + serverAge), now) ?? '0 seconds');
+
+  const warn = ['not-watchable', 'silent-observed', 'silent-backoff', 'silent-capped', 'rearm-sent', 'restart-sent', 'unrecovered'].includes(verdict);
+  const stampAge = ageOf(n(r.stampAgeMs));
+  const faces = n(r.faces) ?? 0;
+  const ladder = r.ladder && typeof r.ladder === 'object' ? (r.ladder as Record<string, unknown>) : null;
+  const rung = ladder && typeof ladder.rung === 'string' ? ladder.rung : null;
+  const ladderAge = ladder ? ageOf(n(ladder.ageMs)) : undefined;
+  const n24h = n(r.n24h) ?? 0;
+  const reason = typeof r.reason === 'string' && r.reason ? r.reason : null;
+
+  const valueEn: Record<string, string> = {
+    panelOn: 'Panel on — the page owns alerts',
+    healthy: 'Native alert watch alive behind the dark panel',
+    noStamp: 'Dark panel; this Player sends no native-watch stamp',
+    deferredLiveness: 'Dark panel; Player heartbeat stale — the liveness watchdog owns it',
+    hold: 'Alert hold up — the Player’s own paint ladder owns the screen',
+    notWatchable: 'Dark panel; the Player cannot watch natively',
+    silentObserved: 'Dark panel; native watch silent — observed, nothing sent',
+    silentBackoff: 'Dark panel; native watch silent — backing off, a ladder ran under 30 min ago',
+    silentCapped: 'Dark panel; native watch silent — the daily intervention cap is reached',
+    rearmSent: 'Dark panel; native watch silent — re-arm sent to the Player',
+    restartSent: 'Dark panel; native watch silent — the watch’s host service was restarted',
+    recovered: 'Native alert watch back after the companion’s intervention',
+    unrecovered: 'Dark panel; native watch still silent after re-arm and restart — NOT natively watched',
+  };
+
+  // The hint: the ladder when there is one, else the stamp, else the reason; observe mode is always said.
+  let hint: string | undefined;
+  let hintMsg: OpsMessage | undefined;
+  if (rung && ladderAge) {
+    hint = `${rung} ${ladderAge} ago · ${n24h} intervention${n24h === 1 ? '' : 's'} in 24 h`;
+    hintMsg = { key: 'screens.drawer.alertWatchHintLadder', values: { rung, age: ladderAge, n: n24h } };
+  } else if (stampAge) {
+    hint = `Native watch stamped ${stampAge} ago · ${faces} manifest${faces === 1 ? '' : 's'}`;
+    hintMsg = { key: 'screens.drawer.alertWatchHintStamp', values: { age: stampAge, faces } };
+  } else if (reason) {
+    hint = reason;
+  }
+  // Observe mode is always said, and it outranks the ladder/stamp line: an
+  // operator must never read a verdict as an action the companion did not take.
+  if (mode === 'observe') {
+    hint = 'Observe mode — the companion records verdicts and sends nothing';
+    hintMsg = { key: 'screens.drawer.alertWatchHintObserve' };
+  }
+
+  return {
+    key: 'alertWatch',
+    label: 'Alert watch',
+    labelMsg: { key: 'screens.drawer.alertWatchLabel' },
+    value: valueEn[vk],
+    valueMsg: { key: `screens.drawer.alertWatchVerdict.${vk}` },
+    hint,
+    hintMsg,
+    tone: warn ? 'warn' : undefined,
+  };
 }
 
 /** "48.8 MB" / "1.2 GB" / "640 KB" — for the on-device cache row. Lives in
@@ -2050,6 +2276,11 @@ export function deriveDeviceFacts(screen: OpsScreen, app: ReportedContent['app']
     });
   }
 
+  // Manager wave 5 (2026-11-08): the companion's verdict on the native alert
+  // watch, when the Player carried one. Nothing is inferred when it did not.
+  const alertWatch = alertWatchWatchdogFact(screen.nativeRuntimeReport, screen.nativeRuntimeReportAt, now);
+  if (alertWatch) out.push(alertWatch);
+
   if (screen.ipAddress || screen.pushChannel === 'live' || screen.pushChannel === 'stale') {
     const push = screen.pushChannel === 'live' ? 'live push' : screen.pushChannel === 'stale' ? 'polling only (push channel silent)' : null;
     out.push({
@@ -2098,4 +2329,25 @@ export function deriveDeviceFacts(screen: OpsScreen, app: ReportedContent['app']
   }
 
   return out;
+}
+
+/**
+ * The one plain line for a video sample: a message key under
+ * `screens.drawer` and its values. States only what the counters report
+ * (Player Reliability rule 10) — "reported", never "the picture is fine".
+ */
+export function videoPlainLine(video: VideoPlayback): { key: string; values?: Record<string, number> } {
+  const stalls = video.stalls ?? 0;
+  if (video.grade === 'native') {
+    if (stalls > 0) return { key: 'videoPlainStalls', values: { count: stalls } };
+    if (video.droppedFrames > 0) return { key: 'videoPlainDrops', values: { count: video.droppedFrames } };
+    return { key: 'videoPlainSmooth' };
+  }
+  switch (video.grade) {
+    case 'smooth':
+      return video.droppedFrames === 0 && stalls === 0 ? { key: 'videoPlainSmooth' } : { key: 'videoPlainSmoothFew' };
+    case 'hitching': return { key: 'videoPlainHitching' };
+    case 'stuttering': return { key: 'videoPlainStuttering' };
+    default: return { key: 'videoPlainShort' };
+  }
 }

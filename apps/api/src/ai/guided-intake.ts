@@ -19,7 +19,7 @@
  * existing derive-from-prompt + vertical-affinity behavior is UNCHANGED, so
  * nothing regresses.
  *
- * TAURUS NOTE (CLAUDE.md rule #10): this module emits NO CSS — it only sets
+ * TAURUS NOTE (apps/web/CLAUDE.md rule #10): this module emits NO CSS — it only sets
  * SurfaceStyle dials (consumed by surface-css.ts, which already emits only
  * gradient/solid strings) and palette hex. No `inset`, no `gap`.
  */

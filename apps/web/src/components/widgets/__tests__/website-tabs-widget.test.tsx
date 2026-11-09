@@ -340,3 +340,75 @@ describe('our app (native channel advertising the methods)', () => {
     expect(calls('webTabsShow')).toHaveLength(0);
   });
 });
+
+/**
+ * 2026-11-07 field report (portrait 2160×3840 panel, ROM dpr 3.0): the site
+ * view landed in a corner and the sign-in did not survive. The layout viewport
+ * is pinned to the panel's physical size, so the bounds must not be
+ * multiplied by the reported devicePixelRatio; the template stage's
+ * transform settles after mount, so the widget must re-measure; and a tab set
+ * to "Sign in once" must not be signed out.
+ */
+describe('our app on a pinned 4K portrait panel', () => {
+  let posted: string[];
+  const originalRect = Element.prototype.getBoundingClientRect;
+  const originalUrl = window.location.href;
+  let rect = { left: 0, top: 0, width: 0, height: 0 };
+  const set = (k: 'innerWidth' | 'innerHeight' | 'devicePixelRatio', v: number) =>
+    Object.defineProperty(window, k, { value: v, configurable: true, writable: true });
+  beforeEach(() => {
+    posted = [];
+    w().EduCmsNativeChannel = { postMessage: (m: string) => posted.push(m) };
+    w().__eduCmsNativeChannelMethods = ['webTabsShow', 'webTabsHide'];
+    window.history.replaceState(null, '', '/player?client=android&w=2160&h=3840&dpr=3.0');
+    set('innerWidth', 2160);
+    set('innerHeight', 3840);
+    set('devicePixelRatio', 3);
+    Element.prototype.getBoundingClientRect = function () {
+      return { ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height, x: rect.left, y: rect.top, toJSON() {} } as DOMRect;
+    };
+  });
+  afterEach(() => {
+    Element.prototype.getBoundingClientRect = originalRect;
+    window.history.replaceState(null, '', originalUrl);
+    set('innerWidth', 1024);
+    set('innerHeight', 768);
+    set('devicePixelRatio', 1);
+  });
+  const payloads = (method: string) =>
+    posted
+      .map((p) => JSON.parse(p) as { method: string; args: unknown[] })
+      .filter((m) => m.method === method)
+      .map((m) => JSON.parse(String(m.args[0])));
+
+  it('sends window-pixel bounds equal to the CSS rect (not x3), after the stage scale settles', () => {
+    jest.useFakeTimers();
+    // TemplateScaler starts at scale(0): a zero box, nothing to show yet.
+    rect = { left: 0, top: 0, width: 0, height: 0 };
+    mount(TABS, true);
+    expect(payloads('webTabsShow')).toHaveLength(0);
+    // The transform lands (no resize, no ResizeObserver callback).
+    rect = { left: 0, top: 192, width: 2160, height: 3648 };
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+    const s = payloads('webTabsShow');
+    expect(s.length).toBeGreaterThanOrEqual(1);
+    expect(s[s.length - 1].bounds).toEqual({ left: 0, top: 192, width: 2160, height: 3648 });
+    // Settled: identical payloads are not re-sent, and nothing keeps polling.
+    const n = s.length;
+    act(() => {
+      jest.advanceTimersByTime(10000);
+    });
+    expect(payloads('webTabsShow')).toHaveLength(n);
+  });
+
+  it('"Sign in once" keeps the sign-in: no wipe on unmount, incognito off in the payload', () => {
+    rect = { left: 0, top: 192, width: 2160, height: 3648 };
+    const cfg = { ...TABS, tabs: [{ ...TABS.tabs[0], signIn: 'once' }, TABS.tabs[1]] };
+    const r = mount(cfg, true);
+    expect(payloads('webTabsShow').slice(-1)[0].incognito).toBe(false);
+    r.unmount();
+    expect(payloads('webTabsHide')).toEqual([{ v: 1, wipe: false }]);
+  });
+});

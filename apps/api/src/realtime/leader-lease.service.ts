@@ -30,7 +30,7 @@ import { RedisService } from './redis.service';
  *    in the log. It NEVER degrades to "do nothing": a missing Redis must not
  *    silently stop the offline scanner, the license reconcile or the proof-
  *    of-play sampler, which is exactly today's behaviour on every deploy
- *    that has no Redis plugin (CLAUDE.md: "Redis missing → API boots
+ *    that has no Redis plugin (docs/DEPLOY.md: "Redis missing → API boots
  *    anyway"). The cost of degraded mode is that two replicas may both act —
  *    i.e. precisely today's pre-lease behaviour, no worse.
  *
@@ -98,6 +98,9 @@ export const LEASE = {
   POS_SYNC: 'pos:sync',
   FLEET_PULSE: 'screens:fleet-pulse',
   SCREEN_WEDGE_DETECTOR: 'screens:wedge-detector',
+  // 2026-11-08 — opt-in scheduled restarts. Leased because a second replica would race the
+  // same slot claims and double the per-tenant cap arithmetic (scheduled-reboot/).
+  SCHEDULED_REBOOT: 'screens:scheduled-reboot',
   SPORTS_CLOCK_ADVANCE: 'sports:clock-advance',
   // 2026-09-15 — design-import staging sweep. Leased because the work is a
   // DELETE against shared object storage: two replicas racing the same keys
@@ -146,6 +149,10 @@ export const LEASE = {
   // Redis) means NO drill: a drill without the realtime path proves nothing,
   // and two replicas must never drill the same bench glass at once.
   EMERGENCY_DRILL: 'emergency:synthetic-drill',
+  // 2026-11-08 — screen diagnostics retention (screen-diagnostics/): deletes
+  // device-log objects past the retention window and old request rows. Leased
+  // because it is a DELETE against shared storage and the database.
+  SCREEN_DIAGNOSTICS_RETENTION: 'screens:diagnostics-retention',
 } as const;
 
 export type LeaseName = (typeof LEASE)[keyof typeof LEASE];

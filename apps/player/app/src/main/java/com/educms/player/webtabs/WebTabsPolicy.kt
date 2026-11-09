@@ -40,7 +40,7 @@ import java.net.URI
  *    which this never touches), so wiping them costs the sites their logins
  *    and the player nothing. `WebStorage.deleteAllData()` is deliberately
  *    NOT used: it would erase the player's own localStorage, credential
- *    included (CLAUDE.md player rule 3).
+ *    included (apps/web/src/app/player/CLAUDE.md player rule 3).
  */
 object WebTabsPolicy {
 

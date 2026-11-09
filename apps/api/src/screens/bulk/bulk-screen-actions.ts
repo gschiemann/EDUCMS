@@ -9,7 +9,20 @@
  * (`screens/screen-commands.ts`, `display/display.controller.ts#runDisplayControl`)
  * — this file only decides WHICH screens a request names, how a result is
  * worded, and how many run at once. Nothing here sends anything.
+ *
+ * 2026-10-31 — "Send update" to MORE THAN ONE screen follows the owner's fleet
+ * push rules (player-ota/fleet-push-policy.ts): one hardware class per
+ * request, and only 22:00–06:00 in every screen's own time zone, unless the
+ * request carries the explicit `overrideMassPushRules: true`. The refusals'
+ * words live here; the dashboard words each code in en / es / zh
+ * (`screens.bulk.refusal.*`).
  */
+import {
+  OFF_HOURS,
+  listScreenNames,
+  type HardwareClassVerdict,
+  type OffHoursVerdict,
+} from '../../player-ota/fleet-push-policy';
 
 /** Most screens one request may name (after a group is expanded). */
 export const BULK_MAX_SCREENS = 500;
@@ -79,6 +92,77 @@ export interface BulkBody {
   state?: unknown;
   /** auto-update */
   mode?: unknown;
+  /** update: the owner's explicit override of the fleet push rules (never sent by the dashboard) */
+  overrideMassPushRules?: unknown;
+}
+
+/**
+ * `overrideMassPushRules` on a bulk update: optional, a real boolean or
+ * nothing (like the field-build panel's). A used override is written to every
+ * FORCE_APK_UPDATE row and to the BULK_SCREEN_ACTION summary.
+ */
+export function parseMassPushOverride(body: BulkBody | null | undefined): boolean {
+  const v = body && typeof body === 'object' ? body.overrideMassPushRules : undefined;
+  if (v !== undefined && typeof v !== 'boolean') {
+    throw new BulkInputError('BULK_MASS_PUSH_OVERRIDE_INVALID', 'overrideMassPushRules must be true or false.');
+  }
+  return v === true;
+}
+
+/** A fleet push rule's refusal of a bulk update, in the `{ code, message, ...extra }` body. */
+export interface BulkRuleRefusal {
+  status: 409 | 422;
+  code: string;
+  message: string;
+  extra: Record<string, unknown>;
+}
+
+/** One hardware class per update. Only call with a verdict that is not ok. */
+export function bulkHardwareRefusal(v: HardwareClassVerdict): BulkRuleRefusal {
+  if (v.reason === 'mixed') {
+    return {
+      status: 422,
+      code: 'BULK_UPDATE_MIXED_HARDWARE',
+      message: `These screens are more than one kind of hardware: ${v.classes.join(', ')}. Send the update to one kind at a time.`,
+      extra: { classes: v.classes, unknownScreens: v.unknown },
+    };
+  }
+  return {
+    status: 422,
+    code: 'BULK_UPDATE_HARDWARE_UNKNOWN',
+    message: v.incomplete
+      ? 'This location has too many screens to show they are one kind of hardware. Select the screens to update instead.'
+      : `${listScreenNames(v.unknown)} ${v.unknown.length === 1 ? 'has' : 'have'} no known hardware model, so this update ` +
+        'cannot be shown to go to one kind of hardware. Send it to one screen at a time.',
+    extra: { classes: v.classes, unknownScreens: v.unknown, incomplete: v.incomplete },
+  };
+}
+
+/** Off-hours, in each screen's own time zone. Only call with a verdict that is not ok. */
+export function bulkOffHoursRefusal(v: OffHoursVerdict): BulkRuleRefusal {
+  const hours = `${OFF_HOURS.start} and ${OFF_HOURS.end}`;
+  if (v.reason === 'no-time-zone') {
+    const one = v.noZone.length === 1;
+    return {
+      status: 422,
+      code: 'BULK_UPDATE_TIME_ZONE_UNKNOWN',
+      message:
+        `${listScreenNames(v.noZone)} ${one ? 'has' : 'have'} no time zone, so an update to more than one screen ` +
+        `cannot be checked against the off-hours (${hours} local). Set ${one ? 'its' : 'their'} time zone, ` +
+        `or send the update to ${one ? 'it on its' : 'them on their'} own.`,
+      extra: { screens: v.noZone, offHours: OFF_HOURS },
+    };
+  }
+  const shown = v.outside.slice(0, 3).map((s) => `${s.localTime ?? '?'} at ${s.name ?? s.id.slice(0, 8)} (${s.timeZone})`);
+  const more = v.outside.length > shown.length ? ` and ${v.outside.length - shown.length} more` : '';
+  return {
+    status: 409,
+    code: 'BULK_UPDATE_OUTSIDE_OFF_HOURS',
+    message:
+      `An update to more than one screen goes out only between ${hours} in each screen's own time zone. ` +
+      `It is ${shown.join(', ')}${more}. Send it to one screen at a time, or wait.`,
+    extra: { screens: v.outside, offHours: OFF_HOURS },
+  };
 }
 
 /** The ids a body names (de-duplicated, order kept). Throws BulkInputError on a malformed body. */

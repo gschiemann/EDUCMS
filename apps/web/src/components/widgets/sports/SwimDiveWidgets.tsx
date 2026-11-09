@@ -30,7 +30,7 @@
  *     so the console's MeetResultsSection editor and every board surface
  *     agree on one data contract;
  *   - ship a sensible SAMPLE heat/field so the builder tile is never blank
- *     (CLAUDE.md template-design workflow: no placeholders-as-content);
+ *     (docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md template-design workflow: no placeholders-as-content);
  *   - fixed 1920×1080 scene + `useScaleToFit` transform:scale (the
  *     player-shipped board pattern — MainScoreboardWidget.tsx);
  *   - Chromium-83 / NovaStar Taurus safe: no `inset`/`inset-*` shorthand

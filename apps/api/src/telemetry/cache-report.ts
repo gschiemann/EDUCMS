@@ -37,7 +37,7 @@ export interface DownloadingReport {
   /**
    * TRUE while a NEW playlist is held back and the previous content stays on
    * glass until one of its files is complete (readiness-gated playback,
-   * CLAUDE.md player rule 17). False: nothing of the new content was
+   * apps/web/src/app/player/CLAUDE.md player rule 17). False: nothing of the new content was
    * waiting on it (first boot, or a file downloading behind items that play).
    */
   deferredCommit: boolean;

@@ -16,6 +16,13 @@ import { useEmergencyAnnouncer } from '@/components/emergency/EmergencyLiveRegio
 import { AssetPicker, type AssetKind } from '@/components/assets/AssetPicker';
 import { transformedImageUrl } from '@/lib/asset-image';
 import type { BroadcastInput, MediaAlertInput } from '@cms/api-types';
+import { BroadcastBannerBar } from '@/components/player/BroadcastBannerBar';
+import { BANNER_PRESET_COLORS, BANNER_SPEEDS, normalizeHex, type BannerMode, type BannerSpeed } from '@cms/api-types';
+import {
+  bannerForSend, contrastReport, durationMinutesFor, resolveColorChoice,
+  type BrandColors, type ColorChoice, type DurationPreset,
+} from '@/lib/broadcast-banner';
+import { ColorPickerField } from '@/components/ui/color-picker';
 import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
 import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
 import { fetchEmergencyTargets } from '@/lib/emergency-api';
@@ -56,6 +63,13 @@ const SEVERITY_STYLE = {
   WARN: { selected: 'border-amber-500 bg-amber-50 text-amber-800', badge: 'bg-amber-50 text-amber-800 ring-amber-200', preview: 'bg-orange-500 text-white', icon: AlertTriangle },
   CRITICAL: { selected: 'border-red-500 bg-red-50 text-red-700', badge: 'bg-red-50 text-red-700 ring-red-200', preview: 'bg-red-700 text-white', icon: ShieldAlert },
 };
+const DURATION_PRESETS: Array<{ id: DurationPreset; key: string }> = [
+  { id: '15m', key: 'd15m' }, { id: '1h', key: 'd1h' }, { id: '4h', key: 'd4h' },
+  { id: 'eod', key: 'dEod' }, { id: 'manual', key: 'dManual' }, { id: 'custom', key: 'dCustom' },
+];
+const PREVIEW_STAGE_W = 1920;
+const PREVIEW_STAGE_H = 1080;
+const SEVERITY_SWATCH = { INFO: '#facc15', WARN: '#f97316', CRITICAL: '#b91c1c' } as const;
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:opacity-60';
 const secondaryButton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 disabled:opacity-50';
 
@@ -88,6 +102,15 @@ export default function BroadcastPage() {
   const [text, setText] = useState('');
   const [severity, setSeverity] = useState<Severity>('WARN');
   const [durationMin, setDurationMin] = useState('5');
+  const [durationPreset, setDurationPreset] = useState<DurationPreset>('custom');
+  // Banner style (INFO / WARN text banners only). Default: the severity's own colour, static text.
+  const [colorChoice, setColorChoice] = useState<ColorChoice>({ kind: 'default' });
+  const [customHex, setCustomHex] = useState('#');
+  const [bannerMode, setBannerMode] = useState<BannerMode>('static');
+  const [bannerSpeed, setBannerSpeed] = useState<BannerSpeed>('normal');
+  const [brand, setBrand] = useState<BrandColors>({ primary: null, accent: null });
+  const previewBox = useRef<HTMLDivElement>(null);
+  const [previewScale, setPreviewScale] = useState(0.3);
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [audioUrl, setAudioUrl] = useState('');
   const [withMedia, setWithMedia] = useState(false);
@@ -139,6 +162,19 @@ export default function BroadcastPage() {
     if (m.scopeType === 'device') return targets?.screens?.find((x) => x.id === m.scopeId)?.name ?? null;
     return null;
   };
+  // Brand colours for the presets: best-effort, never blocks the composer.
+  useEffect(() => {
+    if (!token) return;
+    let live = true;
+    Promise.resolve(fetchWithTimeout(`${API_URL}/branding/me`, { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' }, 4000))
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        const palette = json && typeof json === 'object' ? (json as { palette?: { primary?: unknown; accent?: unknown } }).palette : null;
+        if (live && palette) setBrand({ primary: normalizeHex(palette.primary), accent: normalizeHex(palette.accent) });
+      })
+      .catch(() => { /* no brand presets */ });
+    return () => { live = false; };
+  }, [token, tenantId]);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const mounted = useRef(true);
@@ -146,8 +182,30 @@ export default function BroadcastPage() {
   const invalidateStatus = useCallback(() => { ++statusRequest.current; }, []);
   const { announce, region: liveRegion } = useEmergencyAnnouncer();
   const locked = phase === 'holding' || phase === 'sending';
-  const takeover = withMedia || severity === 'CRITICAL';
+  const takeover = severity === 'CRITICAL' || (withMedia && (mediaUrls.length > 0 || !!audioUrl));
   const SeverityIcon = SEVERITY_STYLE[severity].icon;
+  const bannerHex = resolveColorChoice(colorChoice, brand);
+  // The shared builder picker hands back a hex, or a live brand variable for its brand swatches.
+  const pickBannerColor = (v: string) => {
+    const m = /^var\(--brand-(primary|accent)\)$/.exec(v.trim());
+    if (m) { setColorChoice({ kind: m[1] === 'primary' ? 'brand-primary' : 'brand-accent' }); return; }
+    setCustomHex(v);
+    setColorChoice({ kind: 'custom', hex: v });
+  };
+  const contrast = contrastReport(bannerHex);
+  const customInvalid = colorChoice.kind === 'custom' && !normalizeHex(colorChoice.hex);
+  const isBannerSend = !takeover;
+  const minutesToSend = () => durationMinutesFor(durationPreset, Number(durationMin));
+  // The preview draws the real 1920x1080 stage and scales it to fit.
+  useEffect(() => {
+    const el = previewBox.current;
+    if (!el) return;
+    const measure = () => { if (el.offsetWidth > 0) setPreviewScale(el.offsetWidth / PREVIEW_STAGE_W); };
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(el);
+    return () => observer?.disconnect();
+  }, [canSend, takeover]);
   const severityLabel = (s: string) => SEVERITY_KEY[s] ? t(SEVERITY_KEY[s]) : s;
   const msgTypeLabel = (m: string) => MSG_TYPE_KEY[m] ? t(MSG_TYPE_KEY[m]) : m;
 
@@ -220,9 +278,10 @@ export default function BroadcastPage() {
       const screenIds = multi ? chosenScreens.map((x) => x.id) : undefined;
       const body: BroadcastInput | MediaAlertInput = withMedia
         ? { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, ...(screenIds ? { screenIds } : {}), mediaUrls, audioUrl: audioUrl || undefined,
-            textBlob: text.trim(), severity, expiresAt: Math.floor(Date.now() / 1000) + Number(durationMin) * 60 }
+            textBlob: text.trim(), severity, expiresAt: Math.floor(Date.now() / 1000) + minutesToSend() * 60 }
         : { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, ...(screenIds ? { screenIds } : {}), text: text.trim(), severity,
-            durationMs: Number(durationMin) * 60 * 1000 };
+            durationMs: minutesToSend() * 60 * 1000,
+            ...(isBannerSend ? { banner: bannerForSend(bannerHex, bannerMode, bannerSpeed) } : {}) };
       const res = await fetchWithTimeout(`${API_URL}/emergency/${withMedia ? 'media-alert' : 'broadcast'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -248,7 +307,8 @@ export default function BroadcastPage() {
   const startHold = () => {
     if (!canSend || locked || holdTimer.current || picker) return;
     const invalid = !text.trim() ? t('errMessageRequired')
-      : !Number.isInteger(Number(durationMin)) || Number(durationMin) < 1 || Number(durationMin) > 120 ? t('errDuration')
+      : durationPreset === 'custom' && (!Number.isInteger(Number(durationMin)) || Number(durationMin) < 1 || Number(durationMin) > 120) ? t('errDuration')
+      : isBannerSend && customInvalid ? t('errBannerColor')
       : withMedia && mediaUrls.length === 0 && !audioUrl ? t('errMediaRequired') : '';
     if (invalid) {
       setErrorMsg(invalid);
@@ -324,8 +384,9 @@ export default function BroadcastPage() {
             <p className="mt-1 text-xs text-slate-500">{t('composeHint')}</p>
           </div>
           <fieldset disabled={locked} className="min-w-0 space-y-6 p-5 sm:p-6">
-            <div className="rounded-2xl bg-slate-900 p-1">
+            <div>
               <EmergencyTargetBar
+                variant="light"
                 target={target}
                 disabled={locked}
                 onChoose={() => setTargetPickerOpen(true)}
@@ -377,9 +438,49 @@ export default function BroadcastPage() {
               </div>}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-3.5 py-3">
-              <label htmlFor="broadcast-duration" className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Clock3 className="h-4 w-4 text-slate-400" aria-hidden />{t('duration')}</label>
-              <div className="flex items-center gap-2"><input id="broadcast-duration" type="number" min={1} max={120} step={1} value={durationMin} onChange={(e) => setDurationMin(e.target.value)} className={`${inputClass} w-20 text-center tabular-nums`} /><span className="text-xs text-slate-500">{t('minutes')}</span></div>
+            {isBannerSend && <fieldset className="space-y-3 rounded-xl border border-slate-200 p-3.5" data-testid="banner-style">
+              <legend className="px-1 text-sm font-semibold text-slate-800">{t('bannerStyle')}</legend>
+              <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+                <div className="flex items-end gap-2" data-testid="banner-color-picker">
+                  <div className="w-44">
+                    <ColorPickerField label={t('bannerColor')} value={bannerHex ?? SEVERITY_SWATCH[severity]} onChange={pickBannerColor} />
+                  </div>
+                  {colorChoice.kind !== 'default' && <button type="button" data-testid="banner-color-default" onClick={() => setColorChoice({ kind: 'default' })}
+                    className="min-h-11 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">{t('colorDefault')}</button>}
+                </div>
+                <div>
+                  <p className="mb-1.5 text-[10px] font-semibold text-slate-500">{t('bannerText')}</p>
+                  <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="radiogroup" aria-label={t('bannerText')}>
+                    {(['static', 'scroll'] as const).map((m) => <button key={m} type="button" role="radio" aria-checked={bannerMode === m} data-testid={`banner-mode-${m}`}
+                      title={t(m === 'static' ? 'modeStaticHint' : 'modeScrollHint')} onClick={() => setBannerMode(m)}
+                      className={`min-h-11 px-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 ${bannerMode === m ? 'bg-indigo-50 text-indigo-700' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{t(m === 'static' ? 'modeStatic' : 'modeScroll')}</button>)}
+                  </div>
+                </div>
+                {bannerMode === 'scroll' && <div>
+                  <p className="mb-1.5 text-[10px] font-semibold text-slate-500">{t('speed')}</p>
+                  <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="radiogroup" aria-label={t('speed')}>
+                    {BANNER_SPEEDS.map((sp) => <button key={sp} type="button" role="radio" aria-checked={bannerSpeed === sp} data-testid={`banner-speed-${sp}`}
+                      onClick={() => setBannerSpeed(sp)}
+                      className={`min-h-11 px-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 ${bannerSpeed === sp ? 'bg-indigo-50 text-indigo-700' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{t(sp === 'slow' ? 'speedSlow' : sp === 'fast' ? 'speedFast' : 'speedNormal')}</button>)}
+                  </div>
+                </div>}
+              </div>
+              {contrast && !contrast.passesAA && <p data-testid="banner-contrast" role="status" className="text-xs font-semibold leading-relaxed text-amber-800">
+                {t('contrastWarn', { ratio: contrast.ratio.toFixed(1) })}
+              </p>}
+            </fieldset>}
+            {!isBannerSend && severity === 'CRITICAL' && <p className="text-xs leading-relaxed text-slate-500">{t('criticalColorNote')}</p>}
+
+            <div className="space-y-3 rounded-xl border border-slate-200 px-3.5 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label htmlFor="broadcast-duration" className="flex items-center gap-2 text-sm font-semibold text-slate-800"><Clock3 className="h-4 w-4 text-slate-400" aria-hidden />{t('duration')}</label>
+                <div className="flex items-center gap-2"><input id="broadcast-duration" type="number" min={1} max={120} step={1} value={durationMin} onChange={(e) => { setDurationMin(e.target.value); setDurationPreset('custom'); }} className={`${inputClass} w-20 text-center tabular-nums`} /><span className="text-xs text-slate-500">{t('minutes')}</span></div>
+              </div>
+              <div className="flex flex-wrap" role="radiogroup" aria-label={t('autoClear')}>
+                {DURATION_PRESETS.map((d) => <button key={d.id} type="button" role="radio" aria-checked={durationPreset === d.id} data-testid={`duration-${d.id}`}
+                  onClick={() => setDurationPreset(d.id)}
+                  className={`mb-2 mr-2 inline-flex min-h-11 items-center rounded-lg border px-3 py-2 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 ${durationPreset === d.id ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>{t(d.key)}</button>)}
+              </div>
             </div>
           </fieldset>
           <div className="space-y-3 border-t border-slate-100 bg-slate-50/60 p-5 sm:px-6">
@@ -403,15 +504,30 @@ export default function BroadcastPage() {
           {canSend && <section aria-labelledby="preview-heading" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4"><h2 id="preview-heading" className="flex items-center gap-2 text-sm font-bold text-slate-900"><MonitorPlay className="h-4 w-4 text-slate-400" aria-hidden />{t('preview')}</h2><span className="text-xs font-medium text-slate-500">{t(takeover ? 'fullScreen' : 'textBanner')}</span></div>
             <div className="p-4 sm:p-5">
-              <div data-testid="broadcast-preview" className={`relative flex aspect-video flex-col overflow-auto rounded-xl ${takeover ? SEVERITY_STYLE[severity].preview : 'bg-slate-100'}`}>
-                <div className={`relative flex gap-2.5 p-4 ${takeover ? 'flex-1 flex-col items-center justify-center text-center' : `${SEVERITY_STYLE[severity].preview} shrink-0 items-start shadow-sm`}`}>
-                  <SeverityIcon className={`shrink-0 ${takeover ? 'h-7 w-7' : 'mt-0.5 h-5 w-5'}`} aria-hidden />
+              {takeover ? <div data-testid="broadcast-preview" className={`relative flex aspect-video flex-col overflow-auto rounded-xl ${SEVERITY_STYLE[severity].preview}`}>
+                <div className="relative flex flex-1 flex-col items-center justify-center gap-2.5 p-4 text-center">
+                  <SeverityIcon className="h-7 w-7 shrink-0" aria-hidden />
                   <p className="whitespace-pre-wrap break-words text-sm font-bold leading-relaxed [overflow-wrap:anywhere]">{text || t('previewPlaceholder')}</p>
                   {withMedia && mediaUrls.length > 0 && <div className="grid w-full grid-cols-2 gap-2">{mediaUrls.map((url, i) => <div key={url} className={`overflow-hidden rounded-md bg-black/10 ${mediaUrls.length === 1 ? 'col-span-2 h-24 sm:h-32' : 'h-20'}`}><MediaPreview url={url} alt={t('attachment', { number: i + 1 })} /></div>)}</div>}
                   {withMedia && audioUrl && <span className="inline-flex items-center gap-1.5 text-xs"><Volume2 className="h-3.5 w-3.5" aria-hidden />{t('audioIncluded')}</span>}
                 </div>
-                {!takeover && <div className="flex flex-1 flex-col items-center justify-center gap-2 p-3 text-slate-400"><MonitorPlay className="h-7 w-7" aria-hidden /><span className="text-xs">{t('scheduledContent')}</span></div>}
-              </div>
+              </div> : <div ref={previewBox} data-testid="broadcast-preview" className="relative aspect-video overflow-hidden rounded-xl bg-slate-100">
+                {/* The real 1920x1080 screen, scaled to fit: the same bar component the player draws. */}
+                <div style={{ position: 'absolute', top: 0, left: 0, width: PREVIEW_STAGE_W, height: PREVIEW_STAGE_H, transform: `scale(${previewScale})`, transformOrigin: 'top left' }}>
+                  <BroadcastBannerBar
+                    severity={severity === 'INFO' ? 'INFO' : 'WARN'}
+                    text={text || t('previewPlaceholder')}
+                    options={bannerForSend(bannerHex, bannerMode, bannerSpeed)}
+                    stageWidth={PREVIEW_STAGE_W}
+                    style={{ width: PREVIEW_STAGE_W, maxHeight: PREVIEW_STAGE_H * 0.4 }}
+                    rootProps={{ 'data-testid': 'broadcast-preview-bar' }}
+                  />
+                  <div style={{ position: 'absolute', top: 160, left: 0, width: PREVIEW_STAGE_W, height: PREVIEW_STAGE_H - 160, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                    <MonitorPlay style={{ width: 120, height: 120 }} aria-hidden />
+                    <span style={{ fontSize: 40, marginTop: 16 }}>{t('scheduledContent')}</span>
+                  </div>
+                </div>
+              </div>}
               <p className="mt-3 text-xs leading-relaxed text-slate-500">{t(takeover ? 'takeoverHint' : 'bannerHint')}</p>
             </div>
           </section>}

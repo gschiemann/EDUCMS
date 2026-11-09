@@ -30,7 +30,7 @@ import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } fr
 import { useMutation } from '@tanstack/react-query';
 import {
   AlertTriangle, ArrowRight, ChevronDown, ChevronRight,
-  ExternalLink, Loader2, RefreshCw, Settings2, ShieldCheck, Trash2, Wifi, WifiOff, X,
+  ExternalLink, Loader2, Moon, RefreshCw, Settings2, ShieldCheck, Trash2, Wifi, WifiOff, X,
 } from 'lucide-react';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { apiFetch } from '@/lib/api-client';
@@ -42,18 +42,21 @@ import { eventCopy } from '@/components/dashboard/district/screenEventCopy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useTranslations } from 'next-intl';
 import {
-  compactAge, contentStatusLine, deriveDeviceFacts, deriveRecovery, msOf, videoSampleIsNews, wordyAge,
+  compactAge, contentStatusLine, deriveDeviceFacts, type DeviceFact, deriveRecovery, msOf, videoPlainLine, videoSampleIsCurrent, videoSampleIsNews, wordyAge,
   type OpsRow, type VideoPlayback, type ReportedState, type SyncStatus, type VideoPlaybackGrade,
 } from './screenOps';
 import type { OpsMessage } from '../contentDownload';
+import { companionHealthLine } from './companionHealth';
 import { ScreenDisplayFactsSection } from '../ScreenDisplayFactsSection';
 // 2026-10-24 — the screen's time zone row: the effective zone, where it came
 // from, the device's own setting when it disagrees, and the override picker.
-import { deviceTimeZoneDiffers } from '@cms/api-types';
 import { describeTimeZone, localTimeIn, timeZoneOptions } from '@/lib/time-zone-label';
 import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenPlaybackCard } from './ScreenPlaybackCard';
 import { ScreenInterruptionsSection } from '../ScreenInterruptionsSection';
+import { ScreenUsbSection } from '../ScreenUsbSection';
+import { ScreenDiagnosticsSection } from '../ScreenDiagnosticsSection';
+import { UpdateQuarantineSection } from './UpdateQuarantineSection';
 
 /**
  * The two heaviest panels in the drawer, and the ONLY two an operator has to
@@ -109,6 +112,7 @@ const VIDEO_TONE: Record<VideoPlaybackGrade, { wrap: string; ink: string }> = {
 const REPORTED_TONE: Record<ReportedState, { wrap: string; ink: string }> = {
   confirmed: { wrap: 'border-emerald-200 bg-emerald-50/40', ink: 'text-emerald-800' },
   playing: { wrap: 'border-slate-200', ink: 'text-slate-800' },
+  updating: { wrap: 'border-slate-200', ink: 'text-slate-700' },
   behind: { wrap: 'border-amber-200 bg-amber-50/40', ink: 'text-amber-800' },
   idle: { wrap: 'border-slate-200', ink: 'text-slate-700' },
   paused: { wrap: 'border-slate-200', ink: 'text-slate-700' },
@@ -129,6 +133,7 @@ const REPORTED_TONE: Record<ReportedState, { wrap: string; ink: string }> = {
  */
 function VideoSampleBlock({ video, tinted }: { video: VideoPlayback; tinted: boolean }) {
   const t = useTranslations();
+  const plain = videoPlainLine(video);
   const tone = tinted ? VIDEO_TONE[video.grade] : { wrap: 'border-slate-200 bg-slate-50', ink: 'text-slate-700' };
   return (
     <div
@@ -140,10 +145,14 @@ function VideoSampleBlock({ video, tinted }: { video: VideoPlayback; tinted: boo
       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
         {t(video.grade === 'native' ? 'screens.drawer.nativePlayback' : 'screens.drawer.lastVideoSample')}
       </p>
-      <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${tone.ink}`}>{video.headline}</p>
-      <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">
-        {video.name} — {video.detail}
+      <p className={`mt-0.5 text-[11.5px] font-bold leading-snug break-words ${tone.ink}`} data-testid="screen-video-plain">
+        {t(`screens.drawer.${plain.key}`, plain.values)}
       </p>
+      <p className="mt-0.5 text-[10.5px] font-semibold text-slate-600 leading-snug break-words">{video.name}</p>
+      {/* Raw counters (frame callbacks, loops, drops) live under "For support". */}
+      {tinted && (
+        <p className="mt-0.5 text-[10.5px] font-semibold text-slate-500 leading-snug break-words">{video.detail}</p>
+      )}
       {tinted && video.grade === 'stuttering' && (
         <p className="mt-1 text-[10.5px] font-semibold text-slate-500 leading-snug">{t('screens.drawer.videoSampleOpenMedia')}</p>
       )}
@@ -369,7 +378,28 @@ export function ScreenDetailDrawer({
 
   const online = screen.status === 'ONLINE';
   const videoNews = videoSampleIsNews(video, now);
-  const deviceFacts = useMemo(() => deriveDeviceFacts(screen, reported.app, now), [screen, reported.app, now]);
+  // Only the file playing NOW is measured on this screen; older samples are history.
+  const currentVideoFiles = expected.videoFiles;
+  const videoCurrent = videoSampleIsCurrent(video, currentVideoFiles);
+  const baseDeviceFacts = useMemo(() => deriveDeviceFacts(screen, reported.app, now), [screen, reported.app, now]);
+  // 2026-11-08 — the companion line (companionHealth.ts), right under the
+  // version row. No report (every build before this one) = no row: the
+  // version-only "Player app" row stands alone, exactly as before.
+  const companion = useMemo(() => companionHealthLine(screen, now), [screen, now]);
+  const deviceFacts = useMemo<DeviceFact[]>(() => {
+    if (!companion) return baseDeviceFacts;
+    const row: DeviceFact = {
+      key: 'companion',
+      label: t('screens.drawer.companion.label'),
+      value: t(`screens.drawer.companion.${companion.key}`, companion.values ?? {}),
+      hint: companion.hint ? t(`screens.drawer.companion.${companion.hint.key}`, companion.hint.values ?? {}) : undefined,
+      tone: companion.tone,
+    };
+    const at = baseDeviceFacts.findIndex((f) => f.key === 'player');
+    const out = [...baseDeviceFacts];
+    out.splice(at >= 0 ? at + 1 : out.length, 0, row);
+    return out;
+  }, [baseDeviceFacts, companion, t]);
   const ackedAtMs = useMemo(() => {
     const ev = events.data?.events?.find((e) => e.kind === 'refresh-acked');
     return ev ? msOf(ev.createdAt) : null;
@@ -377,6 +407,12 @@ export function ScreenDetailDrawer({
   const recovery = deriveRecovery({
     screen, status, sending: refreshWeb.isPending, justSent: sent, ackedAtMs, now,
   });
+
+  // One short line while a resync is pending: from the click until the screen
+  // confirms. After UPDATE_STUCK_MS the reported state turns 'behind' (a real
+  // warning) and `reported.line` takes over.
+  const updatingNow = reported.state === 'updating'
+    || (reported.state !== 'behind' && !!recovery && (recovery.state === 'sending' || recovery.state === 'accepted'));
 
   const fireResync = () => {
     // POST /screens/:id/refresh-web — admin-only.
@@ -494,7 +530,6 @@ export function ScreenDetailDrawer({
   })();
   // Two names for the same rules (America/Los_Angeles vs US/Pacific) never
   // read as a disagreement; a GUQ left on Asia/Shanghai in Los Angeles does.
-  const deviceZoneDiffers = deviceTimeZoneDiffers(effectiveTimeZone, screen.deviceTimeZone ?? null);
 
   const removeScreen = async () => {
     const ok = await appConfirm({
@@ -537,8 +572,17 @@ export function ScreenDetailDrawer({
               <p className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-bold">
                 {online ? (
                   <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden />
-                    <span className="text-emerald-700">Online</span>
+                    {status.key === 'sleeping' ? (
+                      <>
+                        <Moon className="w-3.5 h-3.5 text-slate-500" aria-hidden />
+                        <span className="text-slate-600">{text(status.label, status.messages?.label)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden />
+                        <span className="text-emerald-700">Online</span>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>
@@ -669,9 +713,20 @@ export function ScreenDetailDrawer({
                     <p className="text-[13px] font-bold text-slate-800 leading-snug break-words">
                       {expected.name ?? 'Nothing scheduled'}
                     </p>
-                    <p className={`mt-0.5 text-[12px] font-bold leading-snug break-words ${REPORTED_TONE[reported.state].ink}`}>
-                      {text(contentStatusLine(reported), reported.messages?.line)}
-                    </p>
+                    {updatingNow ? (
+                      <p
+                        className="mt-0.5 flex items-center gap-1.5 text-[12px] font-bold leading-snug text-slate-700"
+                        role="status"
+                        data-testid="screen-content-update"
+                      >
+                        <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" aria-hidden />
+                        {t('screens.contentState.updating')}
+                      </p>
+                    ) : (
+                      <p className={`mt-0.5 text-[12px] font-bold leading-snug break-words ${REPORTED_TONE[reported.state].ink}`}>
+                        {text(contentStatusLine(reported), reported.messages?.line)}
+                      </p>
+                    )}
                     {/* The download itself (2026-09-27): only a FRESH one ever
                         reaches here (`liveDownload`), so a bar never shows a
                         number the screen stopped reporting. The file name is
@@ -727,29 +782,21 @@ export function ScreenDetailDrawer({
                     )}
                   </div>
                 </div>
-                {recovery && ['sending', 'accepted', 'waiting-ack'].includes(recovery.state) && (
-                  <p className="mt-2 text-[11px] font-semibold text-slate-600 leading-snug" data-testid="screen-content-update">
-                    {recovery.body}
-                  </p>
-                )}
                 {/* Last video (2026-09-24): the player's own dropped-frame
                     count for the clip it last played. On the Overview only
                     while it is news — recent and visible (2026-10-22) —
                     otherwise under Technical details. */}
-                {videoNews && video && (
+                {videoNews && video && videoCurrent && (
                   <div className="mt-2">
                     <VideoSampleBlock video={video} tinted />
                   </div>
                 )}
-                <p className="mt-2 text-[10.5px] font-semibold text-slate-400 leading-snug">
-                  As reported by the player — we can&apos;t see the panel itself.
-                </p>
               </div>
 
               {/* Video playback (2026-10-11, video guarantee step 4): the
                   verdict and any demotion here; the per-file measurements
                   under Technical details (2026-10-22). */}
-              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} part="summary" />
+              <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview'} part="summary" resolution={screen.resolution} />
 
               {/* ── Technical details (2026-10-22) ─────────────────────
                   Greg, on this tab: "the overview screen has so much shit in
@@ -780,10 +827,28 @@ export function ScreenDetailDrawer({
                         })()}
                       </p>
                     )}
-                    {video && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
-                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" />
-                    <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
+                    {video && videoCurrent && !videoNews && <VideoSampleBlock video={video} tinted={false} />}
+                    <ScreenPlaybackCard screenId={screen.id} enabled={tab === 'overview' && techOpen} part="files" current={currentVideoFiles} resolution={screen.resolution} />
+                    <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} part="main" />
+                    {/* 2026-10-26 — what this screen last did with a USB drive (its own reports). */}
+                    <ScreenUsbSection screenId={screen.id} enabled={tab === 'overview' && techOpen} />
                     <ScreenDisplayFactsSection screen={screen} now={now} />
+                    {/* For support (collapsed): raw counters, planned events
+                        and the one "we can't see the panel" note. */}
+                    <details className="rounded-xl border border-slate-200 p-3.5" data-testid="screen-support-details">
+                      <summary className="cursor-pointer select-none text-[12px] font-bold text-slate-600">{t('screens.drawer.forSupport')}</summary>
+                      <div className="mt-3 space-y-3">
+                        {video && videoCurrent && (
+                          <p className="text-[10.5px] font-semibold text-slate-600 leading-snug break-words" data-testid="screen-support-video">
+                            {video.name} — {video.detail}
+                          </p>
+                        )}
+                        <ScreenInterruptionsSection screenId={screen.id} enabled={tab === 'overview' && techOpen} part="support" />
+                        <p className="text-[10.5px] font-semibold text-slate-400 leading-snug" data-testid="screen-support-disclaimer">
+                          {t('screens.drawer.supportDisclaimer')}
+                        </p>
+                      </div>
+                    </details>
                     {/* Device — the facts the screen reported about itself
                         (2026-09-24, Greg: "give info about the screen itself right?
                         resolution, os version, etc"). Only rows with a value: a fact
@@ -794,14 +859,14 @@ export function ScreenDetailDrawer({
                         <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
                           {deviceFacts.map((f) => (
                             <Fragment key={f.key}>
-                              <dt className="text-[11px] font-semibold text-slate-400 whitespace-nowrap pt-px">{f.label}</dt>
+                              <dt className="text-[11px] font-semibold text-slate-400 whitespace-nowrap pt-px">{text(f.label, f.labelMsg)}</dt>
                               <dd className="min-w-0" data-device-fact={f.key}>
                                 <p
                                   className={`text-[12px] font-semibold leading-snug break-words ${
                                     f.tone === 'warn' ? 'text-amber-800' : 'text-slate-700'
                                   }`}
                                 >
-                                  {f.value}
+                                  {text(f.value, f.valueMsg)}
                                 </p>
                                 {f.hint && (
                                   <p
@@ -809,7 +874,7 @@ export function ScreenDetailDrawer({
                                       f.tone === 'warn' ? 'text-amber-700' : 'text-slate-400'
                                     }`}
                                   >
-                                    {f.hint}
+                                    {text(f.hint, f.hintMsg)}
                                   </p>
                                 )}
                               </dd>
@@ -882,6 +947,13 @@ export function ScreenDetailDrawer({
                 </section>
               )}
 
+              <UpdateQuarantineSection
+                screenId={screen.id}
+                managerVersion={screen.managerVersion}
+                canControl={canControl}
+                onSent={onChanged}
+              />
+
               <section>
                 <SectionLabel hint="Changes what this screen does, reversibly.">Configuration</SectionLabel>
                 <label htmlFor="v3-drawer-name" className="block text-[11px] font-bold text-slate-500 mb-1">
@@ -953,8 +1025,8 @@ export function ScreenDetailDrawer({
                     set), the location's setting when there is one, or an
                     override picked here. Rendered only when the API answered
                     the field — an older payload shows nothing rather than a
-                    guess. If the device's own clock setting disagrees (a GUQ
-                    shipped on Asia/Shanghai), it says so in plain words. */}
+                    guess. The device's own clock setting is not shown here: the
+                    screen follows this zone regardless. */}
                 {screen.timeZoneSource !== undefined && (
                   <div className="mt-3" data-testid="screen-time-zone">
                     <label htmlFor="v3-drawer-timezone" className="block text-[11px] font-bold text-slate-500">
@@ -970,16 +1042,6 @@ export function ScreenDetailDrawer({
                     </p>
                     {timeZoneSourceLine && (
                       <p className="text-[11px] text-slate-500">{timeZoneSourceLine}</p>
-                    )}
-                    {effectiveTimeZone && screen.deviceTimeZone && (
-                      <p
-                        className={`mt-1 text-[11px] font-semibold leading-snug ${deviceZoneDiffers ? 'text-amber-800' : 'text-slate-400'}`}
-                        data-testid="screen-time-zone-device"
-                      >
-                        {deviceZoneDiffers
-                          ? t('screens.drawer.timeZoneDeviceDiffers', { zone: screen.deviceTimeZone, effective: effectiveTimeZone })
-                          : t('screens.drawer.timeZoneDeviceMatches')}
-                      </p>
                     )}
                     <select
                       id="v3-drawer-timezone"
@@ -1027,6 +1089,9 @@ export function ScreenDetailDrawer({
                 onOpenDisplaySchedule={onOpenDisplaySchedule}
                 showQuickActions={false}
               />
+
+              {/* Diagnostics (2026-11-08): storage health, self-test, recent logs. */}
+              <ScreenDiagnosticsSection screenId={screen.id} enabled={tab === 'actions'} canControl={canControl} />
 
               <section>
                 <SectionLabel hint="These interrupt the screen or remove it. Each asks first.">

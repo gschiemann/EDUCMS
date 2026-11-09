@@ -1,7 +1,7 @@
 /**
  * Swim/dive sport split (2026-07-01) — flagship widget render-tree proof.
  *
- * CLAUDE.md rule #9 ("VERIFY THE RENDER TREE"): green tsc is not proof a
+ * apps/web/CLAUDE.md rule #9 ("VERIFY THE RENDER TREE"): green tsc is not proof a
  * widget actually mounts. This test drives the SAME `WidgetPreview`
  * dispatcher the template builder canvas (`BuilderZone.tsx`) and the live
  * player (`player/page.tsx`) use, so a regression here means the operator
@@ -13,7 +13,7 @@
  *  - DIVE_LEADERBOARD renders a sample diver field.
  *  - Both honor operator overrides (headerText) — proves the PropertiesPanel
  *    fields actually reach the render, not just exist in the config schema.
- *  - Neither widget uses the CSS `inset` shorthand (CLAUDE.md rule #10 —
+ *  - Neither widget uses the CSS `inset` shorthand (apps/web/CLAUDE.md rule #10 —
  *    these ship to the player, including Taurus LED installs).
  *
  * 2026-07-01 DEPTH PASS adds the same four proofs for the report's

@@ -14,6 +14,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.educms.player.R
 import com.educms.player.logging.PlayerLogger
 
 /**
@@ -41,6 +42,7 @@ object UpdateReadyCard {
     fun show(
         activity: Activity,
         versionLabel: String,
+        forCompanion: Boolean = false,
         emergencyHeld: () -> Boolean,
         decorate: (View) -> Unit,
         onInstall: () -> Unit,
@@ -53,12 +55,12 @@ object UpdateReadyCard {
         fun dp(v: Int) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), activity.resources.displayMetrics).toInt()
 
         val install = Button(activity).apply {
-            text = "Install update"
+            text = activity.getString(R.string.update_card_install)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
             setPadding(dp(32), dp(16), dp(32), dp(16))
         }
         val later = Button(activity).apply {
-            text = "Not now"
+            text = activity.getString(R.string.update_card_later)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
             setPadding(dp(24), dp(12), dp(24), dp(12))
         }
@@ -67,13 +69,14 @@ object UpdateReadyCard {
             gravity = Gravity.CENTER
             setPadding(dp(48), dp(48), dp(48), dp(48))
             addView(TextView(activity).apply {
-                text = "Update ready"
+                text = activity.getString(if (forCompanion) R.string.companion_card_title else R.string.update_card_title)
                 setTextColor(Color.WHITE)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 44f)
                 gravity = Gravity.CENTER
             })
             addView(TextView(activity).apply {
-                text = "VenueOS Player $versionLabel is ready to install.\nPress OK on the remote (or tap Install update). When Android's Install dialog appears, select Install (OK on the remote, or tap it)."
+                text = if (forCompanion) activity.getString(R.string.companion_card_body)
+                else activity.getString(R.string.update_card_body, versionLabel)
                 setTextColor(0xFFD1D5DB.toInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
                 gravity = Gravity.CENTER

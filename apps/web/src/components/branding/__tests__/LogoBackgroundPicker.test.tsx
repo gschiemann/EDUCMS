@@ -4,7 +4,7 @@ import { LogoBackgroundPicker } from '../BrandingWizard';
 /**
  * The wizard's THIRD picker, rendered (2026-08-25).
  *
- * CLAUDE.md #9 — "VERIFY THE RENDER TREE": a control that type-checks but
+ * apps/web/CLAUDE.md #9 — "VERIFY THE RENDER TREE": a control that type-checks but
  * never mounts ships nothing. `LogoBackgroundPicker` is mounted inside
  * `BrandingWizard`, which mounts on /demo/branding, /onboarding/branding and
  * /[schoolId]/settings/branding. This suite proves the control itself

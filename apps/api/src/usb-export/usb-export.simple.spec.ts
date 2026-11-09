@@ -13,6 +13,7 @@ jest.mock('../branding/safe-fetch', () => ({ safeFetch: jest.fn() }));
 import { safeFetch } from '../branding/safe-fetch';
 import { UsbExportController, cleanBundleSchedule } from './usb-export.controller';
 import { ensureUsbSigningKey } from './usb-signing-key';
+import { usbExportFolderName } from './usb-export-folder';
 import { SCREEN_STAMP_VERSION } from '@cms/api-types';
 
 const mockedSafeFetch = safeFetch as jest.MockedFunction<any>;
@@ -224,5 +225,53 @@ describe('USB export — the package keeps the playlist settings', () => {
     const { manifest } = await unzip(r.body);
     expect(manifest.skippedFiles).toBe(1);
     expect(manifest.playlists[0].items).toHaveLength(0);
+  });
+});
+
+/**
+ * 2026-11-08 VenueOS rebrand. Players 1.1.55–1.1.65 read only the
+ * `edu-cms-content` folder, so the writer keeps it until the lead sets
+ * USB_EXPORT_FOLDER_NAME=venueos (docs/ENVIRONMENT.md).
+ */
+describe('USB export — the folder name switch', () => {
+  const saved = process.env.USB_EXPORT_FOLDER_NAME;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.USB_EXPORT_FOLDER_NAME;
+    else process.env.USB_EXPORT_FOLDER_NAME = saved;
+  });
+
+  it('unset → the legacy edu-cms-content folder every player build reads', async () => {
+    delete process.env.USB_EXPORT_FOLDER_NAME;
+    expect(usbExportFolderName()).toBe('edu-cms-content');
+    const r = res();
+    await harness().controller.bundle(req, r, { playlistIds: ['pl-1'] });
+    const zip = await JSZip.loadAsync(r.body);
+    expect(zip.file('edu-cms-content/manifest.json')).not.toBeNull();
+    expect(zip.file('venueos-content/manifest.json')).toBeNull();
+  });
+
+  it('venueos → the venueos-content folder, same signed manifest and the unchanged schema id', async () => {
+    process.env.USB_EXPORT_FOLDER_NAME = 'venueos';
+    const h = harness();
+    const r = res();
+    await h.controller.bundle(req, r, { playlistIds: ['pl-1'] });
+    const zip = await JSZip.loadAsync(r.body);
+    expect(zip.file('edu-cms-content/manifest.json')).toBeNull();
+    const raw = await zip.file('venueos-content/manifest.json')!.async('string');
+    const sig = await zip.file('venueos-content/manifest.sig')!.async('string');
+    expect(sig).toBe(createHmac('sha256', Buffer.from(h.tenant.usbIngestKey, 'hex')).update(raw, 'utf-8').digest('hex'));
+    expect(JSON.parse(raw).schema).toBe('edu-cms-usb-bundle/v1');
+    expect(Object.keys(zip.files)).toContain(`venueos-content/assets/${hash}.png`);
+    const readme = await zip.file('venueos-content/README.txt')!.async('string');
+    expect(readme).toContain('the whole venueos-content folder');
+  });
+
+  it('an unrecognised value fails toward the legacy name, never a third name', () => {
+    for (const v of ['VenueOS', ' venueos ']) {
+      expect(usbExportFolderName({ USB_EXPORT_FOLDER_NAME: v } as NodeJS.ProcessEnv)).toBe('venueos-content');
+    }
+    for (const v of ['', 'edu-cms', 'venue-os', 'true', '1']) {
+      expect(usbExportFolderName({ USB_EXPORT_FOLDER_NAME: v } as NodeJS.ProcessEnv)).toBe('edu-cms-content');
+    }
   });
 });

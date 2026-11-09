@@ -1,5 +1,6 @@
 "use client";
 
+import { isAutomaticPublicData } from '../widgets/widget-data-capabilities';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -1417,7 +1418,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
           // 2026-07-01 mobile-perf + mobile-width fix (App Library
           // world-class build): the fixed w-[420px] overflowed a ~380px
           // iPhone viewport (Greg runs the whole product from an iPhone —
-          // CLAUDE.md mobile-perf preamble), and the always-mounted
+          // apps/web/CLAUDE.md mobile-perf preamble), and the always-mounted
           // `backdrop-blur-2xl` re-samples everything behind it on every
           // repaint — a real mobile-perf-guard-class violation (rule #3).
           // `w-full max-w-[92vw] md:w-[420px]` keeps the desktop layout
@@ -1825,7 +1826,7 @@ function BuilderBottomBar() {
     } else {
       nextStyles[activeFieldName] = existing;
     }
-    const automaticWidget = cfg.variant === 'weather-outlook' || (wt === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom';
+    const automaticWidget = cfg.variant === 'weather-outlook' || (wt === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom' || isAutomaticPublicData(cfg);
     // An old whole-widget !important size must not defeat the selected field.
     const sizeReset = automaticWidget && prop === 'fontSize' ? { fontSize: undefined } : {};
     setCfg(wt === 'HOLIDAY'

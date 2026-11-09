@@ -17,12 +17,12 @@
  * regression that silently falls back to a generic scene (the #267 failure
  * mode) fails this suite instead of waiting for Greg to catch it on glass.
  *
- * CLAUDE.md rule #9 ("VERIFY THE RENDER TREE"): this test imports
+ * apps/web/CLAUDE.md rule #9 ("VERIFY THE RENDER TREE"): this test imports
  * `DefaultBoardScene`, the component `ScoreboardPage` (the actual page)
  * renders — extracted 2026-07-01 specifically so this gate proves what
  * PRODUCTION renders, not a hand-rolled re-implementation that could drift.
  *
- * CLAUDE.md rule #10: every rendered DOM node is swept for the `inset`
+ * apps/web/CLAUDE.md rule #10: every rendered DOM node is swept for the `inset`
  * shorthand (Taurus / Chromium-83 safety) — this board ships to LED walls.
  *
  * PARITY-DEBT markers: where a sport genuinely has no dedicated default-

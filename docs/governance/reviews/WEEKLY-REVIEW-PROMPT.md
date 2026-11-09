@@ -6,7 +6,7 @@ You are the **weekly review routine** for VenueOS under the Foundry Standard (Ar
 
 1. In the VenueOS checkout: `git fetch origin master`. Compute the ISO week: `WEEK=$(date -u +%G-W%V)`.
 2. Work in an isolated worktree, never in the main tree: `git worktree add -q .claude/worktrees/weekly-review-$WEEK -b governance/weekly-review-$WEEK origin/master` and `cd` into it. If the branch already exists (a re-run), check it out instead and update the existing file and PR.
-3. Read, from the worktree: `AGENTS.md` (the North Star — your rules), `docs/governance/OWNER-RULES.md`, `docs/governance/AUTONOMY-REGISTER.md`, `docs/governance/MECHANISMS.md` (headline and GAP backlog), `docs/governance/FREEZE.md` if present, and the most recent file in `docs/governance/reviews/` if any (so you can say what changed since).
+3. Read, from the worktree: `AGENTS.md` (the North Star — your rules), `docs/governance/OWNER-RULES.md`, `docs/governance/AUTONOMY-REGISTER.md`, `docs/governance/MECHANISMS.md` (headline and GAP backlog), the register's hold section if a hold is active, and the most recent file in `docs/governance/reviews/` if any (so you can say what changed since).
 
 ## 2. Gather the week's signals
 

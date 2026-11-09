@@ -388,7 +388,7 @@ it('P5-4: paired re-register with EXPIRED priorDeviceToken → 1-hour fallback, 
 // ── Test P5-5: DT-04 — the STRICT_REPAIR_AUTH legacy branch is DEAD ────────
 it('P5-5: DT-04 — fingerprint-only re-registration NEVER mints a full-lifetime token, flag or no flag', async () => {
   // This test used to assert the OPPOSITE: that with STRICT_REPAIR_AUTH
-  // unset (the DEFAULT, and absent from .env.example and the CLAUDE.md env
+  // unset (the DEFAULT, and absent from .env.example and the docs/ENVIRONMENT.md env
   // table) a bare fingerprint minted a 365-day credential. A fingerprint is
   // not a secret — `GET /screens` handed it to every CONTRIBUTOR, and
   // RESTRICTED_VIEWER reached the same route through the RBAC GET

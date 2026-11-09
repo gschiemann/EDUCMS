@@ -81,7 +81,7 @@ function tickerDurationSec(speed: Cfg['tickerSpeed'], base: number): number {
 
 // Same WMO-code → cute phrase map as landscape. Kept duplicated rather
 // than shared because the widget is one self-contained file per
-// CLAUDE.md design workflow.
+// docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md design workflow.
 function cuteWeatherPhrase(wmoCode: number, tempF: number): string {
   const cold = tempF < 35;
   const cool = tempF >= 35 && tempF < 60;

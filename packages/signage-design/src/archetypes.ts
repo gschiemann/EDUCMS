@@ -11,7 +11,7 @@
  *   - Content zones never overlap (each one's rect is disjoint from siblings).
  *   - Rule-of-thirds focal placement where an archetype has a single focal slot.
  *   - Geometry is emitted as % only; consumers translate to LONGHAND
- *     top/right/bottom/left — NEVER `inset`/`gap` (CLAUDE.md rule #10 / Taurus).
+ *     top/right/bottom/left — NEVER `inset`/`gap` (apps/web/CLAUDE.md rule #10 / Taurus).
  *   - <= 3 content zones (background doesn't count) — R6 §10.D rule 16.
  *
  * Geometry here is PROVISIONAL pending Greg's mockup review (per the brief). The

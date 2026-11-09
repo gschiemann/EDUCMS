@@ -25,7 +25,7 @@
  * Chromium 83 (NovaStar Taurus) is in the scan path for this directory, so:
  * no `inset` shorthand and no Tailwind `inset-*` (physical longhand only), no
  * flex `gap` (explicit offsets / margins instead), and no inline style object
- * that carries all four physical sides at once — see CLAUDE.md rule 10.
+ * that carries all four physical sides at once — see apps/web/CLAUDE.md rule 10.
  *
  * Every SVG gradient/clip id is namespaced per tile: several of these render in
  * one document at once, and a duplicate id silently re-points the other tile's

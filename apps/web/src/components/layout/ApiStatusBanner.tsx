@@ -27,7 +27,7 @@ import {
  * Constraints honored:
  *   • NO backdrop-blur / heavy blur — this mounts in the persistent
  *     dashboard chrome and `backdrop-filter` re-samples the page on every
- *     repaint (CLAUDE.md mobile-perf standard #3). Solid backgrounds only.
+ *     repaint (apps/web/CLAUDE.md mobile-perf standard #3). Solid backgrounds only.
  *   • `pointer-events-none` on the fixed wrapper so the bar can never
  *     swallow a tap meant for the page; the pill itself re-enables them so
  *     it stays selectable/readable.

@@ -1,7 +1,7 @@
 import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/safe-service-worker';
 import { playbackSafety } from './playbackSafety';
 import { digestQuarantine } from './digestQuarantine';
-import { requestDeviceDiagnosticsUpload } from './deviceDiagnostics';
+import { requestDeviceDiagnosticsUpload, storageEvidence, type WebCacheFailure } from './deviceDiagnostics';
 /**
  * Offline-cache client — talks to /sw-player.js. Used by the player to:
  *   - Register the SW on first run
@@ -19,6 +19,8 @@ export type CacheStatus = {
   emergency: { count: number; bytes: number; floorBytes: number };
   /** App-shell tier (/_next/static build assets) — bundle-split step 1. */
   shell: { count: number; bytes: number };
+  /** Staged bytes per tier (half-downloads, verified-chunk files) — absent from an older worker. */
+  staging?: { playlist: { count: number; bytes: number }; emergency: { count: number; bytes: number } };
 };
 
 export type PlaylistCacheResult = { ok: boolean; failures?: number; count?: number; aborted?: boolean };
@@ -248,10 +250,10 @@ async function downloadLargeAsset(
   let consecutiveFailures = 0;
   let total: number | null = size;
 
-  const reportFailure = (phase: 'chunk' | 'verify' | 'assemble', reason: unknown) => {
+  const reportFailure = (phase: 'chunk' | 'verify' | 'assemble', reason: unknown, reply?: unknown) => {
     // Include the worker's actual answer without media URLs or credentials.
     // Native logs capture this warning before the authenticated upload reads it.
-    const failure = { phase, reason: typeof reason === 'string' ? reason.slice(0, 160) : 'no-worker-reply', offset, total };
+    const failure: WebCacheFailure = { phase, reason: typeof reason === 'string' ? reason.slice(0, 160) : 'no-worker-reply', offset, total, ...storageEvidence(reply) };
     console.warn(`[Player] content cache failed ${JSON.stringify(failure)}`);
     requestDeviceDiagnosticsUpload(failure);
   };
@@ -279,7 +281,7 @@ async function downloadLargeAsset(
       opts?.onProgress?.({ url: asset.url, bytesLoaded: Math.max(offset, live), bytesTotal: f.total ?? total, phase: 'downloading' });
     });
     if (!reply || reply.ok !== true) {
-      reportFailure('chunk', reply?.reason);
+      reportFailure('chunk', reply?.reason, reply);
       if (isFatalChunkReason(reply?.reason)) return false;
       if (!(await failStep())) return false;
       continue;
@@ -661,8 +663,14 @@ function loadedShellScripts(): string[] {
 
 const EMPTY_SHELL = { count: 0, bytes: 0 };
 
-/** Ask the SW for its current cache utilisation. Resolves with null if SW absent. */
-export async function getCacheStatus(): Promise<CacheStatus | null> {
+/**
+ * Ask the SW for its current cache utilisation. Resolves with null if SW absent
+ * or if it does not answer within `timeoutMs`. The worker sums every cached
+ * body to answer, which on a 700 MB origin on a slow board takes longer than
+ * the 2 s default; callers that only need the numbers once (the self-test)
+ * pass a longer bound.
+ */
+export async function getCacheStatus(timeoutMs = 2_000): Promise<CacheStatus | null> {
   const sw = await activeWorker();
   if (!sw) return { supported: false, playlist: { count: 0, bytes: 0 }, emergency: { count: 0, bytes: 0, floorBytes: 0 }, shell: EMPTY_SHELL };
   return new Promise((resolve) => {
@@ -678,6 +686,7 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
           // Defensive default: an in-flight OLD SW (pre-shell) replies
           // without the field during the upgrade window.
           shell: e.data.shell ?? EMPTY_SHELL,
+          ...(e.data.staging ? { staging: e.data.staging } : {}),
         });
       }
     };
@@ -696,7 +705,7 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
         // zeroes to the dashboard as if the device measured them.
         resolve(null);
       }
-    }, 2_000);
+    }, timeoutMs);
   });
 }
 

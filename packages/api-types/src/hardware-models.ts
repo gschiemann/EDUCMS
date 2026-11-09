@@ -123,7 +123,7 @@ export interface HardwareCapabilities {
     duty247Rated: boolean;
     /**
      * Minimum Chromium major version the device's WebView reports.
-     * Anything <= 83 triggers CLAUDE.md rule #10 — UI surfaces a warning
+     * Anything <= 83 triggers apps/web/CLAUDE.md rule #10 — UI surfaces a warning
      * so widget authors avoid `inset` shorthand, `gap` on flex, etc.
      * 999 = "modern Chromium" (web / generic Android with current WebView).
      */
@@ -206,7 +206,7 @@ export const HARDWARE_CATALOG: Record<HardwareModel, HardwareCapabilities> = {
   },
 
   // Source: NovaStar Taurus controllers. Chromium 83 is the production
-  // pain point — CLAUDE.md rule #10 exists because of this device. One
+  // pain point — apps/web/CLAUDE.md rule #10 exists because of this device. One
   // HDMI out (drives the LED wall), no other I/O. Player IS the LED
   // controller in this deployment topology.
   'novastar-taurus': {
@@ -234,7 +234,7 @@ export const HARDWARE_CATALOG: Record<HardwareModel, HardwareCapabilities> = {
       fanless: false,
       // NovaStar markets 24/7 LED operation; the SoC is sized for it.
       duty247Rated: true,
-      // THE Chromium-83 device. CLAUDE.md rule #10.
+      // THE Chromium-83 device. apps/web/CLAUDE.md rule #10.
       chromiumMin: 83,
     },
   },
@@ -373,7 +373,7 @@ export const HARDWARE_CATALOG: Record<HardwareModel, HardwareCapabilities> = {
   // newly paired screen whose operator hasn't picked a model yet. Every
   // hardware-gated UI element MUST be hidden when caps come from this
   // entry. Safe defaults = all false / 0. chromiumMin set high so the
-  // CLAUDE.md rule #10 warning chip never shows for "unknown" (we don't
+  // apps/web/CLAUDE.md rule #10 warning chip never shows for "unknown" (we don't
   // know it's Chromium 83 either).
   unknown: {
     name: 'Unknown / unassigned',

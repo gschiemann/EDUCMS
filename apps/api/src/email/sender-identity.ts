@@ -29,7 +29,7 @@
 
 /**
  * The Resend "shared" sender we fall back to when EMAIL_FROM is unset.
- * Keep in sync with the CLAUDE.md EMAIL_FROM row.
+ * Keep in sync with the docs/ENVIRONMENT.md EMAIL_FROM row.
  */
 export const DEFAULT_EMAIL_FROM = 'VenueOS <onboarding@resend.dev>';
 

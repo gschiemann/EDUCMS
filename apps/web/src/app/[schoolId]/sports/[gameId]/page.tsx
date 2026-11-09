@@ -25,6 +25,9 @@ import { useConsoleFit, FIT, type FitTier } from './use-console-fit';
 import { RunMoreMenu, OnAirBar } from './RunMoreMenu';
 import { useShowControl } from './useShowControl';
 import { RunCommandBar } from './RunCommandBar';
+import { GameStatusPill } from './GameStatusPill';
+import { StatusPill } from '@/components/ui/status-pill';
+import { Segmented } from '@/components/ui/segmented';
 import { ConnectionBanner } from './ConnectionBanner';
 import { ShareConsoleLink } from './ShareConsoleLink';
 import { ConnectScoreboardFeed } from './ConnectScoreboardFeed';
@@ -779,13 +782,7 @@ function GameControl() {
                   <span className="text-slate-400 text-sm">vs</span>
                   <span className="font-extrabold text-slate-900">{g.awayTeam}</span>
                 </div>
-                <span
-                  aria-live="polite"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-widest border bg-slate-100 text-slate-600 border-slate-200 shrink-0"
-                >
-                  <span className="w-2 h-2 rounded-full bg-slate-400" />
-                  {String(g.status || 'SCHEDULED').replace(/_/g, ' ')}
-                </span>
+                <GameStatusPill status={g.status} />
               </div>
               <p className="text-xs text-slate-400 mt-2.5">
                 Set everything below before the game, then tap{' '}
@@ -1213,16 +1210,7 @@ function StateBar({
   return (
     <div className="flex items-center gap-3 px-4 py-1.5 border-b border-slate-200 bg-white sticky top-0 z-10">
       <div className="flex-1" />
-      {isLive ? (
-        <div className="flex items-center gap-1.5 text-[11px] font-black text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full shrink-0">
-          <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
-          LIVE
-        </div>
-      ) : (
-        <div className="text-[11px] font-black text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full shrink-0 uppercase tracking-widest">
-          {g.status || 'scheduled'}
-        </div>
-      )}
+      <GameStatusPill status={isLive ? 'LIVE' : g.status} />
     </div>
   );
 }
@@ -4347,6 +4335,7 @@ function RunInlineCuesBar({
   // path. Persists for the session (local state, not sessionStorage —
   // page reloads are rare mid-game and state loss is low-consequence).
   const [cueTarget, setCueTarget] = useState<'ALL' | 'BOARD' | 'RIBBON'>('ALL');
+  const tConsole = useTranslations('sportsConsole');
   // 2026-06-04 — cue → player-picker. When set, the scorer picker is open
   // for this cue key, awaiting the operator's player tap before firing.
   const [pendingCue, setPendingCue] = useState<string | null>(null);
@@ -4381,49 +4370,30 @@ function RunInlineCuesBar({
     else fireWithScorer(key, null);
   };
 
-  // T2-6 chip config — label, value, description for the title attr.
-  const targetChips: Array<{
-    value: 'ALL' | 'BOARD' | 'RIBBON';
-    label: string;
-    title: string;
-  }> = [
-    { value: 'ALL',    label: 'All',    title: 'Fire to every surface (scoreboard + ribbon + scorebug)' },
-    { value: 'BOARD',  label: 'Board',  title: 'Fire to the scoreboard only — ribbon stays on its rotation' },
-    { value: 'RIBBON', label: 'Ribbon', title: 'Fire a tight 2.5s text-crawl to the ribbon only — board is unaffected' },
-  ];
 
   return (
     <div className="px-4 py-2 border-t border-slate-200 bg-indigo-50">
-      {/* T2-6 — target chip row: All / Board / Ribbon */}
-      <div className="flex items-center mb-1.5" style={{ marginBottom: 6 }}>
+      {/* T2-6 — cue target: All / Board / Ribbon. One Segmented control
+          (pill audit 2026-11-02): still ONE tap per target, 44 px on a phone,
+          arrow keys move and choose. */}
+      <div className="flex flex-wrap items-center" style={{ marginBottom: 6 }}>
         <span className="text-[10px] font-black uppercase tracking-widest text-indigo-500 shrink-0" style={{ marginRight: 8 }}>
-          Send to
+          {tConsole('cueTargetLabel')}
         </span>
-        <div className="flex" style={{ marginRight: 0 }}>
-          {targetChips.map((chip) => {
-            const active = cueTarget === chip.value;
-            return (
-              <button
-                key={chip.value}
-                type="button"
-                title={chip.title}
-                onClick={() => setCueTarget(chip.value)}
-                className={
-                  // max-md: 44 px touch floor on phones (K12-F15).
-                  active
-                    ? 'px-2.5 py-0.5 max-md:min-h-[44px] short-land:min-h-[44px] max-md:px-3.5 short-land:px-3.5 text-[10px] font-black uppercase tracking-wide rounded-full bg-indigo-600 text-white border border-indigo-600 transition-colors shrink-0'
-                    : 'px-2.5 py-0.5 max-md:min-h-[44px] short-land:min-h-[44px] max-md:px-3.5 short-land:px-3.5 text-[10px] font-bold uppercase tracking-wide rounded-full bg-white text-indigo-600 border border-indigo-300 hover:bg-indigo-100 transition-colors shrink-0'
-                }
-                style={{ marginRight: 4 }}
-              >
-                {chip.label}
-              </button>
-            );
-          })}
-        </div>
+        <Segmented<'ALL' | 'BOARD' | 'RIBBON'>
+          value={cueTarget}
+          onChange={setCueTarget}
+          ariaLabel={tConsole('cueTargetAria')}
+          testId="cue-target"
+          options={[
+            { value: 'ALL', label: tConsole('cueTargetAll') },
+            { value: 'BOARD', label: tConsole('cueTargetBoard') },
+            { value: 'RIBBON', label: tConsole('cueTargetRibbon') },
+          ] as const}
+        />
         {cueTarget === 'RIBBON' && (
-          <span className="text-[9px] text-indigo-400 italic" style={{ marginLeft: 6 }}>
-            2.5s crawl
+          <span className="text-[10px] text-indigo-500 italic" style={{ marginLeft: 6 }}>
+            {tConsole('cueTargetRibbonHint')}
           </span>
         )}
       </div>
@@ -7664,7 +7634,7 @@ function SponsorScheduleRow({
 //   <HoldChip label="Final" ariaLabel="Mark game Final — hold to confirm"
 //             onConfirm={() => ...} className="px-4 py-2 ..." />
 //
-// Constraints (CLAUDE.md rule #10): no `inset` shorthand or `inset-0`
+// Constraints (apps/web/CLAUDE.md rule #10): no `inset` shorthand or `inset-0`
 // Tailwind class. All absolute positioning uses top-0 right-0 bottom-0
 // left-0 long-hand.
 const HOLD_CHIP_MS = 800;
@@ -7928,6 +7898,7 @@ export function AutoPushCard({
   const set = useSetAutoPush(gameId);
 
   const tPost = useTranslations('sportsPostgame');
+  const tConsole = useTranslations('sportsConsole');
   const list: any[] = Array.isArray(screens) ? screens : [];
   const armed = cfg?.armed === true;
   const pushed = armed && !!cfg?.pushedAt;
@@ -8002,9 +7973,9 @@ export function AutoPushCard({
             Schedule game mode
           </span>
           {armed && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
-              {pushed ? 'On air' : 'Armed'}
-            </span>
+            <StatusPill tone="success">
+              {pushed ? tConsole('statusOnAir') : tConsole('statusArmed')}
+            </StatusPill>
           )}
         </div>
         <button
@@ -8144,6 +8115,7 @@ function Section({
   done?: boolean;
   hint?: string;
 }) {
+  const tConsole = useTranslations('sportsConsole');
   return (
     <div className="rounded-2xl bg-white ring-1 ring-slate-200 p-5">
       <div className="flex items-center justify-between gap-2 mb-3">
@@ -8151,9 +8123,9 @@ function Section({
         {done && (
           // Positive-only "Configured" (not "Ready") so an optional section's
           // badge never reads as a required step the operator missed (review nit).
-          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0">
-            <Check className="h-3 w-3" /> Configured
-          </span>
+          <StatusPill tone="success" icon={<Check className="h-3 w-3" aria-hidden="true" />}>
+            {tConsole('statusConfigured')}
+          </StatusPill>
         )}
       </div>
       {hint && <p className="text-[11px] text-slate-400 -mt-1.5 mb-3">{hint}</p>}
@@ -8194,14 +8166,6 @@ function RunStatusControl({
   const tPost = useTranslations('sportsPostgame');
   const returnNow = useReturnPostgameScreens(String(g?.id || ''));
   const holdUntil = status === 'FINAL' && g?.autoPushAt ? new Date(g.autoPushAt) : null;
-  const META: Record<string, { label: string; chip: string; dot: string }> = {
-    SCHEDULED: { label: 'Scheduled', chip: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
-    PRE_GAME: { label: 'Pre-game', chip: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
-    LIVE: { label: 'Live', chip: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500 animate-pulse' },
-    HALFTIME: { label: 'Halftime', chip: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' },
-    FINAL: { label: 'Final', chip: 'bg-slate-800 text-white border-slate-700', dot: 'bg-slate-400' },
-  };
-  const m = META[status] || META.SCHEDULED;
   // 44 px on phones (K12-F15 touch floor); desktop keeps its 40 px bar.
   const btn = 'min-h-[40px] max-md:min-h-[44px] short-land:min-h-[44px] px-3.5 py-1.5 rounded-lg text-sm font-bold border transition-colors shrink-0';
   const buttons = (
@@ -8309,13 +8273,7 @@ function RunStatusControl({
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 bg-white overflow-x-auto">
       <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400 shrink-0">Game state</span>
-      <span
-        aria-live="polite"
-        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-widest border ${m.chip} shrink-0`}
-      >
-        <span className={`w-2 h-2 rounded-full ${m.dot}`} />
-        {m.label}
-      </span>
+      <GameStatusPill status={status} />
       {buttons}
     </div>
   );

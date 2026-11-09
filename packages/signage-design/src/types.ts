@@ -294,7 +294,7 @@ export interface Archetype {
  * shape TemplateZone uses in Prisma, so the resolver output drops straight into
  * the existing persist + render path.
  *
- * TAURUS-SAFE INVARIANT (CLAUDE.md rule #10): consumers translate these to
+ * TAURUS-SAFE INVARIANT (apps/web/CLAUDE.md rule #10): consumers translate these to
  * longhand top/right/bottom/left — never the `inset` shorthand, never `gap`.
  * `styleTokens` here carries ONLY token names, never raw geometry shorthands.
  */

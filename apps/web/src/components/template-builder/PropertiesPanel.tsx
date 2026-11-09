@@ -1,5 +1,9 @@
 "use client";
-import { widgetDataCapability, MANUAL_DATA_EDITOR_DEFAULTS } from '../widgets/widget-data-capabilities';
+
+import { PUBLIC_DATA_LAYOUTS, PUBLIC_DATA_TEXT_AREAS } from '../widgets/data-widget-meta';
+import { useGtfsAgencies, useGtfsStations, useTransitStations } from '../widgets/use-public-data';
+import { TextField, SelectField } from './field-controls';
+import { isAutomaticPublicData, widgetDataCapability, MANUAL_DATA_EDITOR_DEFAULTS } from '../widgets/widget-data-capabilities';
 import { FORECAST_LAYOUTS, FORECAST_TEXT_AREAS, forecastIsTransparent } from '../widgets/forecast-appearance';
 import { NEWS_SOURCES, newsSourceIds } from '../widgets/news-sources';
 import { NEWSROOM_LAYOUTS, NEWSROOM_TEXT_AREAS, NEWSROOM_SCOPES, NEWSROOM_PUBLISHERS, NEWSROOM_PALETTES, newsroomScopes } from '../widgets/newsroom-model';
@@ -211,6 +215,8 @@ import { appZoneInfo } from '@/components/apps/app-zone';
 import { resolveMusicDisplay } from '@/components/widgets/MusicPlayerWidget';
 import { GoToPageSelect, WhenTappedGoToPage } from './GoToPage';
 import { isInteractiveTemplate, isTapTargetZone, sortPages } from './pages';
+import { StreamingSourceField, StreamingVolumeField } from './StreamingSourceField';
+
 
 /* ── Date / time entry in this panel ──────────────────────────────────
  *
@@ -375,6 +381,7 @@ const V2_GRADIENT_OPTIONS: [string, string][] = [
 function buildV2StyleFields(
   cfg: Record<string, any>,
   setField: (patch: Record<string, any>) => void,
+  simplePublic = false,
 ): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   const SHv2 = (k: string, label: string) => (
@@ -500,6 +507,10 @@ function buildV2StyleFields(
       onChange={(v) => setStyle({ bgGradient: v })}
     />,
   );
+  if (simplePublic) {
+    const supported = new Set(['v2-bg','v2-text','v2-font','v2-weight','v2-align','v2-bgimage','v2-bggradient']);
+    for(let i=out.length-1;i>=0;i--)if(!supported.has(String((out[i] as any)?.key)))out.splice(i,1);
+  }
   const basicKeys = new Set(['v2-bg', 'v2-text', 'v2-accent', 'v2-font']);
   const basic = out.filter((field: any) => basicKeys.has(field?.key));
   const more = out.filter((field: any) => !basicKeys.has(field?.key) && !String(field?.key || '').startsWith('shv2-'));
@@ -2721,6 +2732,7 @@ function CtsLiveCard({
 // the converted list/schedule editors fire through to a config write.
 export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any }) {
   const tMusic = useTranslations('musicPlayer');
+  const tStream = useTranslations('streamingWidget.editor');
   const activeForecastTextArea = useBuilderStore(s => s.activeFieldName);
   const cfg = zone.defaultConfig || {};
   const setField = (patch: Record<string, any>) => {
@@ -5880,6 +5892,30 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // editor case, the widget had no UI to pick a channel and operators
     // were stuck pasting raw HLS URLs into JSON.
     case 'STREAMING': {
+      // 2026-11-07 flagship audit — paste a link first (auto-detect, honest
+      // verdict, Test stream); a saved channel stays the alternative.
+      fields.push(<StreamingSourceField key="streamSource" cfg={cfg} setField={setField} />);
+      fields.push(
+        <AssetPickerField
+          key="posterUrl"
+          label={tStream('posterLabel')}
+          value={cfg.posterUrl || ''}
+          onChange={(v) => setField({ posterUrl: v || undefined })}
+          kind="image"
+        />,
+      );
+      fields.push(<p key="posterHint" className="-mt-1 text-[10px] text-slate-400">{tStream('posterHint')}</p>);
+      fields.push(<ToggleField key="muted" label={tStream('mutedLabel')} value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
+      if (cfg.muted === false) {
+        fields.push(<StreamingVolumeField key="volume" value={typeof cfg.volume === 'number' ? cfg.volume : 100} onChange={(v) => setField({ volume: v })} />);
+      }
+      fields.push(<SelectField key="fitMode" label={tStream('fitLabel')} value={cfg.fitMode || 'cover'} options={[['cover', tStream('fitCover')], ['contain', tStream('fitContain')]]} onChange={(v) => setField({ fitMode: v })} />);
+      fields.push(<ToggleField key="showLiveBadge" label={tStream('liveBadgeLabel')} value={cfg.showLiveBadge !== false} onChange={(v) => setField({ showLiveBadge: v })} />);
+      if (/snapshot|still\.jpg|image\.cgi|\.(jpe?g|png|webp)(\?|$)/i.test(String(cfg.playbackUrl || ''))) {
+        fields.push(<SelectField key="refreshSeconds" label={tStream('refreshLabel')} value={String(cfg.refreshSeconds || 10)} options={[['2', '2'], ['5', '5'], ['10', '10'], ['30', '30'], ['60', '60']]} onChange={(v) => setField({ refreshSeconds: Number(v) })} />);
+      }
+      fields.push(<ToggleField key="allowAdOverlay" label={tStream('adOverlayLabel')} value={cfg.allowAdOverlay !== false} onChange={(v) => setField({ allowAdOverlay: v })} />);
+      fields.push(<p key="savedChannel" className="pt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{tStream('savedChannelLabel')}</p>);
       fields.push(
         <StreamingChannelPickerField
           key="streamingChannelId"
@@ -5901,9 +5937,6 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
           })}
         />,
       );
-      fields.push(<ToggleField key="muted" label="Muted (venue default)" value={cfg.muted !== false} onChange={(v) => setField({ muted: v })} />);
-      fields.push(<SelectField key="fitMode" label="Fit mode" value={cfg.fitMode || 'cover'} options={[['cover','Fill (crop)'],['contain','Fit (no crop)']]} onChange={(v) => setField({ fitMode: v })} />);
-      fields.push(<ToggleField key="allowAdOverlay" label="Allow ad overlay" value={cfg.allowAdOverlay !== false} onChange={(v) => setField({ allowAdOverlay: v })} />);
       break;
     }
     // FITNESS_LIVE_TV uses its own catalog-driven config but ALSO accepts
@@ -6972,12 +7005,31 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
             {label}
           </div>
         );
+        const publicKind = ['air-quality','transit-departures','airport-conditions','parking-availability','traffic-cam'].includes(String(cfg.variant));
+        const publicAutomatic = isAutomaticPublicData(cfg);
+        if (publicKind) {
+          if (cfg.variant !== 'airport-conditions') fields.push(<SelectField key="public-data-mode" label="Data" value={publicAutomatic ? 'automatic' : 'manual'} options={[["automatic",cfg.variant === 'traffic-cam' ? 'Automatic · road incidents' : cfg.variant === 'air-quality' ? 'Automatic · EPA AirNow' : cfg.variant === 'parking-availability' ? 'Automatic · LADOT (Los Angeles)' : 'Automatic · open transit data'],["manual","Enter my own values"]]} onChange={v=>setField({dataMode:v})} />);
+          if (publicAutomatic) {
+            if (cfg.variant === 'traffic-cam') fields.push(<SmartLocationField key="road-location" value={cfg.location || ''} helpText="Free reports near this location: CHP incidents in California, and DOT work zones, closures and detours in UT, MN, MD, MO, WI, HI, WA, NJ, KY, KS, DE, LA, IN, MS, ND, Austin and Maricopa County (public-domain WZDx feeds). Nationwide incidents when this deploy has a TomTom key. No commute ETAs or cameras." onChange={v=>setField({location:v})}/>);
+            if (cfg.variant === 'traffic-cam') fields.push(<SelectField key="road-radius" label="Show reports within" value={String(Number(cfg.radiusKm) || 25)} options={[["10","10 km"],["25","25 km"],["50","50 km"]]} onChange={v=>setField({radiusKm:Number(v)})}/>);
+            if (cfg.variant === 'air-quality') fields.push(<SmartLocationField key="air-location" value={cfg.location || cfg.zip || ''} helpText="Choose a U.S. city, ZIP or coordinates. Shows the reporting area and observation time; unavailable coverage is labelled." onChange={v=>setField({location:v,zip:undefined})}/>);
+            if (cfg.variant === 'parking-availability') fields.push(<SmartLocationField key="parking-location" value={cfg.location || ''} helpText="Free LADOT coverage: Los Angeles street meters. Shows last known sensor states, not private-garage availability." onChange={v=>setField({location:v})}/>);
+            if (cfg.variant === 'transit-departures') fields.push(<TransitAgencyPicker key="transit-agency" value={cfg.transitAgency || 'mbta'} onChange={v=>setField({transitAgency:v})}/>);
+            if (cfg.variant === 'transit-departures' && (cfg.transitAgency || 'mbta') === 'mbta') fields.push(<TransitStationPicker key="transit-station" value={cfg.stationId || ''} onChange={v=>setField({stationId:v})}/>);
+            if (cfg.variant === 'transit-departures' && (cfg.transitAgency || 'mbta') !== 'mbta') fields.push(<GtfsStationPicker key="gtfs-station" agency={cfg.transitAgency} value={cfg.gtfsStationId || ''} label={cfg.gtfsStationName || ''} onChange={(id,name)=>setField({gtfsStationId:id,gtfsStationName:name})}/>);
+            if (cfg.variant === 'airport-conditions') fields.push(<TextField key="airport-code" label="Airport code (blank = all U.S. notices)" value={cfg.airport || ''} placeholder="SFO" onChange={v=>setField({airport:v.toUpperCase().slice(0,4)})}/>);
+            fields.push(<SelectField key="public-data-layout" label="Layout" value={cfg.dataLayout || 'auto'} options={PUBLIC_DATA_LAYOUTS} onChange={v=>setField({dataLayout:v})}/>);
+            fields.push(<StyleableField key="public-data-title" fieldName="title" styles={cfg._styles} label="Heading" value={cfg.title ?? (cfg.variant === 'traffic-cam' ? 'Road conditions' : cfg.variant === 'air-quality' ? 'Air quality' : cfg.variant === 'airport-conditions' ? 'Airport conditions' : cfg.variant === 'parking-availability' ? 'Parking nearby' : 'Next departures')} onChange={v=>setField({title:v})}/>);
+            fields.push(<SelectField key="public-data-text" label="Text to format" value={PUBLIC_DATA_TEXT_AREAS.some(([id])=>id===activeForecastTextArea)?activeForecastTextArea!:'dataValue'} options={PUBLIC_DATA_TEXT_AREAS} onChange={v=>useBuilderStore.getState().setActiveFieldName(v)}/>);
+            fields.push(<p key="public-data-text-help" className="text-xs text-slate-500">Use the floating text toolbar to format the selected text. Resize normally; layout adapts. Source values update automatically.</p>);
+          }
+        }
         if (cfg.variant === 'fx-rates') fields.push(<SelectField key="fx-data-mode" label="Rates" value={cfg.dataMode || (cfg.pairs?.length ? 'manual' : 'automatic')} options={[["automatic","Automatic · ECB daily reference rates"],["manual","Enter my own rates"]]} onChange={v=>setField({dataMode:v})} />);
-        const defs = { ...(v2w.defaults || {}), ...MANUAL_DATA_EDITOR_DEFAULTS[String(cfg.variant)] } as Record<string, unknown>;
+        const defs = { ...(v2w.defaults || {}), ...MANUAL_DATA_EDITOR_DEFAULTS[String(cfg.variant)], ...(cfg.variant === 'air-quality' && !publicAutomatic ? {aqi:0,pm25:0,pm10:0,o3:0,no2:0} : {}) } as Record<string, unknown>;
         const dataCapability = widgetDataCapability(zone.widgetType, cfg.variant, cfg);
         if (dataCapability) fields.push(<p key="data-behavior" className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600"><strong className="block text-slate-800 mb-1">{dataCapability.label}</strong>{dataCapability.detail}</p>);
         const contentKeys = Object.keys(defs).filter(
-          (k) => k !== 'variant' && k !== 'style' && k !== 'tier' && !(cfg.variant === 'fx-rates' && k === 'pairs' && (cfg.dataMode === 'automatic' || (cfg.dataMode !== 'manual' && !cfg.pairs?.length))),
+          (k) => !(publicKind && (publicAutomatic || ['dataMode','dataLayout','title','stationId'].includes(k))) && k !== 'variant' && k !== 'style' && k !== 'tier' && !(cfg.variant === 'fx-rates' && k === 'pairs' && (cfg.dataMode === 'automatic' || (cfg.dataMode !== 'manual' && !cfg.pairs?.length))),
         );
         // 2026-05-29 — operator: "upload logos when needed or images." An
         // image/logo/photo content field used to render as a plain URL
@@ -7407,7 +7459,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
   // STYLE, so the two compose instead of competing.
   const isV2Variant = !!(cfg.variant && V2_BY_VARIANT_ID[String(cfg.variant)]);
   if (isV2Variant) {
-    fields.push(...buildV2StyleFields(cfg, setField));
+    fields.push(...buildV2StyleFields(cfg, setField, fields.some((f:any)=>f?.key==='public-data-text')));
   }
 
   // ── Universal "make it your brand" text-style section ─────────────
@@ -7462,7 +7514,7 @@ export function ContentFields({ zone, updateZone }: { zone: any; updateZone: any
     // prevent.
     const MEDIA_ONLY = new Set(['IMAGE', 'IMAGE_CAROUSEL', 'VIDEO', 'VIDEO_CAROUSEL', 'EXTERNAL_HTML', 'ANIMATED_BACKGROUND']);
     const isV2Widget = isV2Variant;
-    const alreadyStyleable = fields.some((f: any) => f && f.key === 'fontFamily') || cfg.variant === 'weather-outlook' || (zone.widgetType === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom';
+    const alreadyStyleable = fields.some((f: any) => f && (f.key === 'fontFamily' || f.key === 'public-data-text')) || cfg.variant === 'weather-outlook' || (zone.widgetType === 'WEATHER' && Number(cfg.forecastDays) >= 2) || cfg.variant === 'rss-newsroom';
     if (!alreadyStyleable && !MEDIA_ONLY.has(zone.widgetType)) {
       fields.push(
         <div key="_uts-hdr" className="pt-3 pb-1 px-1 text-[10px] font-bold text-indigo-500 uppercase tracking-widest border-b border-slate-200">
@@ -9350,38 +9402,6 @@ function SettingNumber({ label, value, min, max, onChange }: {
   );
 }
 
-function TextField({ label, value, placeholder, onChange, onFocus }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void; onFocus?: () => void }) {
-  const [local, setLocal] = useState(value);
-  useEffect(() => { setLocal(value); }, [value]);
-  // A2 — undo keystroke coalescing. Every TextField's onChange ultimately
-  // calls a caller-supplied setField/setMeta that commits with
-  // commit=true on EVERY keystroke; the store's activeTransaction guard
-  // (see useBuilderStore.ts) turns those into a no-op re-commit as long
-  // as a transaction is open, so wrapping focus/blur here — once, in the
-  // shared component — coalesces all 285 TextField/TextAreaField call
-  // sites into "one undo step per edit session" with zero call-site
-  // changes. beginTransaction() is idempotent (no-ops if already open),
-  // so nested/rapid focus doesn't push extra snapshots.
-  const beginTransaction = useBuilderStore((s) => s.beginTransaction);
-  const endTransaction = useBuilderStore((s) => s.endTransaction);
-  // Label ↔ input association (same fix SelectField got in the 2026-08-24
-  // a11y wave): screen readers announce the field, getByLabelText finds it.
-  const inputId = useId();
-  return (
-    <div>
-      <label htmlFor={inputId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <input
-        id={inputId}
-        type="text"
-        value={local}
-        placeholder={placeholder}
-        onFocus={() => { beginTransaction(); onFocus?.(); }}
-        onBlur={endTransaction}
-        onChange={(e) => { setLocal(e.target.value); onChange(e.target.value); }}
-        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm" />
-    </div>
-  );
-}
 
 function TextAreaField({ label, value, placeholder, onChange, rows = 3, onFocus }: { label: string; value: string; placeholder?: string; onChange: (v: string) => void; rows?: number; onFocus?: () => void }) {
   // Controlled textarea — local state mirrors the incoming value so we
@@ -9641,24 +9661,6 @@ function HolidayPanelExtras({
   );
 }
 
-function SelectField({ label, value, options, onChange }: { label: string; value: string; options: [string,string][]; onChange: (v: string) => void }) {
-  // a11y wave (2026-08-24) — axe-core: "Select element must have an
-  // accessible name" (critical). The label text was visible but never
-  // programmatically associated with the <select> (no htmlFor/id pairing,
-  // no aria-label) — every widget field that renders through this shared
-  // component was affected. useId() matches this file's existing
-  // convention (see `nameId` above).
-  const id = useId();
-  return (
-    <div>
-      <label htmlFor={id} className="block text-[10px] font-semibold text-slate-500 mb-1.5">{label}</label>
-      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 rounded-lg bg-white border border-slate-200/60 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 transition-all shadow-sm cursor-pointer">
-        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-    </div>
-  );
-}
 
 /**
  * GameBindField — "Bind to game" picker (Sports Wave S2-2, 2026-07-02).
@@ -11648,7 +11650,7 @@ export function AssetLibraryModal({
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       // top/right/bottom/left longhand (NOT inset-0) — matches AssetPicker.tsx
-      // and the CLAUDE.md #10 convention. z-[10001] paints over the mobile
+      // and the apps/web/CLAUDE.md #10 convention. z-[10001] paints over the mobile
       // TopToolbar (z-20) and MobileTabBar (z-[60] — hidden via useOverlayLock
       // above anyway). Safe-area padding keeps the modal clear of the notch /
       // home indicator on short viewports.
@@ -12301,7 +12303,7 @@ function PosItemBindControls({
 // 2026-05-04 — operator: "i should be able to type a location or
 // zipcode or it should know where i am automatically and set it
 // but its a bunch of free text fields".
-function SmartLocationField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function SmartLocationField({ value, onChange, helpText }: { value: string; onChange: (v: string) => void; helpText?: string }) {
   // a11y wave (2026-08-24) — jsx-a11y/label-has-associated-control.
   const locationFieldId = useId();
   const [draft, setDraft] = useState(value);
@@ -12374,7 +12376,7 @@ function SmartLocationField({ value, onChange }: { value: string; onChange: (v: 
         </button>
       </div>
       <div className="text-[10px] text-slate-500 leading-relaxed">
-        Type a US zip (e.g. <span className="font-mono">44024</span>), a city name (e.g. <span className="font-mono">Cleveland, OH</span>), or click <strong>Use my location</strong>. Weather uses free, automatically refreshed forecasts: National Weather Service for the U.S. multi-day outlook; MET Norway for current-hour forecasts. Set the location once for each widget.
+        {helpText || <>Type a US zip (e.g. <span className="font-mono">44024</span>), a city name (e.g. <span className="font-mono">Cleveland, OH</span>), or click <strong>Use my location</strong>. Weather uses free, automatically refreshed forecasts: National Weather Service for the U.S. multi-day outlook; MET Norway for current-hour forecasts. Set the location once for each widget.</>}
       </div>
       {geoError && (
         <div className="text-[10px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">
@@ -12384,6 +12386,7 @@ function SmartLocationField({ value, onChange }: { value: string; onChange: (v: 
     </div>
   );
 }
+
 
 // WeatherOverrideAdvanced — collapsible section containing the
 // manual override fields (tempF / high / low / condition / icon).
@@ -13521,4 +13524,31 @@ export function StringListEditor({
       </div>
     </div>
   );
+}
+
+function TransitAgencyPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const feed = useGtfsAgencies();
+  const opts: [string, string][] = [["mbta", "MBTA · Boston area"], ...(feed.data?.items || []).map(a => [a.id, `${a.name} · ${a.region}`] as [string, string])];
+  if (!opts.some(([id]) => id === value)) opts.push([value, value]);
+  return <SelectField label="Transit agency" value={value} options={opts} onChange={onChange} />;
+}
+
+function GtfsStationPicker({ agency, value, label, onChange }: { agency: string; value: string; label: string; onChange: (id: string, name: string) => void }) {
+  const [q, setQ] = useState('');
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => { const t = setTimeout(() => setDebounced(q), 350); return () => clearTimeout(t); }, [q]);
+  const feed = useGtfsStations(agency, debounced, !!agency);
+  const items = feed.data?.items || [];
+  return (
+    <div className="space-y-2">
+      <TextField label="Find a station or stop" value={q} placeholder={label || 'Type a station name'} onChange={setQ} />
+      <SelectField label="Station" value={value} options={[["", feed.loading ? 'Loading stations…' : items.length ? 'Choose a station' : 'No matches'], ...(value && !items.some(i => i.id === value) ? [[value, label || value] as [string, string]] : []), ...items.map(i => [i.id, i.name] as [string, string])]} onChange={id => onChange(id, items.find(i => i.id === id)?.name || label)} />
+      <p className="text-xs text-slate-500">Real-time predictions from the agency’s open GTFS-realtime feed{feed.error ? ' · Station list temporarily unavailable' : ''}</p>
+    </div>
+  );
+}
+
+function TransitStationPicker({value,onChange}:{value:string;onChange:(value:string)=>void}) {
+  const feed=useTransitStations();
+  return <div className="space-y-2"><SelectField label="MBTA station" value={value} options={[["",feed.loading ? "Loading stations…" : "Choose a station"],...(feed.data?.items || []).map(s=>[s.id,s.name] as [string,string])]} onChange={onChange}/><p className="text-xs text-slate-500">Boston-area MBTA predictions · MassDOT open data{feed.error?' · Station list temporarily unavailable':''}</p></div>;
 }

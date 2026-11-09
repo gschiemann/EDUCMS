@@ -7,7 +7,7 @@
  * Several alerts can be live at once now (all screens, one group, one
  * screen), so "the" all-clear no longer exists: the operator picks the alert
  * and holds to end exactly that one. The hold is the same 3-second
- * press-and-hold the trigger uses (CLAUDE.md safeguard #5) — the page's own
+ * press-and-hold the trigger uses (apps/api/src/emergency/CLAUDE.md Key Safeguards #5) — the page's own
  * idiom for "this changes what every person in the building is told", and
  * the one gesture a pocket cannot perform by accident. Keyboard Space/Enter
  * hold works the same way (WCAG 2.1.1), exactly like the trigger buttons.

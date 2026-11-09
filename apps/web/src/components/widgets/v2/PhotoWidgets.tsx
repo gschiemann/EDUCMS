@@ -18,7 +18,7 @@ import { sceneCss } from '../scene-css';
  * 16px: on a 3840x2160 board a mosaic tile's caption rendered at 11.2px and a
  * contact-sheet filename at 12px. Measured in JS rather than with `cqh` —
  * these ship to Chromium 83 on a NovaStar Taurus, which has no container
- * queries (CLAUDE.md rule #10).
+ * queries (apps/web/CLAUDE.md rule #10).
  */
 function useZoneFont(design: number) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();

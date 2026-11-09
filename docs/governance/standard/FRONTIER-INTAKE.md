@@ -20,7 +20,7 @@ Output: a delta table against incumbents **per task class per dollar**, with sam
 
 ## Tier B — the full audit, within 14 days
 
-Runs when Tier A beats an incumbent in any class, or finds a P0/P1, or the owner asks. Paused while a `FREEZE.md` is active (Tier A still runs). The model audits:
+Runs when Tier A beats an incumbent in any class, or finds a P0/P1, or the owner asks. Paused while a hold is active in the application's autonomy register (Tier A still runs). The model audits:
 
 - **The standard itself** — what is incomplete, outdated, redundant, dangerous or missing; and "if you built this company from zero today with your capabilities, what would you do differently?"
 - **Each application** — against its full audit surface (for VenueOS, the 21-section Standard Audit Surface in `CLAUDE.md`), across the design / UX / functionality lenses, naming what it can do that incumbents cannot.

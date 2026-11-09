@@ -260,7 +260,7 @@ describe('SponsorsService — gameReport aggregates real impressions', () => {
 });
 
 /**
- * RUNTIME reachability proof (CLAUDE.md rule #21 — verify, don't claim).
+ * RUNTIME reachability proof (docs/governance/AUDIT-SURFACE.md rule #21 — verify, don't claim).
  *
  * The unit tests above call controller methods directly, which bypasses the
  * guard chain entirely. This block boots a REAL Nest HTTP app with the REAL

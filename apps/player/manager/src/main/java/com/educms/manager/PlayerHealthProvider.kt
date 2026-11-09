@@ -8,6 +8,9 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
 import android.util.Log
+import com.educms.manager.health.ManagerHealth
+import com.educms.manager.health.ManagerHealthReport
+import com.educms.manager.health.ManagerReports
 
 /**
  * Cross-process IPC channel for Player ↔ Manager communication.
@@ -71,6 +74,8 @@ class PlayerHealthProvider : ContentProvider() {
     private val PREFS_KEY_VER = "hb_version"
     private val PREFS_KEY_PID = "hb_pid"
     private val PREFS_KEY_FP = "hb_fingerprint"
+    // 2026-11-08 — PREFS_RELAY / PREFS_KEY_RELAY live in the companion so
+    // ManagerReports can read them from outside the provider instance.
 
     private fun prefs(): SharedPreferences? =
         context?.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
@@ -90,6 +95,7 @@ class PlayerHealthProvider : ContentProvider() {
                     versionName = p?.getString(PREFS_KEY_VER, "unknown") ?: "unknown",
                     pid = p?.getInt(PREFS_KEY_PID, 0) ?: 0,
                     fingerprint = p?.getString(PREFS_KEY_FP, null),
+                    relay = p?.getInt(PREFS_KEY_RELAY, 0) ?: 0,
                 )
                 Log.i(TAG, "seeded heartbeat from prefs: ts=$ts version=${heartbeat?.versionName}")
             }
@@ -135,11 +141,39 @@ class PlayerHealthProvider : ContentProvider() {
                 }
                 cursor
             }
+            // 2026-11-08 — the companion's own health facts (schema 1, see
+            // health/ManagerHealthReport). One row, built on every read, so
+            // the Player always carries what is true NOW.
+            CODE_MANAGER_HEALTH -> {
+                val ctx = context ?: return null
+                MatrixCursor(arrayOf(COL_SCHEMA, COL_REPORT_JSON)).apply {
+                    addRow(arrayOf<Any>(ManagerHealthReport.SCHEMA, ManagerHealth.snapshotJson(ctx)))
+                }
+            }
+            // 2026-11-08 — reports queued for the Player's signed relay
+            // (health/ManagerReportOutbox), oldest first.
+            CODE_REPORTS -> {
+                val ctx = context ?: return null
+                MatrixCursor(arrayOf(COL_REPORT_ID, COL_REPORT_KIND, COL_REPORT_BODY, COL_REPORT_AT)).apply {
+                    ManagerReports.pending(ctx).forEach { e -> addRow(arrayOf<Any>(e.id, e.kind, e.body, e.atMs)) }
+                }
+            }
+            // 2026-11-08 (wave 5, alert-watch watchdog) — two ADDITIVE paths.
+            // The Player's native alert watch stamps itself here after every
+            // pass; the Manager's watchdog verdict is read back by the Player
+            // for its signed heartbeat. Same permission gate as the heartbeat.
+            CODE_ALERT_WATCH -> context?.let { com.educms.manager.alertwatch.AlertWatchStore.stampCursor(it) }
+            CODE_ALERT_WATCH_WATCHDOG -> context?.let { com.educms.manager.alertwatch.AlertWatchStore.recordCursor(it) }
             else -> null
         }
     }
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
+        if (matcher.match(uri) == CODE_ALERT_WATCH) {
+            val ctx = context ?: return null
+            val v = values ?: return null
+            return if (com.educms.manager.alertwatch.AlertWatchStore.writeStamp(ctx, v)) uri else null
+        }
         if (matcher.match(uri) != CODE_HEARTBEAT) return null
         val v = values ?: return null
         val ts = v.getAsLong(COL_TIMESTAMP) ?: System.currentTimeMillis()
@@ -151,7 +185,11 @@ class PlayerHealthProvider : ContentProvider() {
         // falls back to its own ANDROID_ID. v1.0.18+ Player will
         // write it, enabling the shared-row OTA path.
         val fp = v.getAsString(COL_FINGERPRINT)
-        heartbeat = Heartbeat(timestampMs = ts, versionName = name, pid = pid, fingerprint = fp)
+        // 2026-11-08 — `relay` = 1 when this Player will relay our reports on
+        // its signed channel. Absent (every Player before this build) = 0, so
+        // the Manager keeps posting anonymously to an old Player's screen.
+        val relay = if (v.getAsInteger(COL_RELAY) == 1) 1 else 0
+        heartbeat = Heartbeat(timestampMs = ts, versionName = name, pid = pid, fingerprint = fp, relay = relay)
         Log.d(TAG, "heartbeat in: ts=$ts version=$name pid=$pid fp=${fp?.take(20)}")
         // 2026-05-04 — Persist through to SharedPreferences so the
         // next Manager process boot can re-read this heartbeat WITHOUT
@@ -163,6 +201,7 @@ class PlayerHealthProvider : ContentProvider() {
                 ?.putString(PREFS_KEY_VER, name)
                 ?.putInt(PREFS_KEY_PID, pid)
                 ?.putString(PREFS_KEY_FP, fp)
+                ?.putInt(PREFS_KEY_RELAY, relay)
                 ?.apply()
         } catch (e: Exception) {
             Log.w(TAG, "prefs write failed: ${e.message}")
@@ -177,10 +216,25 @@ class PlayerHealthProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
     ): Int = 0
 
-    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    /**
+     * 2026-11-08 — the Player acknowledges relayed reports:
+     * DELETE content://…/reports with selectionArgs = [highest acknowledged id].
+     * Every other URI deletes nothing, as before.
+     */
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
+        if (matcher.match(uri) != CODE_REPORTS) return 0
+        val ctx = context ?: return 0
+        val acked = selectionArgs?.firstOrNull()?.toLongOrNull() ?: return 0
+        if (acked <= 0L) return 0
+        return ManagerReports.ack(ctx, acked)
+    }
 
     override fun getType(uri: Uri): String? = when (matcher.match(uri)) {
         CODE_HEARTBEAT -> "vnd.android.cursor.item/vnd.com.educms.manager.heartbeat"
+        CODE_MANAGER_HEALTH -> "vnd.android.cursor.item/vnd.com.educms.manager.health"
+        CODE_REPORTS -> "vnd.android.cursor.dir/vnd.com.educms.manager.report"
+        CODE_ALERT_WATCH -> "vnd.android.cursor.item/vnd.com.educms.manager.alert-watch"
+        CODE_ALERT_WATCH_WATCHDOG -> "vnd.android.cursor.item/vnd.com.educms.manager.alert-watch-watchdog"
         else -> null
     }
 
@@ -189,6 +243,7 @@ class PlayerHealthProvider : ContentProvider() {
         val versionName: String,
         val pid: Int,
         val fingerprint: String?,
+        val relay: Int = 0,
     )
 
     companion object {
@@ -206,12 +261,54 @@ class PlayerHealthProvider : ContentProvider() {
         // the cloud heartbeat populates. See ManagerSelfUpdateWorker.
         const val COL_FINGERPRINT = "device_fingerprint"
 
+        // 2026-11-08 — the Player tells us it relays our reports (1) or not (0/absent).
+        const val COL_RELAY = "relay"
+
+        // 2026-11-08 — Manager health and the signed-report relay. The Player
+        // mirrors these strings (ManagerHeartbeatPublisher); change both in lockstep.
+        const val PATH_MANAGER_HEALTH = "manager-health"
+        const val PATH_REPORTS = "reports"
+        const val COL_SCHEMA = "schema"
+        const val COL_REPORT_JSON = "report_json"
+        const val COL_REPORT_ID = "id"
+        const val COL_REPORT_KIND = "kind"
+        const val COL_REPORT_BODY = "body_json"
+        const val COL_REPORT_AT = "created_ms"
+
+        private const val PREFS_RELAY = "edu_player_health"
+        private const val PREFS_KEY_TS_SHARED = "hb_ts"
+        private const val PREFS_KEY_RELAY = "hb_relay"
+
+        /**
+         * (last Player heartbeat ms, relay flag) from the persisted row, read
+         * in-process by ManagerReports. Never throws; unknown = (0, 0) = anonymous.
+         */
+        fun readRelayState(ctx: android.content.Context): Pair<Long, Int> = try {
+            val p = ctx.applicationContext.getSharedPreferences(PREFS_RELAY, android.content.Context.MODE_PRIVATE)
+            p.getLong(PREFS_KEY_TS_SHARED, 0L) to p.getInt(PREFS_KEY_RELAY, 0)
+        } catch (_: Exception) {
+            0L to 0
+        }
+
         private const val CODE_HEARTBEAT = 1
+        private const val CODE_MANAGER_HEALTH = 2
+        private const val CODE_REPORTS = 3
+        // 2026-11-08 (wave 5) — the native alert watch's stamp (Player writes) and
+        // the Manager's watchdog verdict (Player reads). Mirrored in the Player's
+        // `alertwatch/AlertWatchStamp.kt`; change both or neither.
+        const val PATH_ALERT_WATCH = "alert-watch"
+        const val PATH_ALERT_WATCH_WATCHDOG = "alert-watch-watchdog"
+        private const val CODE_ALERT_WATCH = 4
+        private const val CODE_ALERT_WATCH_WATCHDOG = 5
 
         val URI_HEARTBEAT: Uri = Uri.parse("content://$AUTHORITY/$PATH_HEARTBEAT")
 
         private val matcher = UriMatcher(UriMatcher.NO_MATCH).apply {
             addURI(AUTHORITY, PATH_HEARTBEAT, CODE_HEARTBEAT)
+            addURI(AUTHORITY, PATH_MANAGER_HEALTH, CODE_MANAGER_HEALTH)
+            addURI(AUTHORITY, PATH_REPORTS, CODE_REPORTS)
+            addURI(AUTHORITY, PATH_ALERT_WATCH, CODE_ALERT_WATCH)
+            addURI(AUTHORITY, PATH_ALERT_WATCH_WATCHDOG, CODE_ALERT_WATCH_WATCHDOG)
         }
     }
 }

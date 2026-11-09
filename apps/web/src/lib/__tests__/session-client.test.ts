@@ -8,7 +8,7 @@
  *      the single-flight, each would spend the refresh cookie — and the
  *      server correctly grades a second spend as a REPLAY and revokes the
  *      whole family. Twelve parallel 401s must produce exactly ONE refresh.
- *   2. NO TIMER. CLAUDE.md's mobile-perf standard is binding: a backgrounded
+ *   2. NO TIMER. apps/web/CLAUDE.md's mobile-perf standard is binding: a backgrounded
  *      phone must not run pollers. Refresh happens on demand, or not at all.
  */
 import {

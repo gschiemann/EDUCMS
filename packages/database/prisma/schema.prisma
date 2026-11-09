@@ -1335,6 +1335,8 @@ model ScreenGroup {
   createdAt   DateTime   @default(now()) @map("created_at")
   schedules   Schedule[]
   displaySchedules DisplaySchedule[]
+  // 2026-11-08 — opt-in scheduled restart (apps/api/src/scheduled-reboot/).
+  rebootPolicy ScreenRebootPolicy?
   tenant      Tenant     @relation(fields: [tenantId], references: [id])
   screens     Screen[]
 
@@ -1560,6 +1562,17 @@ model Screen {
   // one leaves it null, and the dashboard falls back to the SHA comparison
   // exactly as it behaves today.
   lastBundleId                        String?      @map("last_bundle_id")
+  // ── softBlankAt (2026-11-02) — the soft BLANK overlay is on the glass.
+  // A soft BLANK draws the web player's black overlay; nothing reported it, so
+  // the dashboard's Sleep/Awake pair kept reading "Awake" and its Sleep button
+  // spun until the confirm window ran out. The player now reports `softBlank`
+  // on every telemetry post (true only while the overlay node is in the DOM —
+  // an emergency overlay is never one). Server clock of the latest report that
+  // said true; NULL as soon as a report says false. Re-stamped on every report
+  // while blank, so a value older than 10 minutes means the screen stopped
+  // saying so and the dashboard treats it as stale. Telemetry-only: listed in
+  // SCREEN_TELEMETRY_ONLY_FIELDS so this write never busts the manifest cache.
+  softBlankAt                         DateTime?    @map("soft_blank_at")
   // ── Device-credential trust state (2026-08-30 reliability program) ────
   // Stamped SERVER-SIDE at register time (never client-reported):
   //   'PROVEN'          — last re-registration presented a valid proven
@@ -1607,6 +1620,18 @@ model Screen {
   deviceSettingsRev                   Int          @default(0) @map("device_settings_rev")
   deviceSettingsReportSig             String?      @map("device_settings_report_sig")
   deviceSettingsReportAt              DateTime?    @map("device_settings_report_at")
+  // ── Screen diagnostics (2026-11-08, apps/api/src/screen-diagnostics/) ──
+  // The ONE open self-test / logs request, as three cheap scalars (never
+  // JSON on this hot row). Manifest CONTENT, like pendingRefreshAt: the
+  // manifest carries `diagnosticsRequest` while it is set and the native
+  // heartbeat reply carries it too, so the command reaches a screen whose
+  // push channel is dead. Acknowledged by VALUE (the request id the device
+  // answers with), never by clock; cleared by a conditional write on that id.
+  // Deliberately NOT in SCREEN_TELEMETRY_ONLY_FIELDS: setting it must bust
+  // the manifest cache so a polling-only screen sees the command.
+  pendingDiagnosticsId                String?      @map("pending_diagnostics_id")
+  pendingDiagnosticsKind              String?      @map("pending_diagnostics_kind")
+  pendingDiagnosticsAt                DateTime?    @map("pending_diagnostics_at")
   // ── Frame-locked sync (2026-07-28) ───────────────────────────────────
   // syncOffsetMs — per-screen latency trim (±ms). Different display models
   // add different FIXED pipeline latencies (LED controller scaling, TV
@@ -1756,6 +1781,10 @@ model Screen {
   lastCrashSource                     String?      @map("last_crash_source")
   lastCrashMessage                    String?      @map("last_crash_message")
   lastCrashStack                      String?      @map("last_crash_stack")
+  // 2026-11-08 — did the caller of that crash report prove the screen's device
+  // credential? A Manager crash relayed by the Player is; Manager 1.0.24's
+  // anonymous post is not. NULL on rows written before this column.
+  lastCrashAuthenticated              Boolean?     @map("last_crash_authenticated")
   // 2026-09-02 (P0-2) — the BOOT DIAGNOSTIC the APK raises when a screen
   // loads the page and never actually starts playing: no client-JS boot,
   // no registration attempt, no registration answer, or repeated
@@ -1778,6 +1807,15 @@ model Screen {
   // small and avoids two network connections per kiosk).
   managerVersion                      String?      @map("manager_version")
   managerVersionAt                    DateTime?    @map("manager_version_at")
+  // 2026-11-08 — the companion's own health facts (schema 1: watchdog tick,
+  // relaunches with reason, rollback / quarantine, install permission, a
+  // pending Install tap, its version), read by the Player from the Manager's
+  // provider and carried on the Player's DEVICE-AUTHENTICATED heartbeat
+  // (`x-venueos-manager-health`, screens/manager-health.ts). Device times are
+  // converted to the server clock on receipt. Telemetry-only: listed in
+  // SCREEN_TELEMETRY_ONLY_FIELDS, never in a manifest.
+  managerHealthReport                 Json?        @map("manager_health_report")
+  managerHealthReportAt               DateTime?    @map("manager_health_report_at")
   // Sprint 8b operator-config layer for the 6 emergency types (LOCKDOWN /
   // EVACUATE / WEATHER / HOLD / SECURE / MEDICAL).
   // For each type the operator can:
@@ -2749,6 +2787,11 @@ model EmergencyMessage {
   // 2026-10-31 — the hand-picked screens of a `scopeType: 'devices'` send
   // (this tenant's share of them). Empty for every other scope.
   screenIds         String[]  @default([]) @map("screen_ids")
+  // 2026-11-01 — the sender's banner colour / scrolling choice for an INFO or
+  // WARN text broadcast: { color?: "#rrggbb", mode: "static"|"scroll",
+  // speed: "slow"|"normal"|"fast" }. Null = today's look. Written only through
+  // sanitizeBannerOptions (@cms/api-types); never read by lockdown paths.
+  bannerStyle       Json?     @map("banner_style")
 
   @@index([tenantId, createdAt(sort: Desc)], map: "emergency_messages_tenant_created_idx")
   @@map("emergency_messages")
@@ -3654,6 +3697,73 @@ model DisplayVendorRecipe {
 
   @@index([isActive, priority])
   @@map("display_vendor_recipes")
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Scheduled restart policy (2026-11-08, manager deep-dive item #7)
+// ─────────────────────────────────────────────────────────────────────
+//
+// OPT-IN, per screen group. No row = today's behaviour: never a restart.
+// The server worker (apps/api/src/scheduled-reboot/) dispatches a REBOOT
+// through the SAME path as the dashboard's typed-confirm button
+// (runDisplayControl → DisplayService.applyAction), so the capability gate
+// and the SCREEN_DISPLAY_REBOOT audit row are identical. On today's fleet no
+// screen can reboot (no device owner, by the owner's rule), so every run is
+// recorded as skipped `cannot-restart` until a build that can reports so.
+// Kill switch: SCHEDULED_REBOOTS_DISABLED=1. Design + every refusal:
+// docs/handoffs/2026-11-08-manager-wave-4.md.
+model ScreenRebootPolicy {
+  id            String      @id @default(uuid())
+  tenantId      String      @map("tenant_id")
+  screenGroupId String      @unique @map("screen_group_id")
+  // 'DAILY' | 'WEEKLY'
+  cadence       String
+  // 0=Sun..6=Sat — WEEKLY only, null for DAILY.
+  dayOfWeek     Int?        @map("day_of_week")
+  // "HH:MM" local, in EACH screen's own zone; 22:00–04:59 only (off-hours).
+  time          String
+  isActive      Boolean     @default(true) @map("is_active")
+  updatedById   String?     @map("updated_by_id")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  screenGroup ScreenGroup @relation(fields: [screenGroupId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@map("screen_reboot_policies")
+}
+
+// One row per (screen, slot): creating it is the claim, so no slot can ever
+// send twice. History — no FK to "screens" on purpose (a hot table; the
+// lock is not worth it, and a run outliving its screen is harmless history).
+//   status: WAITING → SKIPPED | SENT | REFUSED | UNDELIVERED;
+//           SENT → BACK | NO_RESTART | NOT_BACK → LATE
+model ScreenRebootRun {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  screenId      String    @map("screen_id")
+  policyId      String    @map("policy_id")
+  // The policy's local date for this slot in the screen's zone, "YYYY-MM-DD".
+  slotKey       String    @map("slot_key")
+  scheduledFor  DateTime  @map("scheduled_for")
+  status        String
+  reason        String?
+  // fleet-push-policy hardwareClassOf key, for one-class-at-a-time.
+  hardwareClass String?   @map("hardware_class")
+  dispatchedAt  DateTime? @map("dispatched_at")
+  actionId      String?   @map("action_id")
+  // Android BOOT_COUNT at dispatch and at the first check-in after it.
+  bootBefore    Int?      @map("boot_before")
+  bootAfter     Int?      @map("boot_after")
+  returnedAt    DateTime? @map("returned_at")
+  restartProven Boolean   @default(false) @map("restart_proven")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@unique([screenId, slotKey])
+  @@index([tenantId, status])
+  @@index([policyId, createdAt])
+  @@map("screen_reboot_runs")
 }
 
 // Square delta-sync watermark, one row per connection. Square's
@@ -4978,4 +5088,66 @@ model CustomerAlertSend {
 
   @@index([orgId, createdAt])
   @@map("customer_alert_sends")
+}
+
+// ── Screen diagnostics (2026-11-08) ────────────────────────────────────
+// One row per operator request for a self-test or a log bundle. The device
+// answers by request id (value identity). Logs live in a private storage
+// bucket under `logObjectKey` and are purged after the retention window
+// (SCREEN_DIAGNOSTICS_LOG_RETENTION_DAYS); the row itself is kept 90 days.
+// No foreign keys on purpose: the retention sweep deletes orphans, and a
+// screen delete must never be blocked by its support history.
+model ScreenDiagnosticsRequest {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  screenId      String    @map("screen_id")
+  /// SELF_TEST | LOGS
+  kind          String
+  /// PENDING | COMPLETE | FAILED | EXPIRED
+  status        String    @default("PENDING")
+  /// LOGS: minutes of log requested (5..60).
+  minutes       Int?
+  requestedById String?   @map("requested_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  expiresAt     DateTime  @map("expires_at")
+  deliveredAt   DateTime? @map("delivered_at")
+  completedAt   DateTime? @map("completed_at")
+  /// Native half (Android probes), bounded and sanitised by the API.
+  nativeResult  Json?     @map("native_result")
+  nativeAt      DateTime? @map("native_at")
+  /// Page half (WebView engine, manifest age, origin quota).
+  pageResult    Json?     @map("page_result")
+  pageAt        DateTime? @map("page_at")
+  /// pass | warn | fail — the graded verdict, once there is one.
+  verdict       String?
+  failureReason String?   @map("failure_reason")
+  logObjectKey  String?   @map("log_object_key")
+  logBytes      Int?      @map("log_bytes")
+  logSha256     String?   @map("log_sha256")
+  logPurgedAt   DateTime? @map("log_purged_at")
+
+  @@index([tenantId, screenId, createdAt])
+  @@index([createdAt])
+  @@map("screen_diagnostics_requests")
+}
+
+// ── Screen storage health (2026-11-08) ─────────────────────────────────
+// The low-frequency storage report (free/total disk, write test, WebView
+// origin quota, emergency-tier READ-ONLY check). Its own table so the hot
+// `screens` row never carries the JSON (the 2026-08-14 egress lesson).
+// `warning` is the graded state the dashboard shows ('almost-full' |
+// 'critical' | null); `warnedAt` dedupes the bell notification.
+model ScreenStorageHealth {
+  screenId  String    @id @map("screen_id")
+  tenantId  String    @map("tenant_id")
+  native    Json?
+  nativeAt  DateTime? @map("native_at")
+  page      Json?
+  pageAt    DateTime? @map("page_at")
+  warning   String?
+  warnedAt  DateTime? @map("warned_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("screen_storage_health")
 }

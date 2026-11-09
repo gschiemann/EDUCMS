@@ -1226,7 +1226,7 @@ async function main() {
   // Measured on the WHOLE fleet, not one tenant: "screens must not go dark"
   // is a fleet claim. Every screen loses its socket (the bus is gone), the
   // alert is fired at every tenant, and delivery must still happen over the
-  // documented HTTP backstop (CLAUDE.md emergency safeguard #4).
+  // documented HTTP backstop (apps/api/src/emergency/CLAUDE.md emergency safeguard #4).
   console.log('   · failure mode 1: Redis down (pub/sub + throttle store) — WHOLE FLEET…');
   const redisSampler = startResourceSampler({ intervalMs: 2_000, label: 'redis-down' });
   const beforeRedisStop = now();
@@ -1548,7 +1548,7 @@ async function stalePlayerDrill() {
   }
 
   // Does an alert still reach a screen holding ONLY an unproven credential?
-  // That is CLAUDE.md emergency safeguard #4 — the documented HTTP backstop.
+  // That is apps/api/src/emergency/CLAUDE.md emergency safeguard #4 — the documented HTTP backstop.
   const firedA = await triggerEmergency(tIdx, 'stale-unproven');
   let sawAt = null;
   const deadlineA = now() + 30_000;

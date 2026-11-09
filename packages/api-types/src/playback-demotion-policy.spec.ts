@@ -95,8 +95,9 @@ describe('modes', () => {
     expect(playbackDemotionMode({ VIDEO_PLAYBACK_DEMOTION: 'observe' })).toBe('observe');
   });
   it('VIDEO_PLAYBACK_GATE defaults warn; only the exact word enforces', () => {
-    expect(playbackGateMode({})).toBe('warn');
-    expect(playbackGateMode({ VIDEO_PLAYBACK_GATE: 'enforced' })).toBe('warn');
+    expect(playbackGateMode({})).toBe('off');
+    expect(playbackGateMode({ VIDEO_PLAYBACK_GATE: 'enforced' })).toBe('off')
+    expect(playbackGateMode({ VIDEO_PLAYBACK_GATE: 'warn' })).toBe('warn');
     expect(playbackGateMode({ VIDEO_PLAYBACK_GATE: 'enforce' })).toBe('enforce');
     expect(playbackGateMode({ VIDEO_PLAYBACK_GATE: 'off' })).toBe('off');
   });

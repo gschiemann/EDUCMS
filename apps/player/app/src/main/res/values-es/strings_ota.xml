@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="update_card_title">Actualización lista</string>
+    <string name="update_card_body">VenueOS Player %1$s está listo para instalarse.\nPulse OK en el mando (o toque Instalar actualización). Cuando aparezca el cuadro de instalación de Android, elija Instalar (OK en el mando, o tóquelo).</string>
+    <string name="update_card_install">Instalar actualización</string>
+    <string name="update_card_later">Ahora no</string>
+    <string name="companion_card_title">Actualización del servicio complementario lista</string>
+    <string name="companion_card_body">El servicio complementario de VenueOS necesita un toque más para terminar de actualizarse.\nPulse OK en el mando (o toque Instalar actualización). Cuando aparezca el cuadro de instalación de Android, elija Instalar (OK en el mando, o tóquelo).</string>
+</resources>

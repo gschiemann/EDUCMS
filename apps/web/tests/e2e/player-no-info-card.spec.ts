@@ -23,7 +23,7 @@ import { bootMockPlayer, ok, playerIds, playerManifest } from './helpers/mock-pl
  *     the menu with focus parked on that button;
  *  4. a live emergency still takes the screen and locks the remote.
  *
- * Harness rules (CLAUDE.md player rule 14) are honoured by the shared
+ * Harness rules (apps/web/src/app/player/CLAUDE.md player rule 14) are honoured by the shared
  * mock-player helper: the realtime stub delegates non-/realtime sockets,
  * mocks key on state, and the content itself proves mount.
  */

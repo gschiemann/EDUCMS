@@ -12,7 +12,7 @@
  * `pnpm --filter api exec jest` and `pnpm --filter web exec jest`.
  *
  * 450 assertions that looked like coverage and were not. This repo has
- * documented that failure class twice already (CLAUDE.md rule 9, and the
+ * documented that failure class twice already (apps/web/CLAUDE.md rule 9, and the
  * `continue-on-error: true` API gate before 2026-05-29), so the fix is a
  * gate, not a habit.
  *

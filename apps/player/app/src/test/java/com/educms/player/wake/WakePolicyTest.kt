@@ -125,3 +125,20 @@ class WakePolicyTest {
         tokens.forEach { assertTrue(it.length <= 16 && Regex("^[a-z-]+$").matches(it)) }
     }
 }
+
+class WakePolicyAlertPaintedTest {
+    /** 2026-11-02: the alert's accepted paint receipt is proof the player is on the glass. */
+    @Test
+    fun `an emergency wake whose alert painted since the request is done — never a launch over the board`() {
+        val painted = WakePolicy.Facts(
+            interactive = true, foreground = false, standbyActive = false, emergencyHeld = true,
+            installPromptOutstanding = true, setupYield = false, launchesThisWake = 0, lastLaunchAtMs = 0L,
+            nowMs = 100_000L, lastCheck = false, alertPaintedSinceWake = true,
+        )
+        assertEquals(WakePolicy.Step.DONE_ON_GLASS, WakePolicy.step(painted))
+        // Without the receipt the same facts still launch (the install prompt never keeps an alert off the glass).
+        assertEquals(WakePolicy.Step.LAUNCH, WakePolicy.step(painted.copy(alertPaintedSinceWake = false)))
+        // A paint receipt without a held alert is not this rule's business.
+        assertEquals(WakePolicy.Step.STOP_INSTALL_PROMPT, WakePolicy.step(painted.copy(emergencyHeld = false)))
+    }
+}

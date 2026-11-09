@@ -5,7 +5,7 @@
  * popover on /[schoolId]/screens.
  *
  * It replaces the "More coming soon — restart, orientation, cache clear."
- * footer stub that sat here since Sprint 11. Per CLAUDE.md §20, a stub is
+ * footer stub that sat here since Sprint 11. Per docs/governance/AUDIT-SURFACE.md §20, a stub is
  * not allowed to become a button that lies; so every control below is
  * gated on what THIS screen's probe actually reported
  * (see ./display-capabilities.ts for the resolver + the reasoning).
@@ -104,16 +104,14 @@
  * screen exactly as before; only the copy and the executor moved.
  */
 
-import { useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useEffect, useRef, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import {
   Volume2,
-  VolumeX,
   Sun,
-  MonitorOff,
+  Moon,
   Monitor,
-  Power,
-  PowerOff,
+  RotateCw,
   CalendarClock,
   Info,
   Loader2,
@@ -123,6 +121,9 @@ import {
 import { appConfirm, appPrompt } from '@/components/ui/app-dialog';
 import {
   useDisplayControl,
+  useDisplaySchedules,
+  useCreateDisplaySchedule,
+  useDeleteDisplaySchedule,
   DISPLAY_CONTROL_TIMEOUT_MS,
   type DisplayActionType,
 } from '@/hooks/use-api';
@@ -131,60 +132,20 @@ import {
   clampBrightness,
   clampVolume,
   derivePanelPowerState,
-  nativeBlankMechanism,
   nativeHardOff,
-  panelPowerOffer,
-  type ControlAxis,
 } from './display-capabilities';
 import { deriveRenderTrustGrade } from './renderTrust';
-import { ScreenDeviceSettings } from './ScreenDeviceSettings';
+import {
+  CONFIRM_WINDOW_MS,
+  deriveSleepAwakeState,
+  nativeReportAsleep,
+  softBlankFresh,
+  type SleepAwakeTarget,
+} from './sleep-awake';
+import { resolveQuickControls, resolveAppliedSchedule } from './quick-settings';
 
 /** The literal the operator must type to confirm a remote reboot. */
 const REBOOT_TOKEN = 'REBOOT';
-
-/**
- * ── COPY FOR THE 2026-08-25 BLANK/POWER SPLIT ─────────────────────────
- *
- * ⚠️ LITERAL ENGLISH, AND IT IS A DEBT — NOT A NEW PATTERN. This wave landed
- * during a live field incident and was explicitly barred from touching the
- * locale catalogs (another workstream owns them). `check-i18n-parity.cjs` is
- * a HARD gate: an en-only key turns CI red, and a key missing from es/zh
- * renders its raw dot-path to that operator. Literal English is the honest
- * interim — readable by everyone, wrong for nobody the way `screens.display.
- * note.powerOffUnproven` on screen would be. OWED, one commit: move all of
- * these into `screens.display.*` across en/es/zh and delete the constants.
- * (2026-10-05: the power-off CONFIRMATION moved — `screens.display.
- * powerOffConfirm*` — when its paragraph was cut to one sentence. The labels
- * and sent-rows below are still owed.)
- */
-const BLANK_SENT_COPY =
-  'Blank sent — the screen goes black but stays powered. Press Wake to bring it back.';
-const POWER_ROW_LABEL = 'Panel power';
-const POWER_OFF_LABEL = 'Turn panel off';
-const POWER_ON_LABEL = 'Turn panel on';
-const POWER_OFF_SENT_COPY = 'Power-off sent to the panel. Turn panel on brings it back.';
-const POWER_ON_SENT_COPY = 'Power-on sent to the panel.';
-
-/**
- * Prefer literal copy when an axis carries it; fall back to its i18n key.
- * Not a hook — it takes the already-resolved translator.
- */
-function makeAxisNote(t: ReturnType<typeof useTranslations>) {
-  return (axis: ControlAxis): string =>
-    axis.noteText ? axis.noteText : axis.noteKey ? t(axis.noteKey) : '';
-}
-
-function ago(ts: string | null | undefined): string | null {
-  if (!ts) return null;
-  const ms = Date.now() - new Date(ts).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return null;
-  const min = Math.floor(ms / 60_000);
-  if (min < 1) return 'just now';
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
-}
 
 /**
  * Slider row. `reported` is the device's own last-known level when the API
@@ -204,29 +165,34 @@ function ago(ts: string | null | undefined): string | null {
 function LevelRow({
   icon,
   label,
-  note,
+  hint,
+  infoLabel,
   min,
   reported,
   unknownPark,
-  unknownHint,
   disabled,
   onCommit,
   accentClass,
 }: {
   icon: React.ReactNode;
   label: string;
-  note: string | null;
+  /**
+   * One short muted line, shown only on hover (title) or tap (the info
+   * button) — never as always-on orange chrome (2026-11-01 simplification).
+   * Null = nothing to say.
+   */
+  hint: string | null;
+  infoLabel: string;
   min: number;
   reported: number | null;
   /** Where the thumb rests when the device has never echoed a level. */
   unknownPark: number;
-  /** Shown only while the level is genuinely unknown. */
-  unknownHint: string;
   disabled: boolean;
   onCommit: (percent: number) => void;
   accentClass: string;
 }) {
   const [draft, setDraft] = useState<number | null>(null);
+  const [showHint, setShowHint] = useState(false);
   const lastSent = useRef<number | null>(null);
   const unknown = draft === null && reported === null;
   const shown = draft ?? reported ?? unknownPark;
@@ -239,18 +205,30 @@ function LevelRow({
   };
 
   return (
-    <div className="px-3.5 py-2.5 border-t border-slate-100">
+    <div className="px-3.5 py-3 border-t border-slate-100" data-testid="level-row">
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
+        <span className="flex items-center gap-2 text-[13px] font-bold text-slate-700">
           {icon}
           {label}
+          {hint && (
+            <button
+              type="button"
+              aria-label={infoLabel}
+              aria-expanded={showHint}
+              title={hint}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowHint((v) => !v);
+              }}
+              className="p-1 -m-1 rounded-full text-slate-300 hover:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              <Info className="w-3.5 h-3.5" />
+            </button>
+          )}
         </span>
-        <span className="text-[10px] font-mono text-slate-500 tabular-nums">
-          {draft !== null
-            ? `${draft}% · sent`
-            : reported !== null
-              ? `${reported}%`
-              : '—'}
+        {/* No number while the level is unknown — a dash read as a fault. */}
+        <span className="text-[12px] font-semibold text-slate-500 tabular-nums" data-testid="level-readout">
+          {draft !== null ? `${draft}%` : reported !== null ? `${reported}%` : ''}
         </span>
       </div>
       <input
@@ -270,12 +248,13 @@ function LevelRow({
         onTouchEnd={commit}
         onKeyUp={commit}
         onBlur={commit}
-        className={`w-full mt-1.5 ${accentClass} ${unknown ? 'opacity-60' : ''} disabled:opacity-40 disabled:cursor-not-allowed`}
+        className={`w-full mt-2 h-6 ${accentClass} ${unknown ? 'opacity-70' : ''} disabled:opacity-40 disabled:cursor-not-allowed`}
       />
-      {unknown && (
-        <p className="text-[10px] text-amber-600 leading-snug mt-1">{unknownHint}</p>
+      {hint && showHint && (
+        <p className="text-[11px] text-slate-400 leading-snug mt-1" data-testid="level-hint">
+          {hint}
+        </p>
       )}
-      {note && <p className="text-[10px] text-slate-400 leading-snug mt-1">{note}</p>}
     </div>
   );
 }
@@ -314,6 +293,15 @@ export interface DisplayControlScreen {
    */
   nativeRuntimeReport?: unknown;
   nativeRuntimeReportAt?: string | null;
+  /** The group this screen is in; its on/off schedule applies unless the screen has its own. */
+  screenGroupId?: string | null;
+  screenGroup?: { name?: string | null } | null;
+  /**
+   * The web player's soft-blank report (2026-11-02): server clock of the last
+   * report that said the black overlay is on the glass; null once one says it
+   * is gone. Rides every `GET /screens` row.
+   */
+  softBlankAt?: string | null;
 }
 
 export function ScreenDisplayControls({
@@ -340,10 +328,9 @@ export function ScreenDisplayControls({
   browserPlayer?: boolean;
 }) {
   const t = useTranslations();
-  const axisNote = makeAxisNote(t);
   const control = useDisplayControl();
   const caps = resolveDisplayControls(screen?.displayCapabilities);
-  const reportedAt = ago(screen?.displayCapabilitiesAt);
+  const locale = useLocale();
   // `tone` (2026-08-25) splits the two very different ways an action can come
   // back undelivered. 'fail' is a real outage (fan-out down, publish threw) —
   // rose, alarm-shaped. 'note' is the per-screen `no_push_socket` case: the
@@ -398,22 +385,39 @@ export function ScreenDisplayControls({
         : null,
     }),
   );
-  // The last hard power verb THIS operator got accepted here. A POWER_OFF
-  // keeps "Turn panel on" on offer until a POWER_ON follows, whatever the
-  // render proof says (a vendor-backlight panel keeps painting behind it).
-  const [lastPowerSent, setLastPowerSent] = useState<'off' | 'on' | null>(null);
-  const powerOffer = panelPowerOffer(caps.power, panelState, {
-    hardOff:
-      lastPowerSent === 'off' ||
-      (lastPowerSent !== 'on' &&
-        nativeHardOff(screen?.nativeRuntimeReport, screen?.nativeRuntimeReportAt, Date.now())),
-    mechanism: nativeBlankMechanism(screen?.nativeRuntimeReport),
+  // Sleep / Awake — ONE pair, whatever mechanism sits behind it. The state
+  // is derived by the pure `deriveSleepAwakeState` (sleep-awake.ts) from the
+  // same evidence `panelPowerOffer` used: native sleep report, render proof,
+  // and the last command the API accepted.
+  const [lastCommand, setLastCommand] = useState<{ target: SleepAwakeTarget; at: number } | null>(
+    null,
+  );
+  const [inFlight, setInFlight] = useState<SleepAwakeTarget | null>(null);
+  // One timeout per command, to re-render when the 30 s confirm window ends.
+  // No interval: nothing runs unless a command was just sent.
+  const [, setTick] = useState(0);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    },
+    [],
+  );
+  const nowMs = Date.now();
+  const sleepAwake = deriveSleepAwakeState({
+    panelState,
+    hardOff: nativeHardOff(screen?.nativeRuntimeReport, screen?.nativeRuntimeReportAt, nowMs),
+    reportAsleep: nativeReportAsleep(screen?.nativeRuntimeReport, screen?.nativeRuntimeReportAt, nowMs),
+    softBlank: softBlankFresh(screen?.softBlankAt, nowMs),
+    lastCommand,
+    inFlight,
+    now: nowMs,
   });
 
   const send = async (
     action: DisplayActionType,
-    opts: { percent?: number; revertAfterMs?: number; okMsg: string },
-  ) => {
+    opts: { percent?: number; revertAfterMs?: number; okMsg: string; quiet?: boolean },
+  ): Promise<boolean> => {
     setBusy(action);
     setStatus(null);
     try {
@@ -426,7 +430,7 @@ export function ScreenDisplayControls({
       // DELIVERY HONESTY. `success:true` only means the API accepted and
       // audited the action; `delivered` is the field that says it provably
       // left the process toward the screen. When Redis is down (a supported
-      // deploy state — CLAUDE.md: "Redis missing → API boots anyway") the
+      // deploy state — docs/DEPLOY.md: "Redis missing → API boots anyway") the
       // fan-out reaches only screens socketed to THIS replica, and there is
       // no manifest backstop for immediate actions. Painting the emerald
       // "sent" row there tells an operator a dark screen was woken when it
@@ -462,11 +466,10 @@ export function ScreenDisplayControls({
             ? t('screens.display.noPushSocket')
             : t('screens.display.notDelivered'),
         });
-        return;
+        return false;
       }
-      if (action === 'POWER_OFF') setLastPowerSent('off');
-      if (action === 'POWER_ON') setLastPowerSent('on');
-      setStatus({ ok: true, msg: opts.okMsg });
+      if (!opts.quiet) setStatus({ ok: true, msg: opts.okMsg });
+      return true;
     } catch (e) {
       // THE TIMEOUT IS NOT A FAILURE — it is an UNKNOWN, and those are not
       // the same sentence to someone standing under a dark screen.
@@ -490,6 +493,7 @@ export function ScreenDisplayControls({
             })
           : (e instanceof Error && e.message) || t('screens.display.sendFailed'),
       });
+      return false;
     } finally {
       setBusy(null);
     }
@@ -513,39 +517,34 @@ export function ScreenDisplayControls({
   };
 
   /**
-   * POWER_OFF confirmation.
-   *
-   * One dialog, not the typed-token ceremony REBOOT gets: this is only
-   * offered on a mechanism proven to round-trip on this hardware class
-   * (vendor-recipe — a backlight-node write reversed by the same node), and
-   * "Turn panel on" is right next to it. But it IS the only control in this
-   * panel that can leave a wall-mounted screen genuinely dark, so it does not
-   * fire on a single click — and the copy names Blank as the thing the
-   * operator probably wanted.
+   * Sleep / Awake. The operator picks a STATE; we pick the mechanism.
+   *   Sleep -> the panel's own power-off where this hardware proves one
+   *            (vendor standby / backlight), otherwise the soft blank.
+   *   Awake -> undo whichever of those is active: the hard power-on where
+   *            offered, then the soft wake. Recovery is never gated.
+   * No confirmation dialog: Awake is always one tap away, on every screen.
    */
-  const confirmPowerOff = async () => {
-    const ok = await appConfirm({
-      title: t('screens.display.powerOffConfirmTitle'),
-      message: t('screens.display.powerOffConfirmBody'),
-      tone: 'danger',
-      confirmLabel: t('screens.display.powerOffConfirmCta'),
-    });
-    if (!ok) return;
-    await send('POWER_OFF', { okMsg: POWER_OFF_SENT_COPY });
+  const runPower = async (target: SleepAwakeTarget) => {
+    setInFlight(target);
+    try {
+      let ok: boolean;
+      if (target === 'sleep') {
+        ok = await send(caps.power.off.available ? 'POWER_OFF' : 'BLANK', {
+          okMsg: t('screens.display.sleepSent'),
+        });
+      } else {
+        const hard = caps.power.on.available ? await send('POWER_ON', { okMsg: '', quiet: true }) : true;
+        ok = hard && (await send('WAKE', { okMsg: t('screens.display.awakeSent') }));
+      }
+      if (ok) {
+        setLastCommand({ target, at: Date.now() });
+        if (confirmTimer.current) clearTimeout(confirmTimer.current);
+        confirmTimer.current = setTimeout(() => setTick((n) => n + 1), CONFIRM_WINDOW_MS + 250);
+      }
+    } finally {
+      setInFlight(null);
+    }
   };
-
-  const header = (
-    <div className="px-3.5 pt-3 pb-1 flex items-baseline justify-between gap-2 border-t border-slate-100">
-      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
-        {t('screens.display.title')}
-      </span>
-      {reportedAt && (
-        <span className="text-[9px] text-slate-400">
-          {t('screens.display.checkedAgo', { ago: reportedAt })}
-        </span>
-      )}
-    </div>
-  );
 
   const disabled = !!readOnly;
 
@@ -554,21 +553,26 @@ export function ScreenDisplayControls({
   // difference is the floor (and therefore what the slider can even express)
   // and the copy. `caps.brightness.floor` is the API's own gate value, so
   // every position on this track is a request the server will take.
-  const brightnessRow = caps.brightness.available && (
+  const q = resolveQuickControls(caps, { browserPlayer });
+  const levelHint = (note: string | null, unknownLevel: boolean) => {
+    const parts = [unknownLevel ? t('screens.display.levelUnknown') : null, note].filter(Boolean);
+    return parts.length ? parts.join(' ') : null;
+  };
+
+  const brightnessRow = q.brightness && (
     <LevelRow
-      icon={<Sun className="w-3.5 h-3.5 text-slate-400" />}
-      label={
-        caps.brightness.softwareOnly
-          ? t('screens.display.brightnessSoftwareLabel')
-          : t('screens.display.brightness')
-      }
+      icon={<Sun className="w-4 h-4 text-slate-400" />}
+      label={t('screens.display.brightness')}
       // `min` is passed to every brightness note; only the recovery-only
       // copy interpolates it, and next-intl ignores unused values.
-      note={caps.brightness.noteKey ? t(caps.brightness.noteKey, { min: caps.brightness.floor }) : null}
+      hint={levelHint(
+        caps.brightness.noteKey ? t(caps.brightness.noteKey, { min: caps.brightness.floor }) : null,
+        reportedBrightness === null,
+      )}
+      infoLabel={t('screens.display.levelInfo', { label: t('screens.display.brightness') })}
       min={caps.brightness.floor}
       reported={reportedBrightness}
       unknownPark={100}
-      unknownHint={t('screens.display.levelUnknown')}
       disabled={disabled || lockedBy('SET_BRIGHTNESS')}
       accentClass="accent-amber-500"
       onCommit={(p) => {
@@ -581,162 +585,224 @@ export function ScreenDisplayControls({
     />
   );
 
-  // Wake — recovery direction, rendered on every screen (C3/C4).
-  const wakeButton = (
-    <button
-      type="button"
-      disabled={disabled || lockedBy('WAKE')}
-      onClick={(e) => {
-        e.stopPropagation();
-        send('WAKE', { okMsg: t('screens.display.wakeSent') });
-      }}
-      className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-    >
-      {busy === 'WAKE' ? (
-        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-      ) : (
-        <Monitor className="w-3.5 h-3.5" />
-      )}
-      {t('screens.display.wake')}
-    </button>
+  const volumeRow = q.volume && (
+    <LevelRow
+      icon={<Volume2 className="w-4 h-4 text-slate-400" />}
+      label={t('screens.display.volume')}
+      hint={levelHint(caps.volume.noteKey ? t(caps.volume.noteKey) : null, reportedVolume === null)}
+      infoLabel={t('screens.display.levelInfo', { label: t('screens.display.volume') })}
+      min={0}
+      reported={reportedVolume}
+      unknownPark={0}
+      disabled={disabled || lockedBy('SET_VOLUME')}
+      accentClass="accent-indigo-600"
+      onCommit={(p) =>
+        send('SET_VOLUME', {
+          percent: clampVolume(p),
+          okMsg: t('screens.display.volumeSent', { percent: clampVolume(p) }),
+        })
+      }
+    />
   );
 
-  // ── ROW 1: Blank / Wake — SOFT, and available on EVERY screen ────────
-  //
-  // 2026-08-25 blank/power split. Blank no longer touches the panel on any
-  // model: the player covers its own viewport with black. So this row is
-  // identical everywhere — probed panel, unprobed panel, browser player —
-  // and there is no "reported" branch left to write. Wake always reverses
-  // it, an emergency alert always overrides it, and a page reload clears it.
-  //
-  // NO DEAD-MAN REVERT ANY MORE, deliberately. The old Blank carried a
-  // 10-minute auto-wake because it could reach hardware and a forgotten
-  // click was a truck roll. A soft blank cannot strand anything, and the
-  // operator's contract is "blank should just do that" — a blank that
-  // un-blanks itself after ten minutes is not that. The copy below says what
-  // actually ends it.
-  const blankWakeRow = (
-    <div className="px-3.5 py-2.5 border-t border-slate-100">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled={disabled || lockedBy('BLANK')}
-          onClick={(e) => {
-            e.stopPropagation();
-            send('BLANK', { okMsg: BLANK_SENT_COPY });
-          }}
-          className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {busy === 'BLANK' ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <MonitorOff className="w-3.5 h-3.5" />
-          )}
-          {t('screens.display.blank')}
-        </button>
-        {wakeButton}
-      </div>
-      <p className="text-[10px] text-slate-400 leading-snug mt-1">{axisNote(caps.blank)}</p>
-    </div>
-  );
-
-  // ── ROW 2: Turn panel off / on — HARD, allowlisted ───────────────────
-  //
-  // The other half of the operator's contract: "turn on and off should do
-  // that". This is the only control here that reaches panel power.
-  //
-  // TWO questions, answered separately and joined in `panelPowerOffer`:
-  //
-  //   CAPABILITY — what can this hardware do? "Turn panel off" is offerable
-  //     ONLY on a mechanism proven to round-trip (today: vendor-recipe); on
-  //     the admin-lock family the API refuses it with
-  //     DISPLAY_BLANK_MECHANISM_UNPROVEN, so a button would be a trap.
-  //   STATE — what is the glass doing right now? Derived from the render
-  //     proof the fleet row already carries.
-  //
-  // Offering both verbs at once was the defect the operator caught: a screen
-  // that was online and actively painting showed him a single "Turn panel
-  // on" button. *"thats not correct really, the screen is already on...it
-  // should know that and say power off....or sleep, or whatever its doing."*
-  // A control whose label contradicts the screen in front of you teaches the
-  // operator to distrust the whole panel.
-  //
-  // So: painting → only OFF (and only where OFF is real); dark → only ON;
-  // unknown → neither, plus one line saying why. See `panelPowerOffer` for
-  // why the DARK case is not restricted to proven hardware.
-  const powerRow = powerOffer.showOff || powerOffer.showOn ? (
-    <div className="px-3.5 py-2.5 border-t border-slate-100">
-      <div className="text-[11px] font-bold text-slate-700 flex items-center gap-2">
-        <PowerOff className="w-3.5 h-3.5 text-slate-400" />
-        {POWER_ROW_LABEL}
-      </div>
-      <div className="flex items-center gap-2 mt-1.5">
-        {powerOffer.showOff && (
-          <button
-            type="button"
-            disabled={disabled || lockedBy('POWER_OFF')}
-            onClick={(e) => {
-              e.stopPropagation();
-              void confirmPowerOff();
-            }}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {busy === 'POWER_OFF' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <PowerOff className="w-3.5 h-3.5" />
-            )}
-            {POWER_OFF_LABEL}
-          </button>
+  // ── Sleep / Awake — the ONE power control, on every screen ───────────
+  // Highlight = the screen's current state (sleep-awake.ts). Neither is lit
+  // when the state is unknown. The pressed button spins until the screen's
+  // own report agrees; after 30 s without it we say so plainly.
+  const powerButton = (target: SleepAwakeTarget) => {
+    const isCurrent = sleepAwake.current === target;
+    const isPending = sleepAwake.pending === target;
+    // Awake is a recovery verb: never locked by another action (see lockedBy).
+    const locked = target === 'sleep' ? inFlight !== null || busy !== null : inFlight === 'awake';
+    const Icon = target === 'sleep' ? Moon : Monitor;
+    return (
+      <button
+        type="button"
+        data-testid={`power-${target}`}
+        aria-pressed={isCurrent}
+        aria-busy={isPending}
+        disabled={disabled || locked}
+        onClick={(e) => {
+          e.stopPropagation();
+          void runPower(target);
+        }}
+        className={`flex-1 min-h-11 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed ${
+          isCurrent
+            ? target === 'sleep'
+              ? 'border-slate-800 bg-slate-800 text-white shadow-sm'
+              : 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+        }`}
+      >
+        {isPending ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <Icon className="w-4 h-4" />
         )}
-        {powerOffer.showOn && (
-          <button
-            type="button"
-            disabled={disabled || lockedBy('POWER_ON')}
-            onClick={(e) => {
-              e.stopPropagation();
-              send('POWER_ON', { okMsg: POWER_ON_SENT_COPY });
-            }}
-            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {busy === 'POWER_ON' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Power className="w-3.5 h-3.5" />
-            )}
-            {POWER_ON_LABEL}
-          </button>
-        )}
-      </div>
-      <p className="text-[10px] text-slate-400 leading-snug mt-1">{powerOffer.note}</p>
-    </div>
-  ) : (
-    // Neither verb is offerable: no button at all, just the reason. Same
-    // discipline as volume:none / reboot:none — a greyed control reads as
-    // "this exists and something is wrong with my permissions".
-    <div className="px-3.5 py-2.5 border-t border-slate-100 flex items-start gap-2">
-      <PowerOff className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
-      <div className="min-w-0">
-        <div className="text-[11px] font-bold text-slate-400">{POWER_ROW_LABEL}</div>
-        <p className="text-[10px] text-slate-400 leading-snug">{powerOffer.note}</p>
-      </div>
-    </div>
-  );
-
-  const scheduleRow = (
-    <button
-      type="button"
-      onClick={onOpenSchedule}
-      className="w-full flex items-center gap-3 px-3.5 py-3 text-left text-xs font-semibold text-slate-700 hover:bg-white border-t border-slate-100 transition-colors"
-    >
-      <CalendarClock className="w-4 h-4 text-slate-400 shrink-0" />
-      <span className="flex-1 min-w-0">
-        <span className="block">{t('screens.display.scheduleRow')}</span>
-        <span className="block text-[10px] font-normal text-slate-400 mt-0.5">
-          {t('screens.display.scheduleRowSub')}
+        {target === 'sleep' ? t('screens.display.sleepLabel') : t('screens.display.awakeLabel')}
+      </button>
+    );
+  };
+  const sleepAwakeRow = (
+    <div className="px-3.5 py-2.5 border-t border-slate-100">
+      <div className="flex items-baseline justify-between gap-2 mb-1.5">
+        <span className="text-[11px] font-bold text-slate-700">
+          {t('screens.display.powerLabel')}
         </span>
-      </span>
-    </button>
+      </div>
+      <div className="flex items-center gap-2" role="group" aria-label={t('screens.display.powerLabel')}>
+        {powerButton('sleep')}
+        {powerButton('awake')}
+      </div>
+      <p className="text-[10px] text-slate-500 leading-snug mt-1.5 empty:hidden" aria-live="polite">
+        {sleepAwake.pending
+          ? sleepAwake.pending === 'sleep'
+            ? t('screens.display.pendingSleep')
+            : t('screens.display.pendingAwake')
+          : sleepAwake.unconfirmed
+            ? sleepAwake.unconfirmed === 'sleep'
+              ? t('screens.display.unconfirmedSleep')
+              : t('screens.display.unconfirmedAwake')
+            : null}
+      </p>
+    </div>
+  );
+
+  // The on/off schedule as ONE line: what actually applies — the screen's own
+  // schedule, else its group's (the API's manifest rule: screen wins).
+  const scheduleQ = useDisplaySchedules(q.schedule ? { screenId: screen.id } : null);
+  const groupScheduleQ = useDisplaySchedules(
+    q.schedule && screen.screenGroupId ? { screenGroupId: screen.screenGroupId } : null,
+  );
+  const createSchedule = useCreateDisplaySchedule();
+  const deleteSchedule = useDeleteDisplaySchedule();
+  const ownRows = scheduleQ.data ?? [];
+  const groupRows = groupScheduleQ.data ?? [];
+  const applied = resolveAppliedSchedule(ownRows, groupRows, locale);
+  const line = applied.line;
+  const groupName = screen.screenGroup?.name ?? '';
+  const groupHasSchedule = groupRows.length > 0;
+  const base =
+    line.kind === 'window'
+      ? line.more > 0
+        ? t('screens.display.scheduleLineMore', { off: line.offAt, on: line.onAt, count: line.more })
+        : t('screens.display.scheduleLineWindow', { off: line.offAt, on: line.onAt })
+      : line.kind === 'paused'
+        ? t('screens.display.scheduleLinePaused')
+        : t('screens.display.scheduleLineNone');
+  const sourceNote =
+    applied.source === 'group'
+      ? groupName
+        ? t('screens.display.scheduleFromGroupNamed', { name: groupName })
+        : t('screens.display.scheduleFromGroup')
+      : applied.source === 'screen'
+        ? t('screens.display.scheduleOwn')
+        : null;
+  const scheduleText = scheduleQ.isLoading ? t('screens.display.scheduleRow') : base;
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  // "Override for this screen": copy the group's windows onto the screen (a
+  // screen-level row wins outright), then open the editor on them.
+  const overrideForScreen = async () => {
+    setScheduleBusy(true);
+    try {
+      for (const r of groupRows.filter((g) => g.isActive !== false)) {
+        await createSchedule.mutateAsync({
+          screenId: screen.id,
+          daysOfWeek: r.daysOfWeek,
+          onTime: r.onTime,
+          offTime: r.offTime,
+          timezone: r.timezone,
+        });
+      }
+      onOpenSchedule();
+    } catch {
+      setStatus({ ok: false, msg: t('screens.display.scheduleOverrideFailed') });
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+  // "Use the group's schedule": remove the screen's own rows.
+  const applyGroupSchedule = async () => {
+    const ok = await appConfirm({
+      title: t('screens.display.scheduleUseGroup'),
+      message: t('screens.display.scheduleUseGroupConfirm'),
+    });
+    if (!ok) return;
+    setScheduleBusy(true);
+    try {
+      for (const r of ownRows) await deleteSchedule.mutateAsync(r.id);
+    } catch {
+      setStatus({ ok: false, msg: t('screens.display.scheduleOverrideFailed') });
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+  const linkBtn =
+    'shrink-0 min-h-[40px] px-2 text-[13px] font-bold text-indigo-600 hover:text-indigo-700 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-md';
+  const scheduleRow = q.schedule && (
+    <div className="px-3.5 py-3 border-t border-slate-100 min-h-[48px]" data-testid="schedule-line">
+      <div className="flex items-center gap-3">
+        <CalendarClock className="w-4 h-4 text-slate-400 shrink-0" />
+        <span className="flex-1 min-w-0 text-[13px] font-semibold text-slate-700">
+          {scheduleText}
+          {sourceNote && !scheduleQ.isLoading && (
+            <span className="block text-[11px] font-normal text-slate-500" data-testid="schedule-source">
+              {sourceNote}
+            </span>
+          )}
+        </span>
+        {applied.source === 'group' ? (
+          <button
+            type="button"
+            data-testid="schedule-override"
+            disabled={readOnly || scheduleBusy}
+            onClick={() => void overrideForScreen()}
+            className={linkBtn}
+          >
+            {t('screens.display.scheduleOverride')}
+          </button>
+        ) : (
+          <button type="button" onClick={onOpenSchedule} className={linkBtn}>
+            {line.kind === 'none' ? t('screens.display.scheduleSetUp') : t('screens.display.scheduleEdit')}
+          </button>
+        )}
+      </div>
+      {applied.source === 'screen' && groupHasSchedule && (
+        <div className="pl-7">
+          <button
+            type="button"
+            data-testid="schedule-use-group"
+            disabled={readOnly || scheduleBusy}
+            onClick={() => void applyGroupSchedule()}
+            className={`${linkBtn} px-0`}
+          >
+            {t('screens.display.scheduleUseGroup')}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const restartRow = q.restart && (
+    <div className="px-3.5 py-2 border-t border-slate-100">
+      <button
+        type="button"
+        data-testid="restart-player"
+        disabled={disabled || lockedBy('REBOOT')}
+        onClick={(e) => {
+          e.stopPropagation();
+          void confirmReboot();
+        }}
+        className="w-full min-h-[44px] flex items-center gap-3 px-0 text-left text-[13px] font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {busy === 'REBOOT' ? (
+          <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+        ) : (
+          <RotateCw className="w-4 h-4 text-slate-400" />
+        )}
+        {t('screens.display.reboot')}
+      </button>
+    </div>
   );
 
   // Result of the last command. "Sent" — not "done": the wire tells us the
@@ -765,162 +831,17 @@ export function ScreenDisplayControls({
     </div>
   );
 
-  // ── Browser player, nothing reported ────────────────────────────────
-  // The explainer stays: remote power, brightness and on/off schedules all
-  // need the native bridge, and this screen will never have one.
-  //
-  // But Blank / Wake now DO work here (2026-08-25). The soft blank is drawn
-  // by the player page itself, so a browser player blanks and wakes exactly
-  // like a Goodview panel — this is the first control in this panel that is
-  // genuinely bridge-free, and withholding it would be the mirror image of
-  // the "dead button" mistake this branch was created to fix.
-  if (browserPlayer && !caps.reported) {
-    return (
-      <div className="bg-slate-50/60">
-        {header}
-        <div className="px-3.5 pb-3 pt-1 flex items-start gap-2">
-          <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-          <p className="text-[10px] text-slate-500 leading-snug">
-            {t('screens.display.browserPlayer')}
-          </p>
-        </div>
-        {blankWakeRow}
-        {statusRow}
-      </div>
-    );
-  }
-
-  // ── Nothing reported yet ────────────────────────────────────────────
-  // Explainer + EXACTLY the actions the server gate accepts on a null
-  // verdict: Blank, Wake, a brightness raise, and the schedule. Volume,
-  // Reboot and panel POWER are withheld — the API refuses all three here, so
-  // a button for any of them would fail 100% of the time.
-  //
-  // Blank JOINED this list on 2026-08-25 and that is the point of the split:
-  // it is soft now, so it works on an unprobed screen exactly as well as on
-  // a probed one. `powerRow` renders as its explainer sentence, which is
-  // where the old "blanking stays disabled until it reports" line went.
-  if (!caps.reported) {
-    return (
-      <div className="bg-slate-50/60">
-        {header}
-        <div className="px-3.5 pb-3 pt-1 flex items-start gap-2">
-          <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-          <p className="text-[10px] text-slate-500 leading-snug">
-            {t('screens.display.notReported')}
-          </p>
-        </div>
-        {brightnessRow}
-        {blankWakeRow}
-        {powerRow}
-        {scheduleRow}
-        {statusRow}
-        {/* 2026-10-18 — basic Android settings: their own report, so they
-            do not wait on this panel's display verdict. */}
-        <ScreenDeviceSettings screenId={screen.id} readOnly={disabled} />
-      </div>
-    );
-  }
-
+  // Every control below renders only where THIS screen can do it
+  // (`resolveQuickControls`). No greyed rows, no "not possible" notes, no
+  // explainer paragraphs — a feature the screen lacks is simply absent.
   return (
-    <div className="bg-slate-50/60">
-      {header}
-
-      {/* ── Volume ─────────────────────────────────────────────── */}
-      {caps.volume.available ? (
-        <LevelRow
-          icon={<Volume2 className="w-3.5 h-3.5 text-slate-400" />}
-          label={t('screens.display.volume')}
-          note={caps.volume.noteKey ? t(caps.volume.noteKey) : null}
-          min={0}
-          reported={reportedVolume}
-          unknownPark={0}
-          unknownHint={t('screens.display.levelUnknown')}
-          disabled={disabled || lockedBy('SET_VOLUME')}
-          accentClass="accent-indigo-600"
-          onCommit={(p) =>
-            send('SET_VOLUME', {
-              percent: clampVolume(p),
-              okMsg: t('screens.display.volumeSent', { percent: clampVolume(p) }),
-            })
-          }
-        />
-      ) : (
-        caps.volume.noteKey && (
-          <div className="px-3.5 py-2.5 border-t border-slate-100 flex items-start gap-2">
-            <VolumeX className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <div className="text-[11px] font-bold text-slate-400">
-                {t('screens.display.volume')}
-              </div>
-              <p className="text-[10px] text-slate-400 leading-snug">{t(caps.volume.noteKey)}</p>
-            </div>
-          </div>
-        )
-      )}
-
-      {/* ── Brightness ─────────────────────────────────────────── */}
+    <div data-testid="quick-controls">
+      {sleepAwakeRow}
+      {volumeRow}
       {brightnessRow}
-
-      {/* ── Blank / Wake — SOFT, always available (2026-08-25) ──── */}
-      {blankWakeRow}
-
-      {/* ── Panel power — HARD, allowlisted (2026-08-25) ────────── */}
-      {powerRow}
-
-      {/* ── Reboot ─────────────────────────────────────────────── */}
-      {/* NOTE: on today's fleet this ALWAYS takes the `else` branch — we do
-          not hold device owner, so the probe reports reboot:'none'. The
-          else branch is a single explanatory row, not an empty section and
-          not a dangling divider (the divider belongs to the row). */}
-      {caps.reboot.available ? (
-        <div className="px-3.5 py-2.5 border-t border-slate-100">
-          <button
-            type="button"
-            disabled={disabled || lockedBy('REBOOT')}
-            onClick={(e) => {
-              e.stopPropagation();
-              void confirmReboot();
-            }}
-            // Fixed rose, not brand color: a destructive control must read
-            // as danger on a tenant whose brand primary happens to be mint.
-            className="w-full flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-rose-200 bg-white text-[11px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {busy === 'REBOOT' ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Power className="w-3.5 h-3.5" />
-            )}
-            {t('screens.display.reboot')}
-          </button>
-          <p className="text-[10px] text-slate-400 leading-snug mt-1">
-            {t('screens.display.rebootHint')}
-          </p>
-        </div>
-      ) : (
-        // reboot: 'none' — per the spec there is NO button here at all. The
-        // line below is text, and it tells the operator what would unlock it
-        // instead of leaving a silent hole where a control used to be.
-        caps.reboot.noteKey && (
-          <div className="px-3.5 py-2.5 border-t border-slate-100 flex items-start gap-2">
-            <Power className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <div className="text-[11px] font-bold text-slate-400">
-                {t('screens.display.reboot')}
-              </div>
-              <p className="text-[10px] text-slate-400 leading-snug">{t(caps.reboot.noteKey)}</p>
-            </div>
-          </div>
-        )
-      )}
-
-      {/* ── On/off schedule ────────────────────────────────────── */}
       {scheduleRow}
-
+      {restartRow}
       {statusRow}
-
-      {/* ── Android settings (2026-10-18) — collapsed until opened ── */}
-      <ScreenDeviceSettings screenId={screen.id} readOnly={disabled} />
     </div>
   );
 }

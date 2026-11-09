@@ -10,7 +10,7 @@ import org.json.JSONObject
  * (PlaybackLeaseTest, NativeFirstBoundaryTest); FaceVideoBox is the Android
  * half that acts on these decisions.
  *
- *  • PROTOCOL 4 rides the EXISTING `sharedVideoPrepare` (CLAUDE.md player rule
+ *  • PROTOCOL 4 rides the EXISTING `sharedVideoPrepare` (apps/player/CLAUDE.md player rule
  *    9: no new bridge method). A `version: 4` message carries an `op`:
  *      {version:4, op:"intend",  screenId, revision, sha256, assetId, start:"now"|"boundary", lease}
  *      {version:4, op:"release", lease, at:"now"|"boundary"}
@@ -361,7 +361,7 @@ internal object PlaybackSessionPolicy {
     fun fateOf(reason: String): Outcome {
         val code = NativeEndReasons.normalize(reason)
         return when {
-            code == "emergency-held" -> Outcome.END_SUSPEND_INTENT
+            code == "emergency-held" || code == FaceVideoPolicy.EMERGENCY_HELD_OTHER_FACE -> Outcome.END_SUSPEND_INTENT
             code in DISCARDING -> Outcome.END_DISCARD_INTENT
             NativeEndReasons.isFault(code) || NativeEndReasons.isRefused(code) -> Outcome.END_DISCARD_INTENT
             else -> Outcome.END_KEEP_INTENT
@@ -385,7 +385,7 @@ internal object PlaybackSessionPolicy {
 
     /** Ends that are deliberate (an alert, the operator, the page itself): they never count toward settling (§3.4). */
     val DELIBERATE: Set<String> = setOf(
-        "emergency-held", "released", "content-changed", "superseded", "page-requested", "operator-ui",
+        "emergency-held", FaceVideoPolicy.EMERGENCY_HELD_OTHER_FACE, "released", "content-changed", "superseded", "page-requested", "operator-ui",
         "document-retired", "page-stopped",
     )
 

@@ -37,7 +37,7 @@ export interface RecommendedHardware {
   href: string;
   /** Standout capabilities — first 3 from the catalog highlights. */
   topHighlights: string[];
-  /** Per-CLAUDE.md Concierge style — single short sentence the UI surfaces as a tooltip. */
+  /** Per docs/product/CONCIERGE.md Concierge style — single short sentence the UI surfaces as a tooltip. */
   shortBlurb: string;
 }
 

@@ -1,3 +1,4 @@
+import { unitLastAliveAt } from '../../screens/screen-faces';
 /**
  * Customer alert emails — one test per rule that keeps an email from going
  * out (2026-10-23). The PR's suppression table names these tests.
@@ -11,6 +12,7 @@ import {
   lastPowerCommandOf,
   maintenanceReason,
   repeatsDailyDark,
+  dailyPatternReason,
   sharedProofStall,
   missedOnTime,
   noContentVerdict,
@@ -21,6 +23,7 @@ import {
   type PowerEvidence,
   type ScreenFacts,
 } from './customer-alert-policy';
+import { renderEmergencyEmail } from './customer-alert-copy';
 import { lastOnTransitionAtOrBefore, otaWindowOf, parseOnWindow } from './schedule-windows';
 
 const MIN = 60_000;
@@ -511,6 +514,52 @@ describe('the usual nightly dark spell is not an outage (venue closes, outlet ti
   });
 });
 
+describe('a nightly screen that does not come back is an outage 60 minutes past its learned return (2026-11-01)', () => {
+  const H = 60 * MIN;
+  const drop = NOW - 10 * MIN;
+  const darkFor = 13 * H + 16 * MIN;
+  const prev = { open: false, reason: null, startedAt: new Date(drop - 24 * H), closedAt: new Date(drop - 24 * H + darkFor) };
+  const at = (afterDropMs: number) => drop + afterDropMs;
+
+  it('returns on time (or within the hour after): silent the whole way', () => {
+    for (const t of [20 * MIN, 6 * H, darkFor - MIN, darkFor, darkFor + 59 * MIN]) {
+      expect(repeatsDailyDark(prev, drop, at(t))).toBe(true);
+      expect(intendedDowntime(facts({ offlineHistory: prev, lastPingAt: new Date(drop) }), 'OFFLINE', drop, at(t))).toBe('daily-pattern');
+    }
+  });
+  it('never returns: no longer excused 60 min past the learned return, so the offline email follows', () => {
+    const late = at(darkFor + 61 * MIN);
+    expect(repeatsDailyDark(prev, drop, late)).toBe(false);
+    expect(intendedDowntime(facts({ offlineHistory: prev, lastPingAt: new Date(drop) }), 'OFFLINE', drop, late)).toBeNull();
+  });
+  it('the learned return survives the row being rewritten (open row `daily-pattern:<ms>`)', () => {
+    const reason = dailyPatternReason(prev, drop);
+    expect(reason).toBe(`daily-pattern:${darkFor}`);
+    const open = { open: true, reason, startedAt: new Date(drop), closedAt: null };
+    expect(repeatsDailyDark(open, drop, at(darkFor + 59 * MIN))).toBe(true);
+    expect(repeatsDailyDark(open, drop, at(darkFor + 61 * MIN))).toBe(false);
+  });
+  it('with an on/off schedule: held 60 min past the switch-on, then emailed; a screen with no pattern is emailed at once', () => {
+    const onAt = NOW - 30 * MIN;
+    const last = new Date(onAt - 8 * H);
+    const f = facts({ offlineHistory: { ...prev, startedAt: new Date(last.getTime() - 24 * H), closedAt: new Date(last.getTime() - 24 * H + 13 * H) }, lastPingAt: last });
+    expect(intendedDowntime(f, 'OFFLINE', onAt, onAt + 59 * MIN, 'missed-on-time')).toBe('daily-pattern');
+    expect(intendedDowntime(f, 'OFFLINE', onAt, onAt + 61 * MIN, 'missed-on-time')).toBeNull();
+    expect(intendedDowntime(facts({ lastPingAt: last }), 'OFFLINE', onAt, onAt + 20 * MIN, 'missed-on-time')).toBeNull();
+  });
+});
+
+describe('every drill and live emergency start and end sends a record copy', () => {
+  const render = (event: 'TRIGGERED' | 'CLEARED', isDrill: boolean) =>
+    renderEmergencyEmail('en', { event, alertType: 'LOCKDOWN', isDrill, locationNames: ['Lincoln'], at: new Date(NOW) }, { emergencyUrl: 'https://x/e', manageUrl: 'https://x/m' });
+  it('drill start, drill clear, live trigger and live all-clear all render, each with its own subject', () => {
+    const subjects = [render('TRIGGERED', true), render('CLEARED', true), render('TRIGGERED', false), render('CLEARED', false)].map((r) => r.subject);
+    expect(new Set(subjects).size).toBe(4);
+    expect(subjects[0].toLowerCase()).toContain('drill');
+    expect(subjects[1].toLowerCase()).toContain('drill');
+  });
+});
+
 describe('picture proof that stopped on several screens at once is one cause, not N dead screens', () => {
   const at = NOW - 40 * MIN;
   it('7 screens of one organisation whose proof stopped within 11 s are all held back', () => {
@@ -523,5 +572,21 @@ describe('picture proof that stopped on several screens at once is one cause, no
   });
   it('three screens at the same second but in three different organisations are not a stall of one', () => {
     expect(sharedProofStall(['a', 'b', 'c'].map((o) => ({ screenId: o, orgId: o, startedAtMs: at }))).size).toBe(0);
+  });
+});
+
+describe('back face liveness is the unit\'s (2026-11-02)', () => {
+  // Real row shape: back face stopped 16:39:50, front last seen 16:40:00 (both pre-incident).
+  const back = { lastPingAt: new Date('2026-11-01T16:39:50Z') };
+  it('a face with a fresher front is alive at the front\'s time', () => {
+    expect(unitLastAliveAt(back, { lastPingAt: new Date('2026-11-01T19:50:00Z'), nativeRuntimeReportAt: null })?.toISOString()).toBe('2026-11-01T19:50:00.000Z');
+  });
+  it('the front\'s native heartbeat counts too', () => {
+    expect(unitLastAliveAt(back, { lastPingAt: new Date('2026-11-01T16:40:00Z'), nativeRuntimeReportAt: new Date('2026-11-01T19:00:00Z') })?.toISOString()).toBe('2026-11-01T19:00:00.000Z');
+  });
+  it('a silent unit stays at the newest of the stale times; a primary is judged by its own ping', () => {
+    expect(unitLastAliveAt(back, { lastPingAt: new Date('2026-11-01T16:40:00Z') })?.toISOString()).toBe('2026-11-01T16:40:00.000Z');
+    expect(unitLastAliveAt(back, null)).toEqual(back.lastPingAt);
+    expect(unitLastAliveAt({ lastPingAt: null }, null)).toBeNull();
   });
 });

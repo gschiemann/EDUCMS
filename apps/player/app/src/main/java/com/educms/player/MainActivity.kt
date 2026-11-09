@@ -227,9 +227,9 @@ class MainActivity : ComponentActivity() {
      * [BRIDGE_NONCE_RETRY_MAX] × [BRIDGE_NONCE_RETRY_MS] ≈ 6 s of trying,
      * re-armed from scratch by the next main-frame document callback.
      */
-    private var bridgeNonceRetriesLeft: Int = 0
+    private val bridgeNonceDelivery = com.educms.player.security.BridgeNonceDelivery(BRIDGE_NONCE_RETRY_MAX + 1)
 
-    /** Main-thread runnable for [bridgeNonceRetriesLeft]. One at a time. */
+    /** Main-thread runnable for the current delivery checkpoint. One at a time. */
     private var bridgeNonceRetry: Runnable? = null
 
     /**
@@ -563,6 +563,9 @@ class MainActivity : ComponentActivity() {
         if (runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(true)) return
         when (source) {
             "boot diagnostic" -> com.educms.player.boot.BootDiagnostics.retryNow("the Network screen connected")
+            // 2026-10-26 — opened from the USB card's "Network settings": online
+            // now, so the screen can fetch its USB key — read the drive again.
+            "usb card" -> com.educms.player.usb.UsbAutoImport.importNow("the Network screen connected")
             "back menu" -> runCatching {
                 val pageLoadNow = com.educms.player.boot.BootDiagnostics.tracker.facts().loadStartedAtMs
                 if (pageLoadNow != pageLoadAtOpen) {
@@ -614,6 +617,8 @@ class MainActivity : ComponentActivity() {
         // 2026-10-23 — a person is fixing the network on VenueOS's Network
         // screen: the card must not raise itself over what they are typing.
         if (com.educms.player.network.NetworkScreen.isShowing()) "the network screen is open" else
+        // 2026-10-26 — a person is reading the USB card (it closes by itself).
+        if (com.educms.player.usb.UsbImportCard.isShowing()) "the USB card is open" else
         com.educms.player.boot.bootDiagnosticSuppression(
             emergencyHeld = runCatching {
                 DisplayEmergency.isHeld(applicationContext)
@@ -631,6 +636,8 @@ class MainActivity : ComponentActivity() {
         )
 
     companion object {
+        /** The storage permission dialog the USB card's Allow raises on Android 10 and older. */
+
         /**
          * SEC-002 (re-audit) — spacing and cap for the bridge-nonce
          * re-delivery pump. 24 × 250 ms ≈ 6 s of trying per main-frame
@@ -1513,6 +1520,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         liveInstances.incrementAndGet()
         PlayerLogger.i("MainActivity", "onCreate — ${Build.MANUFACTURER} ${Build.MODEL} SDK ${Build.VERSION.SDK_INT}")
+        // 1.1.59 — location for the Wi-Fi list is no longer asked here: it is
+        // part of the setup list's ONE permission dialog (SetupCeremony
+        // STEP_RUNTIME), with notifications and storage. Two dialogs from two
+        // owners on first launch is what that list exists to stop.
         // 2026-05-07 (v1.0.52) — device beacon. Diagnostic-only logging
         // expanded so support can answer "what's the kiosk's actual
         // hardware / WebView / ABI / network state?" from a single
@@ -1886,6 +1897,10 @@ class MainActivity : ComponentActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                // 2026-10-26 — the USB card sits above everything of ours and
+                // Back always closes it (its own key handler normally consumes
+                // the key — this is the belt for focus that escaped behind it).
+                if (runCatching { com.educms.player.usb.UsbImportCard.back() }.getOrDefault(false)) return
                 // 2026-10-23 — the Network screen owns Back while it is up
                 // (one step back; its own key handler normally consumes the
                 // key — this is the belt for focus that escaped behind it).
@@ -2590,6 +2605,73 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    // --- Manager wave 3 (#12): the Install tap for a COMPANION upgrade ---
+    // See CompanionTapPolicy. Process-scoped, main-thread state.
+    private var companionCardsShown = 0
+    private var companionDeclinedAtElapsedMs = 0L
+    private var companionTapReportedVc = 0
+
+    private fun companionEmergencyHeld(): Boolean =
+        com.educms.player.ota.PendingInstallStore.emergencyHeldNow() ||
+            runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(false)
+
+    private fun verifyCompanionPromptAppeared(raisedAtMs: Long) {
+        if (isFinishing || isDestroyed) return
+        val pending = com.educms.player.ota.OtaInstallReceiver.peekPendingInstallPrompt()
+        val now = android.os.SystemClock.elapsedRealtime()
+        val facts = com.educms.player.ota.CompanionTapPolicy.Facts(
+            stagedForCompanion = pending != null && pending.selfOtaVersionCode == 0 &&
+                (pending.targetPackage == MANAGER_PKG || pending.targetPackage == "$MANAGER_PKG.debug"),
+            dialogAppeared = com.educms.player.ota.UpdatePromptPolicy.dialogAppeared(raisedAtMs, lastPausedAtElapsedMs),
+            foreground = isInForeground,
+            emergencyHeld = companionEmergencyHeld(),
+            standbyActive = runCatching { com.educms.player.standby.UserStandby.isActive(applicationContext) }.getOrDefault(false),
+            sinceDeclineMs = companionDeclinedAtElapsedMs.takeIf { it > 0L }?.let { now - it },
+            cardsShownThisProcess = companionCardsShown,
+        )
+        if (!com.educms.player.ota.CompanionTapPolicy.shouldShowCard(facts)) return
+        clearInstallPromptHold("the companion confirmation did not come up")
+        companionCardsShown += 1
+        com.educms.player.ota.UpdateReadyCard.show(
+            activity = this,
+            versionLabel = "",
+            forCompanion = true,
+            emergencyHeld = { companionEmergencyHeld() },
+            decorate = ::applyRemoteFocus,
+            onInstall = {
+                val again = com.educms.player.ota.OtaInstallReceiver.peekPendingInstallPrompt()
+                if (again != null) raiseInstallPrompt(again, "companion-card-ok")
+                else ManagerBootstrap.bootstrapIfNeeded(applicationContext)
+            },
+            onLater = {
+                companionDeclinedAtElapsedMs = android.os.SystemClock.elapsedRealtime()
+                reportCompanionNeedsTap("declined at the card")
+                releaseManagerUpgradeGate("a person chose Not now on the companion card")
+            },
+            onClosed = { runCatching { if (!nativeCardOwnsRemote()) webView.requestFocus() } },
+        )
+    }
+
+    /**
+     * Tell the dashboard a companion upgrade is waiting for a person - the same
+     * NEEDS_TAP the Player's own update reports. Once per target versionCode per
+     * process; never during an alert; off the main thread.
+     */
+    private fun reportCompanionNeedsTap(why: String) {
+        val bundledVc = managerGateTargetVc.takeIf { it > 0 } ?: managerUpgradeHoldAttemptedVc
+        val installed = readInstalledManagerVersionCode()
+        if (!com.educms.player.ota.CompanionTapPolicy.shouldReport(bundledVc, installed, companionEmergencyHeld())) return
+        if (companionTapReportedVc == bundledVc) return
+        companionTapReportedVc = bundledVc
+        PlayerLogger.i("MainActivity", "companion upgrade vc=$bundledVc waiting for an Install tap ($why) - reporting NEEDS_TAP")
+        val app = applicationContext
+        Thread {
+            com.educms.player.ota.OtaStateReporter.report(
+                app, "NEEDS_TAP", null, com.educms.player.ota.CompanionTapPolicy.reportMessage(null),
+            )
+        }.apply { isDaemon = true }.start()
+    }
+
     private fun raiseInstallPrompt(
         staged: com.educms.player.ota.StagedInstallPrompt,
         source: String,
@@ -2625,6 +2707,14 @@ class MainActivity : ComponentActivity() {
             if (staged.selfOtaVersionCode > 0) {
                 window.decorView.postDelayed(
                     { verifyOwnPromptAppeared(staged, raisedAt) },
+                    com.educms.player.ota.UpdatePromptPolicy.VERIFY_AFTER_MS,
+                )
+            }
+            else if (staged.targetPackage == MANAGER_PKG || staged.targetPackage == "$MANAGER_PKG.debug") {
+                // Manager wave 3 (#12): the same verification for a COMPANION
+                // upgrade's confirmation - if Android refused it, the card.
+                window.decorView.postDelayed(
+                    { verifyCompanionPromptAppeared(raisedAt) },
                     com.educms.player.ota.UpdatePromptPolicy.VERIFY_AFTER_MS,
                 )
             }
@@ -2724,6 +2814,8 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(wv: WebView) {
+        bridgeNonceDelivery.invalidate()
+        bridgeNonceNeedsEval = false
         val sharedMedia = com.educms.player.media.SharedVideoHost.attach(0, wv,
             foreground = { isInForeground }, window = { window }, operatorUiClear = ::nativeVideoUiClear)
         sharedVideoHost = sharedMedia
@@ -2752,6 +2844,15 @@ class MainActivity : ComponentActivity() {
             @Suppress("DEPRECATION")
             WebSettingsCompat.setForceDark(wv.settings, WebSettingsCompat.FORCE_DARK_AUTO)
         }
+
+        // Legacy-engine compatibility layer: on a WebView older than
+        // LegacyEnginePolicy.MODERN_WEBVIEW_MAJOR, missing JS builtins are
+        // defined at document start for website zones in iframes. The
+        // player's own origin is skipped, so this bundle (and its emergency
+        // path) runs on the unmodified engine. No bridge, no listener.
+        com.educms.player.webcompat.LegacyEngineCompat.install(
+            applicationContext, wv, "player", listOfNotNull(HostAllowlist.playerOrigin()),
+        )
 
         // ── AND-002 / SEC-002 — ONE handler set, ONE transport ──────
         // Built once and handed to the origin-scoped `NativeBridgeChannel`
@@ -3235,6 +3336,9 @@ class MainActivity : ComponentActivity() {
                 // logged inside openSetupChecklistNow.
                 onOpenSetupChecklist = { openSetupChecklistNow("dashboard") },
                 onOpenNetworkScreen = { runOnUiThread { openNetworkScreen("back menu") } },
+                onClearUpdateQuarantine = { PlayerApp.clearManagerQuarantine(applicationContext) },
+                // 2026-10-26 — the Back menu's "Import from USB": read the drive now, on the card.
+                onImportFromUsb = { runOnUiThread { com.educms.player.usb.UsbAutoImport.importNow("back menu") } },
                 // ── BOOT + REGISTRATION PROOF (2026-09-02, P0-2) ────────
                 // The three facts an HTTP 200 + onPageFinished cannot give
                 // us. Bridge callbacks arrive on the bridge worker thread;
@@ -3407,6 +3511,7 @@ class MainActivity : ComponentActivity() {
                 if (failed === webView) {
                     bridgeNonceRetry?.let { failed.removeCallbacks(it) }
                     bridgeNonceRetry = null
+                    bridgeNonceDelivery.invalidate()
                     // P2-6 — the remote's focus followed the old view.
                     val hadFocus = runCatching { failed.hasFocus() }.getOrDefault(false)
                     val (fresh, delayMs) = primaryRendererRecovery.replace(failed, didCrash)
@@ -3455,8 +3560,8 @@ class MainActivity : ComponentActivity() {
             // Since the re-audit made the gate DEFAULT-DENY, a dropped
             // injection costs the MAIN frame its control plane rather than
             // opening the surface to everyone, so this is a bounded retry
-            // rather than a single shot. See [bridgeNonceRetriesLeft].
-            onMainFrameDocument = { view, _ -> sharedMedia.invalidate(); pumpBridgeNonceDelivery(view) },
+            // rather than a single shot. See [bridgeNonceDelivery].
+            onMainFrameDocument = { view, url -> sharedMedia.invalidate(); pumpBridgeNonceDelivery(view, url) },
             onMainFrameStarted = { com.educms.player.display.EmergencyPaintRecovery.documentStarted(applicationContext, 0) },
             onPageFinishedOk = {
                 if (wv !== webView) return@SafePlayerWebViewClient
@@ -3487,16 +3592,52 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * USB sticks (2026-10-22). Idempotent — runs on every (re)configured
-     * WebView. The page learns of a fresh import through a DOM event (no new
-     * bridge method); the service worker's media fetches are answered from the
-     * import; the one-time file-access screen is never opened over an alert.
+     * USB sticks (2026-10-22; on the glass since 2026-10-26). Idempotent —
+     * runs on every (re)configured WebView. The page learns of a fresh import
+     * through a DOM event; the service worker's media fetches are answered
+     * from the import; the USB card (usb.UsbImportCard) says what the screen
+     * is doing with a stick and never opens over an alert, and Android's
+     * file-access page opens only from a person's press on the card's Allow.
      */
     private fun installUsbHooks() {
         val ref = java.lang.ref.WeakReference(this)
         com.educms.player.usb.UsbAutoImport.onImported = { ref.get()?.notifyPageUsbImported() }
-        com.educms.player.usb.UsbAutoImport.onNeedsFileAccess = { ref.get()?.requestUsbFileAccess() }
+        val host = usbHost ?: object : com.educms.player.usb.UsbAutoImport.Host {
+            override fun show(state: com.educms.player.usb.UsbCardState, allowOpening: Boolean): Boolean =
+                ref.get()?.showUsbCard(state, allowOpening) ?: false
+
+            override fun driveRemoved() {
+                com.educms.player.usb.UsbImportCard.driveRemoved()
+            }
+        }
+        usbHost = host
+        com.educms.player.usb.UsbAutoImport.host = host
         com.educms.player.usb.UsbServiceWorkerHook.install()
+    }
+
+    /** This Activity's USB card host (so a destroyed instance only ever clears its own). */
+    private var usbHost: com.educms.player.usb.UsbAutoImport.Host? = null
+
+    private fun showUsbCard(state: com.educms.player.usb.UsbCardState, allowOpening: Boolean): Boolean {
+        if (isFinishing || isDestroyed) return false
+        if (!allowOpening && !com.educms.player.usb.UsbImportCard.isShowing()) return false
+        // A suppressed card must not interrupt video beneath a text banner.
+        if (runCatching { DisplayEmergency.isHeld(this) }.getOrDefault(true)) return false
+        sharedVideoHost?.yieldToUi()
+        return com.educms.player.usb.UsbImportCard.show(this, state) { action, at -> onUsbCardAction(action, at) }
+    }
+
+    /** A press on the USB card. Main thread. */
+    private fun onUsbCardAction(action: com.educms.player.usb.UsbAction, state: com.educms.player.usb.UsbCardState) {
+        when (action) {
+            com.educms.player.usb.UsbAction.ALLOW -> openUsbFileAccess()
+            com.educms.player.usb.UsbAction.LOOK_AGAIN -> com.educms.player.usb.UsbAutoImport.importNow("look again on the card (${state.stage})")
+            com.educms.player.usb.UsbAction.NETWORK -> {
+                com.educms.player.usb.UsbImportCard.hide("network settings")
+                if (!openNetworkScreen("usb card")) openNetworkSettings()
+            }
+            com.educms.player.usb.UsbAction.CLOSE -> com.educms.player.usb.UsbImportCard.hide("closed by a person (${state.stage})")
+        }
     }
 
     private fun notifyPageUsbImported() {
@@ -3509,21 +3650,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestUsbFileAccess() {
-        if (DisplayEmergency.isHeld(this)) return
-        if (Build.VERSION.SDK_INT >= 30) {
-            if (android.os.Environment.isExternalStorageManager()) return
-            runCatching {
-                startActivity(
-                    Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                        .setData(Uri.parse("package:$packageName")),
-                )
-            }.onFailure { PlayerLogger.w("MainActivity", "usb: all-files access screen unavailable: ${it.message}") }
-        } else if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            runCatching { requestPermissions(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), 4711) }
+    /**
+     * The USB card's "Finish screen setup" (1.1.59; was "Allow" since
+     * 2026-10-26) — a PERSON's press. The card no longer opens a permission
+     * page of its own: every grant lives on the one setup list, so this opens
+     * THAT list, where "Play from a USB drive" (Android 11+) or the permission
+     * dialog (older Android) is a row. The card reads the drive again when the
+     * person comes back (UsbAutoImport.hostResumed). Never over an alert,
+     * never inside a pinned task (the list refuses both itself).
+     */
+    private fun openUsbFileAccess() {
+        if (runCatching { DisplayEmergency.isHeld(this) }.getOrDefault(true)) return
+        val usb = com.educms.player.usb.UsbAutoImport
+        if (usb.hasFileAccess()) {
+            usb.importNow("access already granted")
+            return
         }
+        if (runCatching { LockTaskController.isActive(this) }.getOrDefault(false)) {
+            PlayerLogger.w("UsbImportCard", "setup list not opened — the kiosk is pinned")
+            usb.noAccessPage()
+            return
+        }
+        com.educms.player.usb.UsbImportCard.hide("finish screen setup")
+        usb.awaitingAccess()
+        openSetupChecklistNow("usb card")
     }
 
     /**
@@ -3542,41 +3692,40 @@ class MainActivity : ComponentActivity() {
      * it is already in every player document before any frame script runs.
      *
      * Idempotent and self-cancelling: `arm()` flips a latch, so a duplicate
-     * delivery is free, and the pump stops the moment [BridgeNonce.armed] is
-     * true — or when the budget runs out, which leaves the screen in the
+     * delivery is free, and the pump stops after this checkpoint acknowledges
+     * delivery — or when the budget runs out, which leaves the screen in the
      * honest degraded state (content + emergency intact, control plane shut)
      * rather than spinning a timer forever on a panel whose WebView will
      * never run our JS.
      */
-    private fun pumpBridgeNonceDelivery(view: WebView) {
+    private fun pumpBridgeNonceDelivery(view: WebView, url: String) {
         if (view !== webView) return
         val n = bridgeNonce ?: return
         if (!bridgeNonceNeedsEval) return
         bridgeNonceRetry?.let { view.removeCallbacks(it) }
         bridgeNonceRetry = null
-        bridgeNonceRetriesLeft = BRIDGE_NONCE_RETRY_MAX
-        deliverBridgeNonceOnce(view, n)
+        val checkpoint = bridgeNonceDelivery.begin()
+        if (!com.educms.player.security.BridgeNonceDelivery.trustedUrl(url, HostAllowlist.playerOrigin())) return
+        deliverBridgeNonceOnce(view, n, checkpoint)
     }
 
     /** One attempt, plus the re-arm. See [pumpBridgeNonceDelivery]. */
-    private fun deliverBridgeNonceOnce(view: WebView, n: com.educms.player.security.BridgeNonce) {
-        if (n.armed()) return
-        NativeBridgeChannel.injectBridgeNonceIntoTopFrame(view, n.value()) { n.arm() }
-        if (n.armed() || bridgeNonceRetriesLeft <= 0) {
-            if (!n.armed()) {
-                PlayerLogger.w(
-                    "Player",
-                    "SEC-002 — bridge nonce still UNDELIVERED after $BRIDGE_NONCE_RETRY_MAX attempts. " +
-                        "This screen keeps playing content and still takes an emergency hold; its " +
-                        "control-plane bridge methods (unpair/setBootstrap/logs/…) stay refused " +
-                        "until a delivery lands. Reported as bridgeNonceArmed=false in deviceInfo.",
-                )
-            }
+    private fun deliverBridgeNonceOnce(view: WebView, n: com.educms.player.security.BridgeNonce, checkpoint: Long) {
+        if (view !== webView || n !== bridgeNonce || isDestroyed || isFinishing) return
+        if (!bridgeNonceDelivery.isCurrent(checkpoint)) return
+        val attempt = bridgeNonceDelivery.next(checkpoint)
+        if (attempt == null) {
             bridgeNonceRetry = null
+            if (!bridgeNonceDelivery.isDelivered(checkpoint)) {
+                PlayerLogger.w("Player", "SEC-002 — current player document delivery budget exhausted; control-plane calls remain nonce-gated")
+            }
             return
         }
-        bridgeNonceRetriesLeft -= 1
-        val again = Runnable { deliverBridgeNonceOnce(view, n) }
+        NativeBridgeChannel.injectBridgeNonceIntoTopFrame(view, n.value(), attempt.acknowledgement) { result ->
+            if (view === webView && n === bridgeNonce && !isDestroyed && !isFinishing &&
+                bridgeNonceDelivery.acknowledge(attempt, result)) n.arm()
+        }
+        val again = Runnable { deliverBridgeNonceOnce(view, n, checkpoint) }
         bridgeNonceRetry = again
         view.postDelayed(again, BRIDGE_NONCE_RETRY_MS)
     }
@@ -3642,6 +3791,12 @@ class MainActivity : ComponentActivity() {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.SAFE_BROWSING_ENABLE)) {
             WebSettingsCompat.setSafeBrowsingEnabled(wv.settings, true)
         }
+        // The ONE document-start script this view gets: the legacy-engine
+        // compatibility layer (only on a WebView older than
+        // LegacyEnginePolicy.MODERN_WEBVIEW_MAJOR). It defines missing JS
+        // builtins in page context and nothing else — no native surface, so
+        // the boundary above holds (`WebTabsWiringTest`).
+        com.educms.player.webcompat.LegacyEngineCompat.install(applicationContext, wv, "overlay")
         // (A touch inside the site is relayed to the player page from the
         // Activity's dispatchTouchEvent — observed, never consumed — so the
         // Website Tabs idle clock resets. Not a View.OnTouchListener: that
@@ -4465,9 +4620,10 @@ class MainActivity : ComponentActivity() {
         // See the companion's [isInForeground] — the only proof a post-OTA
         // relaunch actually landed on the glass.
         isInForeground = true
-        // Back from the one-time file-access screen (or any system screen):
+        // Back from Android's file-access page (the USB card's Allow): read
+        // the drive again and say what happened. From any other system screen:
         // look at a stick that may already be in.
-        com.educms.player.usb.UsbAutoImport.scanSoon(1_000)
+        if (!com.educms.player.usb.UsbAutoImport.hostResumed()) com.educms.player.usb.UsbAutoImport.scanSoon(1_000)
         sharedVideoHost?.refreshReadiness()
         // 1.1.23 — whoever left the setup card for a system screen is back.
         runCatching { com.educms.player.setup.SetupCeremony.noteHostResumed() }
@@ -4485,6 +4641,7 @@ class MainActivity : ComponentActivity() {
                         com.educms.player.setup.SetupCeremony.isShowing() ||
                         com.educms.player.boot.BootDiagnostics.isShowing() ||
                         com.educms.player.network.NetworkScreen.isShowing() ||
+                        com.educms.player.usb.UsbImportCard.isShowing() ||
                         managerGateShown || installPromptOutstanding
                 },
                 lastPausedAt = { lastPausedAtElapsedMs },
@@ -4678,6 +4835,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        bridgeNonceDelivery.invalidate()
+        bridgeNonceRetry?.let { if (::webView.isInitialized) webView.removeCallbacks(it) }
+        bridgeNonceRetry = null
         if (::urlOverlayView.isInitialized) com.educms.player.media.BroadcastContentViews.unregister(0, urlOverlayView)
         sharedVideoHost?.detach()
         sharedVideoHost = null
@@ -4717,6 +4877,11 @@ class MainActivity : ComponentActivity() {
         // 2026-10-23 — the Wi-Fi card and the Network screen go with their host.
         runCatching { com.educms.player.settings.WifiSavePrompt.detach(this) }
         runCatching { com.educms.player.network.NetworkScreen.close("host destroyed") }
+        // 2026-10-26 — the USB card goes with its host too (only if it is
+        // THIS Activity's — a recreate starts the new one first); the import
+        // itself carries on.
+        runCatching { com.educms.player.usb.UsbImportCard.detach(this) }
+        if (com.educms.player.usb.UsbAutoImport.host === usbHost) com.educms.player.usb.UsbAutoImport.host = null
         // Same reasoning for the boot diagnostic: drop the card and the
         // host callbacks so a destroyed Activity is never retained, and
         // stop its ticker (the staleness watchdog's is stopped below).
@@ -5084,6 +5249,7 @@ class MainActivity : ComponentActivity() {
     private fun releaseManagerUpgradeGate(reason: String) {
         if (!managerGateShown) return
         PlayerLogger.w("MainActivity", "companion-upgrade gate released — $reason")
+        if (managerGateReleasable) reportCompanionNeedsTap("gate released: $reason")
         managerGateReleasable = false
         managerGateTargetVc = 0
         hideManagerGate()
@@ -5252,7 +5418,7 @@ class MainActivity : ComponentActivity() {
                 PlayerLogger.w("MainActivity", "Could not open install-sources settings", e)
                 // Fall through to manual instructions on the gate.
                 binding.managerGateStatus.text =
-                    "Manual setup needed: Settings → Apps → EduCMS Player → Install unknown apps → Allow"
+                    "Manual setup needed: Settings → Apps → VenueOS Player → Install unknown apps → Allow"
                 binding.managerGateHint.text = "Select Retry install (OK on the remote, or tap it) once permission is granted."
                 binding.managerGateRetry.visibility = View.VISIBLE
             }
@@ -5440,7 +5606,9 @@ class MainActivity : ComponentActivity() {
             runCatching { com.educms.player.boot.BootDiagnostics.isShowing() }.getOrDefault(false) ||
             // 2026-10-23 — VenueOS's Network screen and the Wi-Fi save card.
             com.educms.player.settings.WifiSavePrompt.isShowing() ||
-            com.educms.player.network.NetworkScreen.isShowing()
+            com.educms.player.network.NetworkScreen.isShowing() ||
+            // 2026-10-26 — the USB card.
+            com.educms.player.usb.UsbImportCard.isShowing()
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         // Website Tabs (2026-09-28): a remote key while a site is up is

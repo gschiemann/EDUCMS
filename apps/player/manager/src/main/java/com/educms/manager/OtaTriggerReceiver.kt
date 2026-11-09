@@ -50,7 +50,9 @@ class OtaTriggerReceiver : BroadcastReceiver() {
                 req,
             )
             Log.i(TAG, "OtaWorker (one-time) enqueued")
-            ManagerApp.triggerImmediateManagerSelfUpdate(context)
+            // The Manager's own self-update lane is retired (2026-11-08): a
+            // CHECK_FOR_UPDATES reaches the Manager through the PLAYER, whose
+            // ManagerBootstrap installs the bundled companion when it is newer.
         } catch (e: Exception) {
             Log.w(TAG, "fireOtaCheckNow failed: ${e.message}", e)
         }

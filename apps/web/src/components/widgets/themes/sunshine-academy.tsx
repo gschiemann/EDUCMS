@@ -16,7 +16,7 @@ import { sceneCss } from '../scene-css';
  * sets the font-size the `em`s hang off; `ratio` is the per-variant knob,
  * smaller for the panels that stack many rows.
  *
- * TAURUS (CLAUDE.md #10): a ResizeObserver, not a container query —
+ * TAURUS (apps/web/CLAUDE.md #10): a ResizeObserver, not a container query —
  * Chromium 83 has no `cqh`, and this file's taurus baseline is cq=0.
  */
 function useBoxEm(ratio = 0.07): [React.RefObject<HTMLDivElement | null>, number] {
@@ -57,7 +57,7 @@ function useBoxEm(ratio = 0.07): [React.RefObject<HTMLDivElement | null>, number
  * BOTH modes, and the fit is normalised by the span's own current font
  * size, so the measurement that drives the size cannot run away.
  *
- * TAURUS (CLAUDE.md #10): a ResizeObserver, not a container query.
+ * TAURUS (apps/web/CLAUDE.md #10): a ResizeObserver, not a container query.
  */
 function useTickerFit(text: string, cap = 0.62, floorRatio = 0.3): {
   outer: React.RefObject<HTMLDivElement | null>;

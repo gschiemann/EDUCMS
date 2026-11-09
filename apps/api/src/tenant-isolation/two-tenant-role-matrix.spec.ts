@@ -56,6 +56,7 @@ import { DesignerJobsService } from '../templates/designer-jobs/designer-jobs.se
 import { PlaylistsController } from '../playlists/playlists.controller';
 import { SchedulesController } from '../schedules/schedules.controller';
 import { ScreenGroupsController } from '../screen-groups/screen-groups.controller';
+import { ScheduledRebootController } from '../scheduled-reboot/scheduled-reboot.controller';
 import { FloorPlansController } from '../floor-plans/floor-plans.controller';
 import { SubmissionsController } from '../submissions/submissions.controller';
 import { AuditController } from '../audit/audit.controller';
@@ -837,6 +838,28 @@ const MATRIX: Case[] = [
   },
 
   // ── Screen groups ─────────────────────────────────────────────────────
+  // ── Scheduled restarts (2026-11-08) ───────────────────────────────────
+  {
+    name: 'scheduled-reboots: read another tenant\'s group restart policy',
+    controller: ScheduledRebootController, handler: 'get', op: 'read',
+    build: (p) => new ScheduledRebootController(p, {} as any),
+    invoke: (c, req) => c.get('grp-b', req),
+    resolverReads: ['screenGroup'],
+  },
+  {
+    name: 'scheduled-reboots: set a restart policy on another tenant\'s group',
+    controller: ScheduledRebootController, handler: 'set', op: 'write',
+    build: (p) => new ScheduledRebootController(p, {} as any),
+    invoke: (c, req) => c.set('grp-b', req, { mode: 'WEEKLY', localTime: '03:00', weekday: 0 } as any),
+    resolverReads: ['screenGroup'],
+  },
+  {
+    name: 'scheduled-reboots: delete another tenant\'s group restart policy',
+    controller: ScheduledRebootController, handler: 'remove', op: 'delete',
+    build: (p) => new ScheduledRebootController(p, {} as any),
+    invoke: (c, req) => c.remove('grp-b', req),
+    resolverReads: ['screenGroup'],
+  },
   {
     name: 'screen-groups: list never includes another tenant\'s group',
     controller: ScreenGroupsController, handler: 'list', op: 'list',

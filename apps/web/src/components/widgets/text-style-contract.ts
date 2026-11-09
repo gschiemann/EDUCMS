@@ -41,6 +41,7 @@
  * The per-field style object is `HolidayTextStyle` (the name is historical
  * — it is the app-wide `_styles` shape, not a holiday-only one).
  */
+import { isAutomaticPublicData } from './widget-data-capabilities';
 import type { HolidayTextStyle } from './holiday-style-contract';
 
 /** The per-field override object the builder writes into `cfg._styles`. */
@@ -224,7 +225,7 @@ export function buildTextStyleRules(style: unknown): string[] {
   // continue through the exact same builder/player contract.
   if (style && typeof style === 'object') {
     const config = style as Record<string, unknown>;
-    if (config.variant === 'weather-outlook' || config.variant === 'rss-newsroom' || Number(config.forecastDays) >= 2) delete css.fontSize;
+    if (config.variant === 'weather-outlook' || config.variant === 'rss-newsroom' || Number(config.forecastDays) >= 2 || isAutomaticPublicData(config)) delete css.fontSize;
   }
   const rules: string[] = [];
   if (css.fontFamily) rules.push(`font-family: ${css.fontFamily} !important`);

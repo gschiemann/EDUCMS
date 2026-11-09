@@ -31,7 +31,7 @@
  * once native reports it on its rect (`revealed`), so nothing black is ever
  * painted in between.
  *
- * Transport (CLAUDE.md player rule 9): NO new bridge method. A `version: 3`
+ * Transport (apps/player/CLAUDE.md player rule 9): NO new bridge method. A `version: 3`
  * JSON on `sharedVideoPrepare` selects this engine (`op`: prepare / layout /
  * play); `sharedVideoCommit` / `sharedVideoStop` take the session id as they
  * always did; `sharedVideoState` keeps its protocol-2 top level (an older
@@ -373,7 +373,7 @@ export function templateZoneLocalRect(
  * `clip-path` for an opaque backdrop with rectangular holes: the outer box
  * once, then each hole as its own closed sub-path, under the even-odd rule.
  * Chromium ≥ 55 and WebKit accept the `<fill-rule>` in `polygon()`; no
- * `inset` shorthand is involved (CLAUDE.md rule 10). Values are rounded to
+ * `inset` shorthand is involved (apps/web/CLAUDE.md rule 10). Values are rounded to
  * whole px so the edge of the hole sits on a device pixel.
  */
 export function holeClipPath(holes: Rect[]): string | undefined {

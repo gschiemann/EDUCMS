@@ -29,7 +29,7 @@
  * CtsBridge itself requires Web Serial (Chrome 89+) and never ships
  * to Taurus, but these widgets can still render on a Taurus-driven
  * ribbon if the API broadcasts game state — so the styles stay
- * conservative. See CLAUDE.md rule #10.
+ * conservative. See apps/web/CLAUDE.md rule #10.
  *
  * Three classes of widget:
  *

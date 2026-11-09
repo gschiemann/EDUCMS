@@ -24,7 +24,7 @@ import { bootMockPlayer, ok, playerIds, playerManifest } from './helpers/mock-pl
  *  6. the idle card's two askers (Unpair, Auto-Play's notice) follow the same
  *     rules.
  *
- * Harness (CLAUDE.md player rule 14) through the shared mock-player helper:
+ * Harness (apps/web/src/app/player/CLAUDE.md player rule 14) through the shared mock-player helper:
  * the realtime stub delegates non-/realtime sockets, mocks key on STATE (the
  * unpair calls are counted, never expected to arrive N times for a reason
  * other than an answer), and the content — or the paired card — only appears

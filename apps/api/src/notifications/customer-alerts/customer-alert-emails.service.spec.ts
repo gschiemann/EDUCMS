@@ -51,6 +51,12 @@ function makeWorld() {
     screen: {
       findMany: jest.fn(async ({ where }: any) => {
         if (where.id?.in) return [...screens.values()].filter((s) => where.id.in.includes(s.id));
+        // Back faces whose own ping stopped (judged on their unit's liveness).
+        if (where.faceOfScreenId) {
+          return [...screens.values()].filter(
+            (s) => s.faceOfScreenId && s.tenantId && s.status !== 'REVOKED' && s.lastPingAt && s.lastPingAt < where.lastPingAt.lt && s.lastRenderedAt,
+          );
+        }
         // The no-content query: pinging, proof-capable, proof < 48 h, stale or "Content unavailable".
         const now = where.lastPingAt.lte.getTime() - MIN;
         return [...screens.values()].filter(
@@ -253,8 +259,8 @@ describe('offline ≥ 15 min, two scans, one email per site-wide drop', () => {
     expect(sentTo(email)).toEqual(['principal@example.org', 'superintendent@example.org']);
     const principal = email.sendCustomerAlert.mock.calls.find((c: any[]) => c[0].to === 'principal@example.org')[0];
     expect(principal.subject).toBe('VenueOS: 3 screens offline at Lincoln Elementary');
-    expect(principal.body).toContain('lobby — offline for 16 minutes');
-    expect(principal.body).toContain('office — offline for 15 minutes');
+    expect(principal.body).toContain('lobby — offline since 3:00 PM UTC (16 minutes)');
+    expect(principal.body).toContain('office — offline since 3:01 PM UTC (15 minutes)');
     expect(principal.body).toContain('Manage alert emails: https://app.venueos.test/lincoln/account#alert-emails');
     const sup = email.sendCustomerAlert.mock.calls.find((c: any[]) => c[0].to === 'superintendent@example.org')[0];
     expect(sup.subject).toBe('VenueOS: 3 pantallas sin conexión en Lincoln Elementary');
@@ -986,7 +992,7 @@ describe('2026-10-31 accuracy pass: production row shapes', () => {
     expect(res.silenced).toBe(1);
     expect(email.sendCustomerAlert).not.toHaveBeenCalled();
     const row = w.incidents.find((i) => i.screenId === 'lobby')!;
-    expect(row).toEqual(expect.objectContaining({ open: true, state: 'SILENT', reason: 'daily-pattern', emailedMode: null }));
+    expect(row).toEqual(expect.objectContaining({ open: true, state: 'SILENT', reason: `daily-pattern:${13 * H}`, emailedMode: null }));
     await scan(w, svc);
     expect(email.sendCustomerAlert).not.toHaveBeenCalled();
     for (let i = 0; i < 7; i++) {
@@ -995,6 +1001,30 @@ describe('2026-10-31 accuracy pass: production row shapes', () => {
     }
     expect(email.sendCustomerAlert).not.toHaveBeenCalled();
     expect(w.incidents.find((i) => i.screenId === 'lobby')!.open).toBe(false);
+  });
+
+  it('a nightly screen that never returns: silent until 60 min past its learned return, then exactly ONE offline email', async () => {
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    const drop = w.clock.now;
+    prevSpell('lobby', 'lincoln', drop - 24 * H, 13);
+    goOffline(w, 'lobby', drop);
+    await scan(w, svc, 15);
+    await scan(w, svc);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    for (const at of [drop + 6 * H, drop + 13 * H + 59 * MIN]) {
+      await scanAt(w, svc, at);
+      await scanAt(w, svc, at + MIN - 1_000);
+    }
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    await scanAt(w, svc, drop + 14 * H + 2 * MIN);
+    await scanAt(w, svc, drop + 14 * H + 3 * MIN);
+    expect(subjects(email)).toContain('VenueOS: lobby is offline at Lincoln Elementary');
+    expect(w.sends).toHaveLength(1);
+    const sent = email.sendCustomerAlert.mock.calls.length;
+    await scanAt(w, svc, drop + 15 * H);
+    await scanAt(w, svc, drop + 16 * H);
+    expect(email.sendCustomerAlert.mock.calls.length).toBe(sent);
   });
 
   it('control: the same screen dropping at a DIFFERENT hour than its last spell is emailed', async () => {
@@ -1060,6 +1090,66 @@ describe('2026-10-31 accuracy pass: production row shapes', () => {
       await scan(w, svc);
       expect(email.sendCustomerAlert).toHaveBeenCalled();
     });
+  });
+
+  describe('double-sided back faces are judged by the PHYSICAL unit (2026-11-02)', () => {
+    const unit = (frontOver: Row = {}, backOver: Row = {}) => {
+      screen(w, 'front', 'lincoln', frontOver);
+      screen(w, 'back', 'lincoln', { faceOfScreenId: 'front', faceIndex: 1, ...backOver });
+    };
+
+    it('a back face whose own ping stopped while the front keeps checking in is NOT emailed offline', async () => {
+      const { svc, email } = build(w);
+      unit({}, {});
+      goOffline(w, 'back', w.clock.now);
+      w.clock.now += 15 * MIN;
+      await scan(w, svc, 0);
+      for (let i = 0; i < 4; i++) {
+        Object.assign(w.screens.get('front')!, { lastPingAt: new Date(w.clock.now - 5_000), lastRenderedAt: new Date(w.clock.now - 5_000) });
+        await scan(w, svc);
+      }
+      expect(subjects(email).filter((x) => x.includes('offline'))).toEqual([]);
+      expect(w.incidents.filter((i) => i.kind === 'OFFLINE')).toHaveLength(0);
+    });
+
+    it('control: the whole unit silent (front and back) IS emailed offline', async () => {
+      const { svc, email } = build(w);
+      unit();
+      goOffline(w, 'front', w.clock.now);
+      goOffline(w, 'back', w.clock.now - 10_000);
+      w.clock.now += 15 * MIN;
+      await scan(w, svc, 0);
+      await scan(w, svc);
+      expect(subjects(email).join('\n')).toContain('offline at Lincoln Elementary');
+    });
+
+    it('a back face whose own page is dead for 25 min on a live unit is NO_CONTENT with picture wording, never offline', async () => {
+      const { svc, email } = build(w);
+      for (const id of ['front', 'back']) w.schedules.push({ tenantId: 'lincoln', screenId: id, screenGroupId: null });
+      unit();
+      const deadAt = w.clock.now - 25 * MIN;
+      Object.assign(w.screens.get('back')!, { lastPingAt: new Date(deadAt), lastRenderedAt: new Date(deadAt) });
+      for (let i = 0; i < 5; i++) {
+        Object.assign(w.screens.get('front')!, { lastPingAt: new Date(w.clock.now - 5_000), lastRenderedAt: new Date(w.clock.now - 5_000) });
+        await scan(w, svc);
+      }
+      const all = subjects(email).join('\n');
+      expect(all).not.toContain('offline');
+      expect(all).toContain('back is on but not showing content');
+    });
+  });
+
+  it('every email states the TRUE elapsed time at send, not a frozen number', async () => {
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    goOffline(w, 'lobby', w.clock.now);
+    w.clock.now += 15 * MIN;
+    // The first due scans are held back by the restart-style confirmation; a long
+    // gap between them is what a busy hour looks like in production.
+    await scan(w, svc, 0);
+    await scan(w, svc, 192);
+    const body = email.sendCustomerAlert.mock.calls.find((c: any[]) => c[0].to === 'principal@example.org')![0].body;
+    expect(body).toMatch(/lobby — offline since \d{1,2}:\d{2} [AP]M UTC \(3 h 27 min\)/);
   });
 });
 

@@ -586,7 +586,7 @@ export class UsersController {
    * 2026-05-26 audit fix — close the "documented-but-unwritable
    * canTriggerPanic" gap.
    *
-   * CLAUDE.md "Emergency System" section says: an admin in the
+   * apps/api/src/emergency/CLAUDE.md "Emergency System" section says: an admin in the
    * dashboard (Settings → Team Members → toggle "Can trigger panic")
    * grants a non-admin user (receptionist, security guard, nurse,
    * physical panic-button operator) the ability to fire emergency

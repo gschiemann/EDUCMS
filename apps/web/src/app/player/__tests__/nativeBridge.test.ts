@@ -667,8 +667,12 @@ describe('method tables stay in sync with the APK', () => {
     // WebView over the widget's measured bounds with a default-deny host
     // allowlist, `webTabsHide` takes it down and can sign the sites out.
     // → 37 on 2026-10-23 (APK 1.1.53): `openNetworkScreen`, the Back menu's
-    // way to VenueOS's own on-screen Network screen.
-    expect(all).toHaveLength(37);
+    // way to VenueOS's own on-screen Network screen. → 38 on 2026-10-26 (APK
+    // 1.1.55): `importFromUsb`, the Back menu's "Import from USB" — reads the
+    // drive again and shows the APK's USB card.
+    // → 39 on 2026-11-08 (APK ≥ 1.1.66): `clearUpdateQuarantine`, the dashboard's Clear
+    // quarantine relayed to the companion Manager.
+    expect(all).toHaveLength(39);
   });
 
   /**

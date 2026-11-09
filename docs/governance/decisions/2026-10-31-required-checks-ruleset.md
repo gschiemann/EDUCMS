@@ -1,6 +1,6 @@
 # Decision — make the risk-weighted gates required to merge (prepared for the owner)
 
-Articles 16, 18, 19 · Phase 1 item #16/#18 · prepared 2026-10-31 by the lead · **not applied** — the ruleset lives in GitHub settings, and changing it is the owner's decision (CI/CD definitions are on the consequential list).
+Articles 16, 18, 19 · Phase 1 item #16/#18 · prepared 2026-10-31 by the lead · **applied 2026-11-02** on the owner's go (the ruleset lives in GitHub settings; CI/CD definitions are on the consequential list) · the merge-queue rule was **refused by GitHub** — see the last section.
 
 | | |
 |---|---|
@@ -11,7 +11,7 @@ Articles 16, 18, 19 · Phase 1 item #16/#18 · prepared 2026-10-31 by the lead �
 | **Validation** | Read-only reads of the ruleset and the last 60 master runs; job display names copied from the workflow files (they are the status-check contexts). Not validated: the behaviour of a path-skipped required check on this repository (GitHub documents "pending"). |
 | **Rollback** | `PUT` the original rule set back (below). Instant. |
 | **Decision requested** | Approve applying it (a) now, accepting (2b) until the workflows are converted, or (b) after the launch freeze together with the workflow conversion. One-way door? No — reversible in one API call. |
-| **Decision** | **(b) — after the launch freeze, together with the workflow conversion.** Owner, 2026-10-31 ("After the freeze"). Until then the ruleset stays as it is; this record is the ready-to-apply change. |
+| **Decision** | ~~(b) after the launch freeze~~ → **(a) apply now.** The owner lifted the hold on 2026-11-01 ("finish all our development"). Order: this workflow conversion merges first (the `changes` job in `deploy-reliability.yml`), then the lead applies the ruleset change above and records the result here. |
 
 ## The change, ready to apply
 
@@ -46,3 +46,15 @@ Save as `ruleset.json` (copy `integration_id` values from the existing entries �
 ## Rollback — the original (read 2026-10-31)
 
 Rules: `deletion`; `non_fast_forward`; `required_status_checks` with exactly `pnpm lockfile drift`, `API + workspace packages build`, `Web typecheck + build`, `Docker build + boot smoke test`. Bypass: RepositoryRole 5, `always`. No `pull_request` rule.
+
+## Applied 2026-11-02 — and what GitHub refused (recorded 2026-11-08)
+
+**Applied.** After PR #219 merged (the gated jobs always report on pull requests, with `merge_group` triggers on the four gate workflows), the lead ran `gh api -X PUT repos/gschiemann/EDUCMS/rulesets/15263898` with the JSON above. GitHub records the update at 2026-11-01 18:57 Pacific (2026-11-02 02:57 UTC). Read back 2026-11-08: rules `deletion`, `non_fast_forward`, `pull_request` (0 approvals), `required_status_checks` with strict up-to-date and exactly the nine contexts listed above; one bypass actor, RepositoryRole 5, `always`. **Required to merge today is those nine checks, through a pull request.** `CLAUDE.md` §7 and §10 and `docs/governance/AUDIT-SURFACE.md` §17 say the same.
+
+**Refused: the merge queue.** The same `PUT` with a tenth rule, `{ "type": "merge_queue", "parameters": { … } }`, came back `HTTP 422 — Invalid rule 'merge_queue'`, twice on 2026-11-02 with two parameter shapes. The payload is not the cause: this repository is owned by a user account (`gschiemann`, `owner.type = User`), and GitHub offers the merge queue to organization-owned repositories only — public ones, and private ones on GitHub Enterprise Cloud (https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue). The `merge_group` triggers and the docs-only stub jobs from #219 stay: they cost nothing on a repository without a queue, and they are exactly what the queue needs the day the repository moves under an organization.
+
+**What stands in for it.** Strict up-to-date means every merge into `master` puts every other open pull request BEHIND. Landing several at once therefore goes one of two ways: `gh api -X PUT repos/gschiemann/EDUCMS/pulls/<n>/update-branch` per pull request after each merge (each update re-runs that PR's workflows, and the public repository's Actions concurrency is the bottleneck — eight armed PRs cost about 45 minutes a round on 2026-11-01), or a **release train**: one worktree cut from `origin/master`, `git merge --no-ff` of each reviewed branch in order (CI-changing branches first), one pull request whose body lists the pull requests it carries, checked once, merged once. #212 was the first, with eight branches. Cancel only the duplicate runs on the individual pull requests, never a train's gate workflows.
+
+**Linked constraint.** Making the repository private on a personal GitHub Free account removes rulesets and branch protection altogether (`docs/DEPLOY.md`, "If it ever goes private again"), so the private-repository decision and an organization move belong together.
+
+**Decision.** No organization move during launch week — the lead's recommendation to the owner in chat on 2026-11-02, with nothing asked of the owner. The move, and with it the merge queue, is a post-launch decision for the owner, taken together with the private-repository question. One-way door? No: GitHub transfers a repository to an organization with its pull requests, issues and Actions history and redirects the old URL, and the ruleset is re-applied with the one `PUT` above plus the merge-queue rule.

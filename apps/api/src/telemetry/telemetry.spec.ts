@@ -959,6 +959,67 @@ describe('POST /screens/:id/telemetry', () => {
   // the value the reload decision is made on; grading on the commit SHA made
   // every online screen read "behind" after any commit that could not change
   // a downloaded byte ("App current 5/18" on a healthy fleet).
+  describe('softBlank (2026-11-02)', () => {
+    it('the schema accepts the key and still validates a body without it', () => {
+      expect(screenTelemetrySchema.safeParse({ softBlank: true }).success).toBe(true);
+      expect(screenTelemetrySchema.safeParse({ softBlank: false }).success).toBe(true);
+      expect(screenTelemetrySchema.safeParse({}).success).toBe(true);
+      expect(screenTelemetrySchema.safeParse({ softBlank: 'yes' }).success).toBe(false);
+    });
+
+    it('true stamps softBlankAt with the server clock', async () => {
+      await controller.report(SCREEN_ID, makeReq(), { softBlank: true });
+      expect(writtenData()).toMatchObject({ softBlankAt: new Date(NOW) });
+    });
+
+    it('false clears a stored stamp', async () => {
+      prisma.client.screen.findUnique.mockResolvedValue(baseRow({ softBlankAt: new Date(NOW - 60_000) }));
+      await controller.report(SCREEN_ID, makeReq(), { softBlank: false });
+      expect(writtenData()).toHaveProperty('softBlankAt', null);
+    });
+
+    it('false on a screen with no stamp writes nothing for it', async () => {
+      await controller.report(SCREEN_ID, makeReq(), { softBlank: false });
+      expect(writtenData() ?? {}).not.toHaveProperty('softBlankAt');
+    });
+
+    it('an older bundle (no key) leaves the column alone', async () => {
+      prisma.client.screen.findUnique.mockResolvedValue(baseRow({ softBlankAt: new Date(NOW - 60_000) }));
+      await controller.report(SCREEN_ID, makeReq(), {});
+      expect(writtenData() ?? {}).not.toHaveProperty('softBlankAt');
+    });
+
+    it('the write never busts the manifest cache', () => {
+      expect(SCREEN_TELEMETRY_ONLY_FIELDS.has('softBlankAt')).toBe(true);
+      expect(TELEMETRY_COLUMNS.has('softBlankAt')).toBe(true);
+      expect(shouldBumpManifestRev('Screen', 'update', ['lastPingAt', 'softBlankAt'])).toBe(false);
+    });
+
+    it('a CHANGED value passes the 30 s floor; the same value does not', async () => {
+      await controller.report(SCREEN_ID, makeReq(), { softBlank: false });
+      jest.setSystemTime(NOW + 5_000);
+      // Same value inside the floor: refused as before.
+      await expect(controller.report(SCREEN_ID, makeReq(), { softBlank: false })).rejects.toMatchObject({ status: 429 });
+      // Changed: accepted at once, so the dashboard confirms in seconds.
+      await expect(controller.report(SCREEN_ID, makeReq(), { softBlank: true })).resolves.toMatchObject({ ok: true });
+      jest.setSystemTime(NOW + 6_000);
+      // A flapping value is held to one report per 2 s.
+      await expect(controller.report(SCREEN_ID, makeReq(), { softBlank: false })).rejects.toMatchObject({ status: 429 });
+      jest.setSystemTime(NOW + 7_500);
+      await expect(controller.report(SCREEN_ID, makeReq(), { softBlank: false })).resolves.toMatchObject({ ok: true });
+      // And a body with no key still meets the plain floor.
+      jest.setSystemTime(NOW + 12_000);
+      await expect(controller.report(SCREEN_ID, makeReq(), {})).rejects.toMatchObject({ status: 429 });
+    });
+
+    it('a fresh process treats an unknown previous value as false', async () => {
+      await controller.report(SCREEN_ID, makeReq(), {});
+      jest.setSystemTime(NOW + 3_000);
+      await expect(controller.report(SCREEN_ID, makeReq(), { softBlank: false })).rejects.toMatchObject({ status: 429 });
+      await expect(controller.report(SCREEN_ID, makeReq(), { softBlank: true })).resolves.toMatchObject({ ok: true });
+    });
+  });
+
   describe('versions.bundleId', () => {
     it('persists the reported bundleId, normalized like the SHA', async () => {
       await controller.report(SCREEN_ID, makeReq(), {

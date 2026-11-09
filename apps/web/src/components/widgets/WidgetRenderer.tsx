@@ -897,7 +897,7 @@ function reportVariantSubstitution(
  * Never reaches the player or a frozen gallery thumbnail (callers gate on
  * `live`/`freeze`), so the Taurus surface is untouched — but the badge still
  * uses two physical sides only, never four, because a 4-side inline style
- * object re-serializes to the `inset` shorthand (CLAUDE.md rule #10).
+ * object re-serializes to the `inset` shorthand (apps/web/CLAUDE.md rule #10).
  */
 function SubstitutedVariantFrame({ title, children }: { title: string; children: ReactElement | null }) {
   return (
@@ -1909,7 +1909,7 @@ export function TextWidget({ config, onConfigChange }: { config: any; onConfigCh
 // engine's careful sizing breaks — `useSignageFonts` injects the whole engine
 // font set once.
 //
-// TAURUS (CLAUDE.md rule #10): positioning is LONGHAND top/right/bottom/left,
+// TAURUS (apps/web/CLAUDE.md rule #10): positioning is LONGHAND top/right/bottom/left,
 // never `inset`; spacing uses per-child margin, never flex `gap`. ResizeObserver
 // (Chrome 64+) and FontFaceSet.ready (Chrome 35+) are Chromium-83-safe.
 
@@ -4849,7 +4849,7 @@ function WebpageWidget({ config, live }: { config: any; live?: boolean }) {
   // is our own live, client-side page and must run unproxied. Same
   // origin means no SSRF surface and no X-Frame-Options concern.
   // Long-hand insets (not the `inset` shorthand) for Chromium-83 LED
-  // controllers — see CLAUDE.md rule #10.
+  // controllers — see apps/web/CLAUDE.md rule #10.
   if (directMode && rawUrl) {
     return (
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' }}>

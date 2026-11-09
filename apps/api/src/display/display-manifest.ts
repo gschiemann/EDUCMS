@@ -1,7 +1,7 @@
 /**
  * The player manifest's `display` block (2026-08-13).
  *
- * ⚠️ READ CLAUDE.md → "Manifest content cache (2026-07-30)" BEFORE TOUCHING
+ * ⚠️ READ packages/database/CLAUDE.md → "Manifest content cache (2026-07-30)" BEFORE TOUCHING
  * THIS FILE. The manifest is served from a per-screen in-process cache and
  * carries an ETag hashed over the whole payload minus `generatedAt`. Two
  * rules follow, and both are load-bearing:
@@ -60,6 +60,7 @@ import {
 } from '@cms/api-types';
 
 import { vendorBacklightFlagFor } from './vendor-backlight-flag';
+import { alertWatchWatchdogModeFor } from './alert-watch-watchdog-flag';
 
 const logger = new Logger('DisplayManifest');
 
@@ -279,6 +280,11 @@ function assembleBlock(
   // per (screen, env), so it is as stable as the rest of the block; omitted
   // for every other screen so nobody else's ETag moves.
   if (vendorBacklightFlagFor(screenId, env) === false) block.vendorBacklight = false;
+  // Manager wave 5 (2026-11-08) — the alert-watch watchdog's mode, present only
+  // for a screen `MANAGER_ALERT_WATCH_WATCHDOG` names (`on` / `observe`). Same
+  // discipline as the key above: deterministic, omitted for everyone else.
+  const alertWatchWatchdog = alertWatchWatchdogModeFor(screenId, env);
+  if (alertWatchWatchdog) block.alertWatchWatchdog = alertWatchWatchdog;
   return block;
 }
 

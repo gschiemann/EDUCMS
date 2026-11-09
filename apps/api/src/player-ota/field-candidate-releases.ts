@@ -1,13 +1,32 @@
 /** Immutable provenance records for explicitly enabled private field artifacts.
  * Populated only after signed CI artifact/hash/certificate verification. These
  * entries never participate in the stable GitHub release catalogue.
+ *
+ * ONE RELEASE UNIT (2026-11-08): a candidate is the Player APK AND the Manager
+ * APK it carries in its assets. From the first unified candidate on, every
+ * entry records BOTH — the Manager's version, versionCode, digest and size are
+ * read off the same CI run's `edu-cms-manager-apk` artifact (the bytes the
+ * Player bundles). The Manager's versionName is the unit's when the Manager
+ * changed in that line, else the older stable version it already runs; its
+ * versionCode must be above 10024 (the last hand-typed Manager) and never
+ * above the Player's. Entries registered before this date carry no `manager`
+ * block (the Manager inside them is 1.0.24); `configuredFieldRelease` refuses
+ * a malformed block, never a missing one.
  */
+export interface FieldCandidateManager {
+  versionName: string;
+  versionCode: number;
+  sha256: string;
+  size: number;
+}
 export interface FieldCandidateRelease {
   versionName: string;
   versionCode: number;
   sha256: string;
   size: number;
   sourceUrl: string;
+  /** The companion inside this Player APK. Absent on candidates registered before 2026-11-08 (Manager 1.0.24). */
+  manager?: FieldCandidateManager;
 }
 export const FIELD_CANDIDATE_RELEASES: Readonly<
   Record<string, FieldCandidateRelease>
@@ -330,5 +349,58 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     sha256: '23803f6c90a39a6ecb20ba4eb934747d568204cdfd5f1f65bdfbd5f10080c997', // gitleaks:allow -- verified public APK integrity digest
     size: 2750062,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41321768888',
+  },
+  // Signed CI 41376422724, source fix/ep6n-wake-loop (PR #222): 1.1.59 +
+  // EP6N wake no longer re-blanks after the box's wake reboot.
+  // Hardware qualification pending (EP6N test first).
+  '1.1.60-field.1': {
+    versionName: '1.1.60-field.1',
+    versionCode: 10160,
+    sha256: 'd033680696504a9e7404b947a657a6970a042ad49a82fc17ff89954fb5682e5d', // gitleaks:allow -- verified public APK integrity digest
+    size: 2766830,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41376422724',
+  },
+  // Signed CI 41458604627, source field/1.1.62: 1.1.60 + manual on/off holds
+  // until the next schedule trigger (#225) + emergency confirm/no mid-alert
+  // reload (#229). Hardware qualification pending.
+  '1.1.62-field.1': {
+    versionName: '1.1.62-field.1',
+    versionCode: 10162,
+    sha256: '1be758d77af166d3a0e46de67327973b62c9a73cd552cdb20bae86c2ba861a2b', // gitleaks:allow -- verified public APK integrity digest
+    size: 2766822,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/41458604627',
+  },
+  // Signed CI 42446385225, source master 9961ecbbf (release train #263): 1.1.64 +
+  // double-sided echo fix (#241), no banner relayout on a rotated display +
+  // honest banner paint receipt (#250), legacy-engine polyfills (#258), website
+  // tabs fill their zone on 4K (#259), storage-aware chunk downloads (#260).
+  // Production certificate e45adf50…3d1897 (v2), versionCode 10165. Private
+  // mirror NOT uploaded by the registering session. Hardware qualification pending.
+  '1.1.65-field.1': {
+    versionName: '1.1.65-field.1',
+    versionCode: 10165,
+    sha256: '3741512c51899fc5075779daa4878a67d28ef3ef0263b020ec69617ea4fa5390', // gitleaks:allow -- verified public APK integrity digest
+    size: 2776341,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/42446385225',
+  },
+  // Signed CI 42529040478, source master 636e77b3 (#272 Manager waves on #270's
+  // one release unit + #268 VenueOS names): companion health + signed reports,
+  // diagnostics (self-test, logs, storage), install-tap card, quarantine clear,
+  // Manager i18n, scheduled-restart support. First unified Manager (1.0.24 →
+  // 1.1.66-field.1), bundled byte-identical in assets/bundled. Production
+  // certificate e45adf50…3d1897 (v2) on both, non-debuggable. Private mirror NOT
+  // uploaded by the registering session. Hardware qualification pending (EP6N first).
+  '1.1.66-field.1': {
+    versionName: '1.1.66-field.1',
+    versionCode: 10166,
+    sha256: '30f0390ca6d3038b73b72cb22cc825e63a9d929ea4cf1c1a22f4a2f0b50b5a7d', // gitleaks:allow -- verified public APK integrity digest
+    size: 2799709,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/42529040478',
+    manager: {
+      versionName: '1.1.66-field.1',
+      versionCode: 10166,
+      sha256: '2fd069b338b318dba575d801907f6b9fcc6a8e148184bb7e79bf7a623788282a', // gitleaks:allow -- verified public APK integrity digest
+      size: 325473,
+    },
   },
 };

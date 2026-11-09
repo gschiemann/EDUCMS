@@ -24,12 +24,14 @@ import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle, AlertTriangle, Building2, CheckCircle2, ChevronDown, ChevronRight, Clock, Download, Loader2, MapPin, Monitor, MoreVertical, Plus, RefreshCw, Search, Wifi, X, List as ListIcon, Map as MapIcon, Info,
+  Moon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import type { OpsMessage } from '../contentDownload';
 import {
   useCreateScreenGroup, useDeleteScreenGroup, useForceApkUpdate, useRefreshWeb,
   useUpdateScreenGroup, useUploadFloorPlan,
+  useAllDisplaySchedules,
 } from '@/hooks/use-api';
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 import { useParams } from 'next/navigation';
@@ -45,8 +47,16 @@ import { ExpectedThumb } from './ExpectedThumb';
 import { ScreenDetailDrawer, type DrawerTab } from './ScreenDetailDrawer';
 import { AddScreensToGroupDialog } from './AddScreensToGroupDialog';
 import { SelectionCheckbox, selectAllTitle } from '@/components/common/SelectionCheckbox';
-import { BulkActionBar, BulkActionSheet } from './BulkScreenActions';
+import { BulkActionSheet } from './BulkScreenActions';
 import { pruneTo, stateFor, toggleMany, toggleOne, type BulkKind } from './bulkSelection';
+import { usePhoneWidth } from '@/lib/use-phone-width';
+import { statusFilterView } from './statusFilterView';
+import { Segmented } from '@/components/ui/segmented';
+import { TabRow } from '@/components/ui/tab-row';
+import { FilterMenu } from '@/components/ui/filter-menu';
+import { PageToolbar } from '@/components/ui/page-toolbar';
+import { ActionDock, SelectionToolbar, type SelectionBarProps } from '@/components/ui/selection-toolbar';
+import { Power, PowerOff } from 'lucide-react';
 
 /**
  * "Full settings" — the SAME popover the classic Screens page has always shown
@@ -87,6 +97,7 @@ function StatusIcon({ tone, statusKey }: { tone: string; statusKey?: string }) {
   const cls = `w-4 h-4 shrink-0 ${statusToneClasses(tone)}`;
   // A download in flight reads as one at a glance (2026-09-27).
   if (statusKey === 'downloading' || statusKey === 'showing-previous') return <Download className={cls} aria-hidden />;
+  if (statusKey === 'sleeping') return <Moon className={cls} aria-hidden />;
   if (tone === 'bad') return <AlertCircle className={cls} aria-hidden />;
   if (tone === 'warn') return <AlertTriangle className={cls} aria-hidden />;
   if (tone === 'ok') return <CheckCircle2 className={cls} aria-hidden />;
@@ -104,10 +115,10 @@ function fullDateTime(ms: number) {
 }
 
 /** §8 last-contact cell: wall clock while fresh, relative age once stale. */
-function lastContact(row: OpsRow, now: number): { primary: string; secondary: string; title: string } {
+function lastContact(row: OpsRow, now: number, sleepingLabel?: string): { primary: string; secondary: string; title: string } {
   const ms = msOf(row.screen.lastPingAt);
   const online = row.screen.status === 'ONLINE';
-  const secondary = online ? 'Online' : row.screen.status === 'PENDING' ? 'Checking' : 'Offline';
+  const secondary = online ? (row.status.key === 'sleeping' && sleepingLabel ? sleepingLabel : 'Online') : row.screen.status === 'PENDING' ? 'Checking' : 'Offline';
   if (ms == null) return { primary: 'Never', secondary, title: 'This screen has never checked in.' };
   const age = now - ms;
   if (online && age >= 0 && age < FRESH_CONTACT_MS) {
@@ -188,6 +199,8 @@ export interface ScreenOperationsV3Props {
   onSetScreenLocation?: (screen: { id: string; name: string; address?: string | null }) => void;
   onSetGroupLocation: (group: { id: string; name: string; address?: string | null }) => void;
   onOpenDisplaySchedule: (target: { kind: 'screen' | 'group'; id: string; name: string }) => void;
+  /** 2026-11-08 — opens the group's opt-in scheduled restart sheet (ScheduledRestartModal). */
+  onOpenScheduledRestart?: (group: { id: string; name: string }) => void;
   onChanged: () => void;
   /** Preview URL builder — the page holds the auth token. */
   buildPreviewHref: (screen: OpsScreen) => string | null;
@@ -238,7 +251,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const {
     screens, groups, schedules, playlists, deployedSha, deployedBundleId,
     isLoading, isError, onRetry, canControl, controlDisabledReason, viewMode, onViewMode,
-    renderMap, floorSlot, scopeSlot, connectSlot, onPairScreen, onSetScreenLocation, onSetGroupLocation, onOpenDisplaySchedule,
+    renderMap, floorSlot, scopeSlot, connectSlot, onPairScreen, onSetScreenLocation, onSetGroupLocation, onOpenDisplaySchedule, onOpenScheduledRestart,
     onChanged, buildPreviewHref,
     deepLinkScreenId, deepLinkFilter, deepLinkGroupId,
   } = props;
@@ -347,14 +360,15 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   const updateGroup = useUpdateScreenGroup();
   const deleteGroup = useDeleteScreenGroup();
 
+  const { data: displaySchedules } = useAllDisplaySchedules();
   const ops = useMemo(
     () => buildScreenOps({
-      screens, schedules, playlists, deployedSha, deployedBundleId,
+      screens, schedules, playlists, deployedSha, deployedBundleId, displaySchedules,
       selectedScreenId: selectedId, now,
     }),
     // `now` is deliberately in the deps: a new render instant is a new
     // derivation, and every age on one paint must come from one instant.
-    [screens, schedules, playlists, deployedSha, deployedBundleId, selectedId, now],
+    [screens, schedules, playlists, deployedSha, deployedBundleId, displaySchedules, selectedId, now],
   );
 
   // ── one-shot deep links ────────────────────────────────────────
@@ -555,6 +569,31 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
   };
 
   const brand = { background: 'var(--brand-primary, #4f46e5)' };
+  const statusView = statusFilterView(ops.chips, filter);
+  const isMobile = usePhoneWidth();
+  /** The bulk actions as ONE list for the desktop selection bar and the phone dock. */
+  const bulkBarProps: SelectionBarProps = {
+    count: selectedIds.length,
+    countLabel: t('screens.bulk.selectedCount', { count: selectedIds.length }),
+    onClear: () => setBulkSelected(new Set()),
+    ariaLabel: t('screens.bulk.barLabel'),
+    testId: 'screens-bulk-bar',
+    moreTestId: 'screens-bulk-more',
+    moreMenuTestId: 'screens-bulk-more-menu',
+    countTestId: 'screens-bulk-count',
+    selectAll: visibleCount > selectedIds.length
+      ? { label: t('screens.bulk.selectAllCount', { count: visibleCount }), onSelect: () => setBulkSelected(new Set(visibleIds)) }
+      : null,
+    actions: [
+      { id: 'update', label: t('screens.bulk.update'), icon: <Download className="w-3.5 h-3.5" aria-hidden />, onSelect: () => startBulk('update', selectedIds), testId: 'screens-bulk-update' },
+      { id: 'power-on', label: t('screens.bulk.powerOn'), icon: <Power className="w-3.5 h-3.5" aria-hidden />, onSelect: () => startBulk('power-on', selectedIds), testId: 'screens-bulk-power-on' },
+      { id: 'power-off', label: t('screens.bulk.powerOff'), icon: <PowerOff className="w-3.5 h-3.5" aria-hidden />, onSelect: () => startBulk('power-off', selectedIds), testId: 'screens-bulk-power-off' },
+      { id: 'auto-on', label: t('screens.bulk.autoOn'), overflow: true, onSelect: () => startBulk('auto-on', selectedIds) },
+      { id: 'auto-off', label: t('screens.bulk.autoOff'), overflow: true, onSelect: () => startBulk('auto-off', selectedIds) },
+      { id: 'auto-inherit', label: t('screens.bulk.autoInherit'), overflow: true, onSelect: () => startBulk('auto-inherit', selectedIds) },
+      { id: 'resync', variant: 'primary', label: t('screens.bulk.resync'), icon: <RefreshCw className="w-3.5 h-3.5" aria-hidden />, onSelect: () => startBulk('resync', selectedIds), testId: 'screens-bulk-resync' },
+    ],
+  };
   const params = useParams<{ schoolId: string }>();
   const schoolSlug = params?.schoolId ?? '';
 
@@ -616,6 +655,13 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
           className={`${item} border-t border-slate-100`}>
           On/off schedule
         </button>
+        {onOpenScheduledRestart && (
+          <button type="button"
+            onClick={() => { setGroupMenu(null); onOpenScheduledRestart({ id: g.id, name: g.name }); }}
+            className={item} data-testid={`group-scheduled-restart-${g.id}`}>
+            {t('scheduledRestart.menuItem')}
+          </button>
+        )}
         {synced && schoolSlug && (
           <a href={`/${schoolSlug}/screens/sync-calibrate?groupId=${g.id}`}
             title={t('screens.ops.calibrateTitle')}
@@ -647,29 +693,22 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div role="tablist" aria-label={t('screensOps.viewsAria')} className="flex w-full sm:w-auto bg-slate-100 rounded-lg p-0.5 border border-slate-200">
-            {([
-              ['list', t('screensOps.viewList'), ListIcon],
-              ['map', t('screensOps.viewMap'), MapIcon],
-              ['floor', t('screensOps.viewFloor'), MapPin],
-            ] as const).filter(([key]) => key !== 'floor' || floorSlot).map(([key, label, Icon]) => {
-              const active = viewMode === key;
-              return (
-                <button
-                  key={key}
-                  role="tab"
-                  type="button"
-                  aria-selected={active}
-                  onClick={() => onViewMode(key)}
-                  className={`flex-1 sm:flex-none justify-center px-3 py-2 sm:py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-colors ${
-                    active ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" aria-hidden /> {label}
-                </button>
-              );
-            })}
-          </div>
+          {/* The view is a Segmented, not tabs (pill cleanup 2026-11-02). */}
+            <Segmented
+              value={viewMode}
+              onChange={onViewMode}
+              ariaLabel={t('screensOps.viewsAria')}
+              fullWidthOnMobile
+              testId="screens-view-switch"
+              options={floorSlot ? [
+                { value: 'list', label: t('screensOps.viewList'), icon: ListIcon },
+                { value: 'map', label: t('screensOps.viewMap'), icon: MapIcon },
+                { value: 'floor', label: t('screensOps.viewFloor'), icon: MapPin },
+              ] as const : [
+                { value: 'list', label: t('screensOps.viewList'), icon: ListIcon },
+                { value: 'map', label: t('screensOps.viewMap'), icon: MapIcon },
+              ] as const}
+            />
 
           {/* 2026-09-14 (Greg): "adding a new group should not be hidden behind
               the 3 dots — an obvious button". A quiet secondary next to the one
@@ -787,89 +826,86 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
 
       {viewMode !== 'floor' && (
         <>
-          {/* ─── Search (§7) ─────────────────────────────────── */}
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); }
-              }}
-              placeholder={t('screensOps.searchPlaceholder')}
-              aria-label={t('screensOps.searchAria')}
-              className="w-full h-12 pl-10 pr-12 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => { setQuery(''); searchRef.current?.focus(); }}
-                aria-label={t('screensOps.clearSearch')}
-                className="absolute right-1 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-4 h-4" aria-hidden />
-              </button>
-            )}
-          </div>
-
-          {/* ─── Filter chips (§7 — single-select, "All" always there) ── */}
-          <div role="group" aria-label={t('screensOps.filterAria')} className="flex flex-wrap gap-2">
-            {/* A problem chip with nothing behind it is a dead button (2026-09-14,
-                Greg: "make sure these filters are legit and useful"): All and
-                Needs attention always show; Content behind / Push delayed /
-                Offline only when they have screens to show — or while active. */}
-            {ops.chips.filter((c) => c.key === 'all' || c.key === 'attention' || c.count > 0 || c.key === filter).map((chip) => {
-              const active = filter === chip.key;
-              return (
-                <button
-                  key={chip.key}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setFilter(chip.key)}
-                  className={`min-h-11 sm:min-h-0 sm:h-9 px-3.5 text-[12.5px] font-bold rounded-xl border inline-flex items-center gap-2 transition-colors ${
-                    active ? 'text-white border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
-                  style={active ? brand : undefined}
-                >
-                  {chip.key === 'attention' && (
-                    <AlertCircle className={`w-3.5 h-3.5 ${active ? 'text-white' : 'text-rose-500'}`} aria-hidden />
-                  )}
-                  {chip.label}
-                  <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${active ? 'bg-white/25' : 'bg-slate-100 text-slate-500'}`}>
-                    {chip.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* ─── Bulk selection (2026-10-11) ─────────────────────
-              The heading box covers every screen SHOWN (filter + search);
-              the bar appears once something is checked. */}
-          {selectable && !isLoading && !isError && visibleCount > 0 && (
-            selectedIds.length > 0 ? (
-              <BulkActionBar
-                selectedCount={selectedIds.length}
-                visibleCount={visibleCount}
-                onSelectAll={() => setBulkSelected(new Set(visibleIds))}
-                onClear={() => setBulkSelected(new Set())}
-                onAction={(kind) => startBulk(kind, selectedIds)}
+              {/* ─── Pill cleanup (2026-11-02, owner-approved) ─────────
+                  ONE toolbar: the main filter as underlined tabs (All /
+                  Needs attention / Offline), search, and the secondary
+                  problems behind Filter. Same single FilterKey as the chips
+                  — same semantics, zero-count problems still hidden or
+                  disabled unless active. While screens are selected, the
+                  desktop row becomes the selection bar in place; on a
+                  phone the selection lives in the bottom dock. */}
+              <PageToolbar
+                testId="screens-toolbar"
+                compact={isMobile}
+                selection={!isMobile && selectable && selectedIds.length > 0 ? <SelectionToolbar {...bulkBarProps} /> : undefined}
+                tabs={
+                  <TabRow
+                    // A status with no tab (Content behind, Push delayed)
+                    // underlines NO tab — the Filter button counts it instead.
+                    value={(statusView.activeTab ?? '') as FilterKey}
+                    onChange={setFilter}
+                    ariaLabel={t('screensOps.filterAria')}
+                    testId="screens-filter-tabs"
+                    tabs={statusView.tabs.map((c) => ({ key: c.key, label: c.label, count: c.count }))}
+                  />
+                }
+                search={
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" aria-hidden />
+                    <input
+                      ref={searchRef}
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Escape' && query) { e.stopPropagation(); setQuery(''); } }}
+                      placeholder={t('screensOps.searchPlaceholder')}
+                      aria-label={t('screensOps.searchAria')}
+                      className="w-full md:w-60 min-h-11 md:min-h-9 pl-9 pr-9 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-300"
+                    />
+                    {query && (
+                      <button
+                        type="button"
+                        onClick={() => { setQuery(''); searchRef.current?.focus(); }}
+                        aria-label={t('screensOps.clearSearch')}
+                        className="absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 md:w-9 md:h-9 flex items-center justify-center text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-4 h-4" aria-hidden />
+                      </button>
+                    )}
+                  </div>
+                }
+                filters={
+                  <FilterMenu
+                    testId="screens-filter-menu"
+                    // Every status is here. One with a tab (Needs attention,
+                    // Offline) underlines that tab when picked and is not
+                    // counted on this button; one without a tab is the count.
+                    activeCount={statusView.menuCount}
+                    groups={[{
+                      id: 'status',
+                      label: t('screensOps.filterStatus'),
+                      type: 'single',
+                      options: statusView.menu.map((c) => ({ value: c.key, label: c.label, count: c.count, disabled: c.disabled })),
+                    }]}
+                    value={{ status: filter === 'all' ? '' : filter }}
+                    onChange={(_g, next) => setFilter(((next as string) || 'all') as FilterKey)}
+                    onClear={() => setFilter('all')}
+                  />
+                }
               />
-            ) : (
-              <div className="flex items-center gap-1 -my-2 pl-1" data-testid="screens-select-heading">
-                <SelectionCheckbox
-                  checked={pageSelState === 'all'}
-                  indeterminate={pageSelState === 'some'}
-                  label={t('screens.bulk.selectAllShown')}
-                  title={selectAllTitle(pageSelState, t('screens.bulk.selectAllShown'), t('selection.clearSelection'))}
-                  onChange={() => setBulkSelected((prev) => toggleMany(prev, visibleIds))}
-                  testId="screens-select-all"
-                />
-                <span className="text-[12px] font-semibold text-slate-500">{t('screens.bulk.shownCount', { count: visibleCount })}</span>
-              </div>
-            )
-          )}
+              {selectable && !isLoading && !isError && visibleCount > 0 && selectedIds.length === 0 && (
+                <div className="flex items-center gap-1 -my-2 pl-1" data-testid="screens-select-heading">
+                  <SelectionCheckbox
+                    checked={pageSelState === 'all'}
+                    indeterminate={pageSelState === 'some'}
+                    label={t('screens.bulk.selectAllShown')}
+                    title={selectAllTitle(pageSelState, t('screens.bulk.selectAllShown'), t('selection.clearSelection'))}
+                    onChange={() => setBulkSelected((prev) => toggleMany(prev, visibleIds))}
+                    testId="screens-select-all"
+                  />
+                  <span className="text-[12px] font-semibold text-slate-500">{t('screens.bulk.shownCount', { count: visibleCount })}</span>
+                </div>
+              )}
+              {isMobile && selectable && <ActionDock {...bulkBarProps} />}
 
           {/* Map view — the same rows the list would show, as pins (§5). */}
           {viewMode === 'map' && renderMap?.(visibleGroups.flatMap((g) => g.rows.map((r) => r.screen)), { rows: visibleGroups.flatMap(g => g.rows), isFiltered: filtering, onOpenScreen: id => { setSelectedId(id); setDrawerTab('overview'); }, onList: () => onViewMode('list') })}
@@ -1047,7 +1083,7 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                         {g.rows.map((row) => {
                           const s = row.screen;
                           const selected = selectedId === s.id;
-                          const lc = lastContact(row, now);
+                          const lc = lastContact(row, now, t('screens.contentState.sleeping'));
                           const actionable = row.status.action === 'Resync' || row.status.action === 'Retry';
                           return (
                             <tr
@@ -1241,12 +1277,32 @@ export function ScreenOperationsV3(props: ScreenOperationsV3Props) {
                             {g.attention > 0 ? `${g.attention} need${g.attention === 1 ? 's' : ''} action` : 'All good'}
                           </span>
                         </button>
+                        {/* 2026-11-08 — the group ⋮ on a phone for a group WITH screens too
+                            (before, only empty groups had one, so On/off schedule and
+                            Scheduled restart could not be reached on an iPhone). */}
+                        <div className="relative inline-block pr-1.5">
+                          <button
+                            type="button"
+                            ref={(el) => { groupKebabRefs.current[`m-${g.id}`] = el; }}
+                            aria-label={`More actions for ${g.name}`}
+                            aria-expanded={groupMenu === `m-${g.id}`}
+                            data-popover-trigger
+                            data-testid="mobile-group-kebab"
+                            onClick={(e) => { e.stopPropagation(); setGroupMenu(groupMenu === `m-${g.id}` ? null : `m-${g.id}`); }}
+                            className="w-11 h-11 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-200/60"
+                          >
+                            <MoreVertical className="w-4 h-4" aria-hidden />
+                          </button>
+                          <AnchoredMenu anchorRef={{ current: groupKebabRefs.current[`m-${g.id}`] ?? null }} open={groupMenu === `m-${g.id}`} width={224} ariaLabel={`Actions for ${g.name}`}>
+                            {groupMenuItems(g)}
+                          </AnchoredMenu>
+                        </div>
                         </div>
                         {expanded && (
                           <ul>
                             {g.rows.map((row) => {
                               const s = row.screen;
-                              const lc = lastContact(row, now);
+                              const lc = lastContact(row, now, t('screens.contentState.sleeping'));
                               const actionable = row.status.action === 'Resync' || row.status.action === 'Retry';
                               return (
                                 <li

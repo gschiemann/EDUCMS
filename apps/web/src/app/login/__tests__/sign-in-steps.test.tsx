@@ -150,7 +150,7 @@ describe('STEP 1 — one field', () => {
     expect(email).toHaveAttribute('autocomplete', 'username webauthn');
     expect(document.activeElement).toBe(email);
     expect(screen.getByRole('button', { name: /^Continue$/ })).toHaveAttribute('type', 'submit');
-    expect(screen.getByRole('link', { name: 'Create a workspace' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Request info' })).toBeInTheDocument();
 
     expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
@@ -217,7 +217,7 @@ describe('STEP 2 — password', () => {
     // One primary action; step 1's extras are gone.
     expect(document.querySelectorAll('button[type="submit"]')).toHaveLength(1);
     expect(screen.getByRole('button', { name: /^Sign in$/ })).toHaveAttribute('type', 'submit');
-    expect(screen.queryByRole('link', { name: 'Create a workspace' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Request info' })).not.toBeInTheDocument();
     // The change is announced politely.
     expect(screen.getByTestId('sign-in-step-announcement')).toHaveAttribute('aria-live', 'polite');
     expect(screen.getByTestId('sign-in-step-announcement')).toHaveTextContent(
@@ -452,7 +452,7 @@ describe('the lookup can never block a sign-in', () => {
       expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
       expect(screen.getByLabelText('Email')).not.toHaveAttribute('readonly');
       expect(document.activeElement).toBe(screen.getByLabelText('Email'));
-      expect(screen.getByRole('link', { name: 'Create a workspace' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Request info' })).toBeInTheDocument();
       // Edits are ignored while it is in flight: the answer is for THIS address.
       fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'someone.else@elsewhere.example' } });
       expect(screen.getByLabelText('Email')).toHaveValue('pat@elsewhere.example');

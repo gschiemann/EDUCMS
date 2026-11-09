@@ -206,7 +206,7 @@ class HeartbeatService : Service() {
         val notif: Notification = NotificationCompat.Builder(this, PlayerApp.CHANNEL_HEARTBEAT)
             .setSmallIcon(android.R.drawable.presence_online)
             .setContentTitle("Player connected")
-            .setContentText("EduCMS Player ${BuildConfig.VERSION_NAME}")
+            .setContentText("VenueOS Player ${BuildConfig.VERSION_NAME}")
             .setOngoing(true)
             .setSilent(true)
             .setContentIntent(pi)
@@ -305,7 +305,7 @@ class HeartbeatService : Service() {
      * 2026-10-11 — the two states in which THIS channel, not the page, is the
      * one that has to answer within a minute:
      *  • the panel is not interactive. An operator's "Turn panel on" reaches
-     *    a dark panel only through this heartbeat (CLAUDE.md player rule 6),
+     *    a dark panel only through this heartbeat (apps/web/src/app/player/CLAUDE.md player rule 6),
      *    and the server keeps it for five minutes — the same length as the
      *    reduced cadence, so a page that kept reporting behind a dark panel
      *    could let the command expire unseen;
@@ -393,6 +393,25 @@ class HeartbeatService : Service() {
                     if (nativeAllowed) runCatching {
                         com.educms.player.media.FaceVideoBox.presentingReport()?.let { setRequestProperty(NATIVE_PRESENTING_HEADER, it) }
                     }.onFailure { PlayerLogger.w(TAG, "native presenting report unavailable: ${it.message}") }
+                    // 2026-11-08 — the companion Manager's health (ManagerReportRelay):
+                    // its own header, only on the signed request, omitted when stale.
+                    if (nativeAllowed) runCatching {
+                        ManagerReportRelay.healthHeader()?.let { setRequestProperty(ManagerReportRelay.HEADER, it) }
+                    }.onFailure { PlayerLogger.w(TAG, "manager health report unavailable: ${it.message}") }
+                    // 2026-11-08 — storage health (diagnostics.ScreenDiagnostics):
+                    // at most every 30 min; its own header, so it can cost nothing above.
+                    if (nativeAllowed) runCatching {
+                        com.educms.player.diagnostics.ScreenDiagnostics.storageHeaderIfDue(applicationContext, prefs)
+                            ?.let { setRequestProperty("x-venueos-storage", it) }
+                    }
+                    // 2026-11-08 (Manager wave 5) — the companion Manager's latest verdict on the
+                    // native alert watch, read from its provider and carried under THIS device's
+                    // credential (the Manager posts nothing itself). Its own header, omitted when
+                    // there is none; it can never cost the reports above.
+                    if (nativeAllowed) runCatching {
+                        com.educms.player.alertwatch.AlertWatchStamp.watchdogReportHeader(applicationContext)
+                            ?.let { setRequestProperty(com.educms.player.alertwatch.AlertWatchStamp.HEADER, it) }
+                    }.onFailure { PlayerLogger.w(TAG, "alert-watch watchdog report unavailable: ${it.message}") }
                 }
                 // Bound the entire exchange, including a body that trickles
                 // forever inside readTimeout. A stuck native heartbeat must
@@ -441,11 +460,20 @@ class HeartbeatService : Service() {
         if (nativeAllowed) runCatching {
             NativePowerControl.accept(applicationContext, prefs, JSONObject(body))
         }.onFailure { PlayerLogger.e(TAG, "native power command failed", it) }
+        // 2026-11-08 — MANAGER_REPORT_RELAY kill switch, isolated like the rest.
+        if (nativeAllowed) runCatching {
+            ManagerReportRelay.acceptServerDirective(prefs, JSONObject(body))
+        }.onFailure { PlayerLogger.w(TAG, "manager relay directive failed: ${it.message}") }
         // Stored device settings — isolated like the power command: a fault
         // here must not stop a back side being hosted or an OTA push below.
         if (nativeAllowed) runCatching {
             DeviceSettings.accept(applicationContext, prefs, JSONObject(body))
         }.onFailure { PlayerLogger.e(TAG, "device settings failed", it) }
+        // 2026-11-08 — an open self-test / logs request (diagnostics.ScreenDiagnostics).
+        // Runs on its own thread; isolated like the two above.
+        if (nativeAllowed) runCatching {
+            com.educms.player.diagnostics.ScreenDiagnostics.accept(applicationContext, prefs, JSONObject(body))
+        }.onFailure { PlayerLogger.e(TAG, "diagnostics request failed", it) }
         // ── How many sides the server says this display has ─────────────
         // Read BEFORE the forced-OTA early return below, and isolated from it:
         // a malformed OTA field must not stop a back side being hosted, and
@@ -637,12 +665,14 @@ class HeartbeatService : Service() {
          * [PromptTickPolicy]; a refused request is folded into the periodic
          * tick. Safe from any thread, never throws.
          */
-        fun requestPromptTick(ctx: Context, reason: String) {
+        fun requestPromptTick(ctx: Context, reason: String, urgent: Boolean = false) {
             try {
                 val now = SystemClock.elapsedRealtime()
                 val accepted = synchronized(promptLock) {
                     promptTicks = PromptTickPolicy.prune(now, promptTicks)
-                    PromptTickPolicy.accept(now, promptTicks)
+                    // 2026-11-02: an URGENT request (the emergency paint receipt) skips the
+                    // 5 s gap only — the per-window cap still bounds a flapping source.
+                    if (urgent) PromptTickPolicy.acceptUrgent(now, promptTicks) else PromptTickPolicy.accept(now, promptTicks)
                 }
                 if (!accepted) return
                 if (promptReason == null) promptReason = reason

@@ -54,6 +54,8 @@ internal class StoreEnv(
      */
     val enrolledBy: (JSONObject) -> Boolean = ::nativeFirstEnrolled,
     val verifyBytesPerSec: Long = StorePolicy.VERIFY_BYTES_PER_SEC,
+    /** Successful, identity-bound source reads only; invoked outside the store lock. */
+    val nativeEnrolment: (face: Int, screenId: String, enabled: Boolean) -> Unit = { _, _, _ -> },
     val log: (String) -> Unit = {},
 )
 

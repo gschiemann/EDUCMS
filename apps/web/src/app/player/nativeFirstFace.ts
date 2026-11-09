@@ -1,4 +1,4 @@
-import { signalDisplayEmergencyHold } from './emergencyHold';
+import { noteNativeEmergencyHeld } from './emergencyHold';
 /**
  * NATIVE-FIRST — this page document's controller of its face's native
  * session (design `docs/design/NATIVE-FIRST-ONE-STORE.md` §3.5 / §4).
@@ -13,7 +13,8 @@ import { signalDisplayEmergencyHold } from './emergencyHold';
  *     and never replaces the last facts (unknown ≠ idle);
  *   • the poll runs only while something holds interest (`hold()`), never
  *     on a browser player and never off the player page;
- *   • nothing is sent unless the app advertised protocolMax ≥ 4.
+ *   • playback commands require protocolMax ≥ 4. An explicitly enrolled
+ *     .64 store may receive a read-only discovery nudge before that point.
  * No React, no DOM; timers and the clock are injectable for the tests.
  */
 import {
@@ -146,8 +147,14 @@ export class NativeFirstFace {
         this.current = facts;
         // Native watch can win the race against the page. Observe the EDGE:
         // the saved intent stays suspended until a fresh intend after clear.
-        // Re-reading it must never re-raise a server-cleared hold.
-        if (!wasHeld && facts.intent?.suspended === 'hold') signalDisplayEmergencyHold(true);
+        // Re-reading it must never re-suppress after a server-confirmed clear.
+        // PAGE-LOCAL suppression only, never a bridge raise (2026-11-02: on a
+        // double-sided unit the suspension can be the OTHER face's hold, and a
+        // raise here re-seeded the hold after every all-clear). Only a
+        // manifest / signed push raises the native hold.
+        const heldNow = facts.intent?.suspended === 'hold';
+        if (!wasHeld && heldNow) noteNativeEmergencyHeld(true);
+        else if (wasHeld && !heldNow) noteNativeEmergencyHeld(false);
         this.listeners.forEach((fn) => {
           try { fn(facts); } catch { /* a listener never breaks the poll */ }
         });
@@ -210,6 +217,20 @@ export class NativeFirstFace {
   sync(manifestTag: string, emergencySetHash?: string | null): boolean {
     const message = nativeSyncMessage(manifestTag, emergencySetHash);
     if (!message || message === this.lastSync || !this.supportsV4()) return false;
+    return this.fireSync(message);
+  }
+
+  /** Break the first-session dependency without granting playback authority.
+   * The caller checks a fresh live manifest, explicit store enrolment and
+   * the .64 floor. Native receives only an ETag and re-reads its OWN source. */
+  discoverStore(manifestTag: string, eligible: boolean): boolean {
+    if (!eligible || this.supportsV4() || !this.bridge.has('sharedVideoPrepare')) return false;
+    const message = nativeSyncMessage(manifestTag);
+    if (!message || message === this.lastSync) return false;
+    return this.fireSync(message);
+  }
+
+  private fireSync(message: string): boolean {
     let ok = false;
     try { ok = this.bridge.fire('sharedVideoPrepare', message); } catch { ok = false; }
     if (ok) this.lastSync = message;

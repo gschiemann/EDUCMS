@@ -13,6 +13,7 @@ import {
   contentStatusLine,
   deriveDelivery,
   deriveDeviceFacts,
+  alertWatchWatchdogFact,
   fmtBytes,
   deriveExpectedContent,
   deriveRecovery,
@@ -33,7 +34,23 @@ import {
   previewOf,
   imageUrlOfPreview,
   syncStatusFor,
+  isCurrentVideo,
 } from '../screenOps';
+
+describe('isCurrentVideo (Technical details show only the playing file)', () => {
+  const current = [{ assetId: 'a1', hash: 'h1', url: 'https://x.test/m/clip.mp4', name: 'clip.mp4' }];
+  it('matches on hash, asset id, url (query ignored) or name', () => {
+    expect(isCurrentVideo({ sha256: 'h1' }, current)).toBe(true);
+    expect(isCurrentVideo({ assetId: 'a1' }, current)).toBe(true);
+    expect(isCurrentVideo({ url: 'https://x.test/m/clip.mp4?v=2' }, current)).toBe(true);
+    expect(isCurrentVideo({ name: 'clip.mp4' }, current)).toBe(true);
+  });
+  it('a stale measurement and an empty schedule are never current', () => {
+    expect(isCurrentVideo({ sha256: 'zz', name: 'old.mp4' }, current)).toBe(false);
+    expect(isCurrentVideo({ name: 'clip.mp4' }, [])).toBe(false);
+    expect(isCurrentVideo({ name: 'clip.mp4' }, undefined)).toBe(false);
+  });
+});
 
 const NOW = Date.parse('2026-08-31T17:00:00.000Z');
 const MIN = 60_000;
@@ -674,11 +691,11 @@ describe('deriveReportedContent — what the player says it is playing (2026-09-
     expect(playlistRenderSignature({ id: 'x', items: [{ sequenceOrder: 0, durationMs: 1, asset: null }] })).toBeNull();
   });
 
-  it('a proof that matches the schedule → "Playing <name>", confirmed and dated', () => {
+  it('a proof that matches the schedule → "Playing <name>", confirmed, one line', () => {
     const r = deriveReportedContent(scr({ lastRenderedHash: SIG }), SHA, NOW, undefined, expected());
     expect(r.state).toBe('confirmed');
     expect(r.line).toBe('Playing Pro Series Video 1');
-    expect(r.detail).toMatch(/Confirmed 20 seconds ago/);
+    expect(r.detail).toBeUndefined();
   });
 
   it('the API keeps only a prefix of a long proof — a prefix past the first item still matches', () => {
@@ -705,13 +722,21 @@ describe('deriveReportedContent — what the player says it is playing (2026-09-
     expect(idle.line).toBe('Nothing playing');
   });
 
-  it('an outstanding update outranks the glass: "Update not confirmed"', () => {
-    const r = deriveReportedContent(
-      scr({ lastRenderedHash: SIG, pendingRefreshAt: new Date(NOW - 2 * MIN).toISOString() }),
+  it('a pending resync under 2 minutes is "Updating…" (not a warning); past 2 minutes it is "Still updating"', () => {
+    const pending = (ms: number) => deriveReportedContent(
+      scr({ lastRenderedHash: SIG, pendingRefreshAt: new Date(NOW - ms).toISOString() }),
       SHA, NOW, undefined, expected(),
     );
-    expect(r.state).toBe('behind');
-    expect(r.line).toBe('Update not confirmed');
+    const fresh = pending(12_000);
+    expect(fresh.state).toBe('updating');
+    expect(fresh.line).toBe('Updating…');
+    expect(fresh.detail).toBeUndefined();
+    const stuck = pending(3 * MIN);
+    expect(stuck.state).toBe('behind');
+    expect(stuck.line).toBe('Still updating — check the screen');
+    expect(stuck.detail).toBeUndefined();
+    // Confirmed: the pending marker clears and the normal state returns.
+    expect(deriveReportedContent(scr({ lastRenderedHash: SIG }), SHA, NOW, undefined, expected()).state).toBe('confirmed');
   });
 
   it('a board proof is matched on the template id', () => {
@@ -752,7 +777,6 @@ describe('deriveRecovery — states come from events, never from a timer', () =>
       screen: scr(over), status: status(over), sending: false, justSent: false, now: NOW,
     })!;
     expect(card.state).toBe('waiting-ack');
-    expect(card.body).toContain('2 minutes');
     // Never claims the player fetched anything it did not report.
     expect(card.body).not.toMatch(/fetched/i);
   });
@@ -1696,5 +1720,68 @@ describe('current content truth — live game + device that cannot report (DEV-0
     // Also when the screen is offline.
     expect(deriveReportedContent(scr({ authState: 'REPAIR_REQUIRED', status: 'OFFLINE' }), SHA, NOW).line)
       .toBe('Device can’t report (needs re-pair)');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Manager wave 5 (2026-11-08) — the companion's verdict on the native alert watch
+// ═══════════════════════════════════════════════════════════════════
+
+describe('alertWatchWatchdogFact', () => {
+  const reportAt = new Date(NOW - 30_000).toISOString(); // the heartbeat landed 30 s ago
+  const report = (w: Record<string, unknown>) => ({ schema: 1, interactive: false, alertWatchWatchdog: w });
+  const fact = (w: Record<string, unknown>) => alertWatchWatchdogFact(report(w), reportAt, NOW);
+
+  it('is nothing when the Player carried no verdict, or one the API would not store', () => {
+    expect(alertWatchWatchdogFact(null, reportAt, NOW)).toBeNull();
+    expect(alertWatchWatchdogFact({ schema: 1 }, reportAt, NOW)).toBeNull();
+    expect(fact({ v: 1, verdict: 'fixed', mode: 'on', ageMs: 1, faces: 1, n24h: 0 })).toBeNull();
+    expect(fact({ v: 1, verdict: 'healthy', mode: 'off', ageMs: 1, faces: 1, n24h: 0 })).toBeNull();
+    expect(fact({ v: 2, verdict: 'healthy', mode: 'on', ageMs: 1, faces: 1, n24h: 0 })).toBeNull();
+  });
+
+  it('a healthy watch: plain tone, the stamp age adds the report age', () => {
+    const f = fact({ v: 1, verdict: 'healthy', mode: 'on', ageMs: 5_000, stampAgeMs: 12_000, stampState: 'watching', faces: 2, n24h: 0 })!;
+    expect(f.key).toBe('alertWatch');
+    expect(f.tone).toBeUndefined();
+    expect(f.value).toBe('Native alert watch alive behind the dark panel');
+    expect(f.valueMsg).toEqual({ key: 'screens.drawer.alertWatchVerdict.healthy' });
+    expect(f.labelMsg).toEqual({ key: 'screens.drawer.alertWatchLabel' });
+    // 12 s on the device + 30 s since the heartbeat = 42 s.
+    expect(f.hint).toBe('Native watch stamped 42 seconds ago · 2 manifests');
+    expect(f.hintMsg).toEqual({ key: 'screens.drawer.alertWatchHintStamp', values: { age: '42 seconds', faces: 2 } });
+  });
+
+  it('an intervention: warn tone, the ladder rung and the 24 h count', () => {
+    const f = fact({ v: 1, verdict: 'rearm-sent', mode: 'on', ageMs: 60_000, stampAgeMs: 250_000, stampState: 'watching', faces: 1, ladder: { rung: 'rearm', ageMs: 60_000 }, n24h: 1 })!;
+    expect(f.tone).toBe('warn');
+    expect(f.value).toBe('Dark panel; native watch silent — re-arm sent to the Player');
+    expect(f.hint).toBe('rearm 1 minute ago · 1 intervention in 24 h');
+    expect(f.hintMsg).toEqual({ key: 'screens.drawer.alertWatchHintLadder', values: { rung: 'rearm', age: '1 minute', n: 1 } });
+    expect(fact({ v: 1, verdict: 'unrecovered', mode: 'on', ageMs: 1, faces: 1, n24h: 2 })!.value).toMatch(/NOT natively watched/);
+    expect(fact({ v: 1, verdict: 'unrecovered', mode: 'on', ageMs: 1, faces: 1, n24h: 2 })!.tone).toBe('warn');
+  });
+
+  it('observe mode always says so, in place of the ladder line', () => {
+    const f = fact({ v: 1, verdict: 'silent-observed', mode: 'observe', ageMs: 1, stampAgeMs: 400_000, faces: 1, ladder: { rung: 'observed', ageMs: 1 }, n24h: 0 })!;
+    expect(f.tone).toBe('warn');
+    expect(f.hint).toBe('Observe mode — the companion records verdicts and sends nothing');
+    expect(f.hintMsg).toEqual({ key: 'screens.drawer.alertWatchHintObserve' });
+  });
+
+  it('stand-down verdicts read as facts, not alarms', () => {
+    for (const v of ['panel-on', 'hold', 'deferred-liveness', 'no-stamp', 'recovered']) {
+      expect(fact({ v: 1, verdict: v, mode: 'on', ageMs: 1, faces: 0, n24h: 0 })!.tone).toBeUndefined();
+    }
+    const nw = fact({ v: 1, verdict: 'not-watchable', mode: 'on', ageMs: 1, faces: 0, n24h: 0, reason: 'this screen is not paired (no usable device token)' })!;
+    expect(nw.tone).toBe('warn');
+    expect(nw.hint).toBe('this screen is not paired (no usable device token)');
+    expect(nw.hintMsg).toBeUndefined();
+  });
+
+  it('rides the Device card after the Player app row, and only when present', () => {
+    const facts = deriveDeviceFacts(scr({ nativeRuntimeReport: report({ v: 1, verdict: 'healthy', mode: 'on', ageMs: 1, faces: 1, n24h: 0 }), nativeRuntimeReportAt: reportAt }), { state: 'current', line: 'x' }, NOW);
+    expect(facts.map((f) => f.key)).toEqual(['player', 'alertWatch', 'network', 'contact']);
+    expect(deriveDeviceFacts(scr({}), { state: 'current', line: 'x' }, NOW).map((f) => f.key)).toEqual(['player', 'network', 'contact']);
   });
 });

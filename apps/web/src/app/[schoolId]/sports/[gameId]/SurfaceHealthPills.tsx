@@ -5,7 +5,7 @@
  *
  * A fixed horizontal pill row pinned inside the Run-mode top area.
  * Each pill represents one screen paired to the tenant, showing:
- *   - Colored status dot (+ shape/icon for color-blind parity per CLAUDE.md §18)
+ *   - Colored status dot (+ shape/icon for color-blind parity per docs/governance/AUDIT-SURFACE.md §18)
  *   - Surface-kind icon (board / ribbon / concourse / off)
  *   - Screen name (truncated)
  *   - Age sub-text ("Scoreboard", "Frozen", "Off", "Offline")
@@ -432,7 +432,7 @@ export function SurfaceHealthPills({
             onClick={() => setActiveId((prev) => (prev === s.id ? null : s.id))}
             aria-pressed={activeId === s.id}
             title={pillTooltip(s)}
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors shrink-0 ${STATUS_RING[s.status]} ${
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors shrink-0 ${STATUS_RING[s.status]} ${
               activeId === s.id
                 ? 'ring-1 ring-white ring-offset-1 ring-offset-slate-900'
                 : 'hover:brightness-125'

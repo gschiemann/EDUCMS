@@ -138,6 +138,11 @@ internal class FaceVideoSession(
     var container: FrameLayout? = null
     var box: FrameLayout? = null
     var surface: SurfaceView? = null
+    /** Broadcast banner (2026-11-02): the generation of the last banner geometry applied to this
+     * session's views, and when that layout pass completed (System.nanoTime, the render-stamp
+     * clock); 0 = not yet laid out. The paint receipt needs a native frame rendered AFTER it. */
+    var bannerGeneration = 0L
+    @Volatile var bannerLaidOutNs = 0L
     var parkLeft = 0
     var revealObserver: ViewTreeObserver? = null
     var revealListener: ViewTreeObserver.OnPreDrawListener? = null
@@ -216,7 +221,7 @@ internal object FaceVideoBox {
     private const val DECODER_RELEASE_WAIT_MS = 1_000L
     private const val LEASE_TICK_MS = 2_000L
     /** Ends of the presenting session after which its pre-roll must NOT take the face. */
-    private val NO_PROMOTION = setOf("emergency-held", "released", "page-requested", "operator-ui", "lifecycle-not-ready",
+    private val NO_PROMOTION = setOf("emergency-held", FaceVideoPolicy.EMERGENCY_HELD_OTHER_FACE, "released", "page-requested", "operator-ui", "lifecycle-not-ready",
         "activity-paused", "credential-identity", "document-retired", "host-detached")
     /** The enrolment switch is re-read from this face's own manifest this often (a conditional GET: a 304 costs nothing). */
     private const val SWITCH_REFRESH_MS = 5L * 60_000L
@@ -293,7 +298,23 @@ internal object FaceVideoBox {
     }
 
     /** ⚠️ §7 E1: EVERY session of EVERY face — v2, v3, v4, a pre-roll, a held predecessor, attended or not. */
-    @Synchronized fun suppress(why: String) { hosts.values.forEach { h -> h.faceSessions.values.toList().forEach { stopSession(h, it, why) } } }
+    @Synchronized fun suppress(why: String) {
+        hosts.values.forEach { h ->
+            // An emergency suppression names, per face, whether THIS face holds (FaceVideoPolicy.emergencyHeldReason).
+            val reason = if (FaceVideoPolicy.isEmergencyHeldReason(why)) heldReason(h) else why
+            h.faceSessions.values.toList().forEach { stopSession(h, it, reason) }
+        }
+    }
+
+    /**
+     * The end reason for a session stopped by the emergency hold on [host]'s face:
+     * `emergency-held` when this face is in the hold (or the hold names no face),
+     * `emergency-held-other-face` when only ANOTHER face of a double-sided unit holds.
+     * The page treats both as "do not play regular media"; only the first may ever be
+     * read as this face's own alert (2026-11-02, the double-sided echo loop).
+     */
+    private fun heldReason(host: SharedVideoHost): String =
+        FaceVideoPolicy.emergencyHeldReason(host.face, DisplayEmergency.holdingFaces(host.ctx))
     /** Re-assert removal even for already-retired output; an alert never trusts a prior stop. */
     fun clearEmergencySurfaces() {
         val remove = Runnable {
@@ -320,10 +341,14 @@ internal object FaceVideoBox {
         if (BroadcastBanner.active(face) && !DisplayEmergency.isPlaybackHeld(host.ctx)) {
             val parent = host.web.parent as? ViewGroup ?: return false
             val bounds = BroadcastBanner.rect(parent.width, parent.height, BroadcastBanner.inset(face), BroadcastBanner.rotation(face))
+            // View bounds are a claim about the View tree, not the glass (2026-11-02: they passed
+            // while the compositor showed the moved video cut off). A live session also needs a
+            // native frame rendered AFTER its banner layout pass: until then the receipt is
+            // unverified and the recovery ladder keeps the alert protective.
             return host.faceSessions.values.all { session ->
-                !session.alive || session.layer.parked || session.box?.let {
+                !session.alive || session.layer.parked || (session.box?.let {
                     it.left >= bounds[0] && it.top >= bounds[1] && it.right <= bounds[0] + bounds[2] && it.bottom <= bounds[1] + bounds[3] && it.height > 0
-                } == true
+                } == true && BannerPaintReceipt.frameAfterLayout(session.bannerLaidOutNs, session.lastStamp))
             }
         }
         return host.faceSessions.values.none {
@@ -385,8 +410,10 @@ internal object FaceVideoBox {
             // compose the surface above the window; `protocol3-disabled` = the
             // positioned-slot engine is off on every class in this build.
             session.refusal?.let { stopSession(host, session, it); return null }
+            // A native surface that would START under a banner is held to the same proof as one moved under it.
+            if (BroadcastBanner.active(host.face) && refuseBannerIfUnprovable(host, true) != null) BroadcastContentViews.refresh()
             // §7 E2: nothing starts under a hold — a v4 intent is kept, suspended, for the page's restore.
-            if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, session, "emergency-held"); return null }
+            if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, session, heldReason(host)); return null }
             if (session.protocol == 2 && !host.lifecycleReady) { stopSession(host, session, if (session.v4) "lifecycle-not-ready" else "activity-paused"); return null }
         }
         // The pair engine and this one never share a face (outside our monitor — lock order).
@@ -502,6 +529,10 @@ internal object FaceVideoBox {
                 BroadcastBanner.set(host.face, message.active, message.inset, DisplayEmergency.holdingFaces(host.ctx), message.rotation)
         }
         if (!accepted) return
+        // Belt and braces (2026-11-02): a live native surface is moved only where the box can be
+        // proven correct. A refusal leaves the video full-face and UNTOUCHED until the hold
+        // arrives, and then the alert is a full takeover (BroadcastBanner.hold / allowsPlayback).
+        if (message.active) synchronized(this) { refuseBannerIfUnprovable(host, host.faceSessions.values.any { it.alive }) }
         BroadcastContentViews.refresh()
         if (DisplayEmergency.isPlaybackHeld(host.ctx)) {
             SharedVideoHost.suppressForEmergency()
@@ -511,6 +542,7 @@ internal object FaceVideoBox {
             synchronized(this) {
                 if (hosts[host.face] !== host || host.detached) return@synchronized
                 if (DisplayEmergency.isPlaybackHeld(host.ctx)) return@synchronized
+                if (BroadcastBanner.refusal(host.face) != null) return@synchronized
                 val parent = host.web.parent as? ViewGroup ?: return@synchronized
                 host.faceSessions.values.forEach { session ->
                     if (!live(host, session) || session.zone != null || session.layer.parked) return@forEach
@@ -519,9 +551,60 @@ internal object FaceVideoBox {
                     val descriptor = session.descriptor ?: return@forEach
                     val rect = boxRect(session, parent.width, parent.height)
                     BroadcastVideoLayout.apply(box, surface, descriptor.fit, descriptor.width, descriptor.height, session.degrees, rect)
+                    afterBannerLayout(host, session, parent, rect)
                 }
             }
         }
+    }
+
+    /**
+     * Decide banner posture for [host]'s face; record and log a refusal. Any thread, under the
+     * monitor. The rotation is the DISPLAY's rotation from its natural orientation (Surface.ROTATION_*):
+     * a landscape-natural HDMI box that Android turned to portrait reads non-zero.
+     */
+    private fun refuseBannerIfUnprovable(host: SharedVideoHost, liveNativeOutput: Boolean): String? {
+        if (!BroadcastBanner.active(host.face)) return null
+        BroadcastBanner.refusal(host.face)?.let { return it }
+        val rotation = runCatching { ((host.web.parent as? View)?.display ?: host.web.display)?.rotation }.getOrNull()
+        val className = runCatching { DeviceClassPolicy.current(host.ctx).className }.getOrDefault("unknown")
+        val reason = BannerPosturePolicy.refusal(liveNativeOutput, rotation) ?: return null
+        BroadcastBanner.refuse(host.face, reason)
+        PlayerLogger.durable("ERROR", "FaceVideoBox", "PLAYER_BROADCAST_BANNER_REFUSED face=${host.face} reason=$reason " +
+            "rotation=${rotation ?: "unknown"} class=$className — a live native video is NOT moved under the banner; " +
+            "the broadcast is a full takeover and the page is told (sharedVideoState.broadcastBannerPosture)")
+        return reason
+    }
+
+    /**
+     * UI thread, under the monitor. Once the layout pass that carries [rect] has run (pre-draw),
+     * stamp the session and write ONE durable line with what the View tree now says: parent size,
+     * display rotation, the box rect and the surface's real size. The paint receipt then waits for
+     * a native frame rendered after this stamp ([BannerPaintReceipt]).
+     */
+    private fun afterBannerLayout(host: SharedVideoHost, s: FaceVideoSession, parent: ViewGroup, rect: IntArray) {
+        val generation = ++s.bannerGeneration
+        s.bannerLaidOutNs = 0L
+        val observer = parent.viewTreeObserver
+        if (!observer.isAlive) return
+        val listener = object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (parent.viewTreeObserver.isAlive) parent.viewTreeObserver.removeOnPreDrawListener(this)
+                synchronized(this@FaceVideoBox) {
+                    if (!liveNow(s) || s.bannerGeneration != generation) return true
+                    s.bannerLaidOutNs = System.nanoTime()
+                    val box = s.box; val sv = s.surface
+                    val rotation = runCatching { parent.display?.rotation }.getOrNull()
+                    PlayerLogger.durable("ERROR", "FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} phase=banner " +
+                        "parent=${parent.width}x${parent.height} rotation=${rotation ?: "unknown"} inset=${BroadcastBanner.inset(host.face)} " +
+                        "bannerRotation=${BroadcastBanner.rotation(host.face)} rect=${rect.joinToString(",")} " +
+                        "box=${box?.let { "${it.left},${it.top},${it.width}x${it.height}" } ?: "none"} " +
+                        "surface=${sv?.let { "${it.left},${it.top},${it.width}x${it.height}" } ?: "none"} sha=${s.sha256.take(8)}")
+                }
+                return true
+            }
+        }
+        observer.addOnPreDrawListener(listener)
+        parent.invalidate()
     }
 
     /** The rect of this session's black box inside the WebView's parent, as [l, t, w, h]; protocol 2 = the whole face. A slot not yet on glass is parked beyond the display. */
@@ -638,7 +721,10 @@ internal object FaceVideoBox {
         val f = FaceVideoPolicy.frame(d.fit, d.width, d.height, degrees, rect[2], rect[3])
         val lp = FrameLayout.LayoutParams(f[2], f[3]).apply { leftMargin = f[0]; topMargin = f[1] }
         if (surface.parent == null) box.addView(surface, lp) else surface.layoutParams = lp
-        synchronized(this) { if (!live(host, s)) return; s.attached = true; s.degrees = degrees }
+        synchronized(this) {
+            if (!live(host, s)) return; s.attached = true; s.degrees = degrees
+            if (s.zone == null && !s.layer.parked && BroadcastBanner.active(host.face)) afterBannerLayout(host, s, parent, rect)
+        }
         PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_VIDEO_LAYER face=${host.face} proto=${s.protocol} mode=${s.layer.mode.name.lowercase(Locale.ROOT)} phase=attached sdk=${Build.VERSION.SDK_INT} parked=${s.layer.parked} box=${rect.joinToString(",")} sha=${s.sha256.take(8)}")
         surfaceReady(host, s)
     }
@@ -857,7 +943,7 @@ internal object FaceVideoBox {
         // Protocol 4 has no commit: its start policy replaces it (§3.5). v2 / v3 are unchanged.
         if (s.v4) return
         if (!live(host, s) || s.state != "ready") return
-        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, "emergency-held"); return }
+        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, heldReason(host)); return }
         main.post {
             synchronized(this) {
                 if (!live(host, s) || DisplayEmergency.isPlaybackHeld(host.ctx)) return@post
@@ -943,7 +1029,7 @@ internal object FaceVideoBox {
                     ints.put(face, intent.copy(suspendedByHold = true))
                     rejections.remove(face)
                     armLeaseTick(host.ctx)
-                    listOfNotNull(current, next).forEach { stopSession(host, it, "emergency-held") }
+                    listOfNotNull(current, next).forEach { stopSession(host, it, heldReason(host)) }
                     PlayerLogger.i("FaceVideoBox", "PLAYER_NATIVE_FIRST_INTENT face=$face held=true sha=${m.sha256.take(8)}")
                     return
                 }
@@ -1039,7 +1125,7 @@ internal object FaceVideoBox {
             val host = s.host
             if (!live(host, s) || s.state != "ready") return
             // §7 E2: not even a hidden pre-roll decoder starts under a hold.
-            if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, "emergency-held"); return }
+            if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, heldReason(host)); return }
             if (s.key == NEXT) {
                 // PRE-ROLL: the decoder starts now and its first frame is HELD on a surface parked beyond
                 // the display (static) or beneath the opaque window (dynamic); prerollHeld() arms the swap.
@@ -1053,7 +1139,7 @@ internal object FaceVideoBox {
 
     /** UI thread, under the monitor: the v4 equivalent of commit's start (nothing presents on this face). */
     private fun startNow(host: SharedVideoHost, s: FaceVideoSession) {
-        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, "emergency-held"); return }
+        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, heldReason(host)); return }
         host.refreshReadiness()
         if (s.protocol == 2 && !host.lifecycleReady) { stopSession(host, s, pageStopped(host, s)); return }
         if (!host.canOwnWindow()) { stopSession(host, s, pageStopped(host, s)); return }
@@ -1133,8 +1219,8 @@ internal object FaceVideoBox {
             val path = b.swapPath ?: NativeFirstBoundary.Path.HOLD_LAST_FRAME
             for (step in NativeFirstBoundary.swapSteps(held, path)) when (step) {
                 NativeFirstBoundary.Step.ABORT_HELD -> {
-                    stopSession(host, b, "emergency-held")
-                    a?.let { stopSession(host, it, "emergency-held") }
+                    stopSession(host, b, heldReason(host))
+                    a?.let { stopSession(host, it, heldReason(host)) }
                     return
                 }
                 NativeFirstBoundary.Step.FREEZE_A -> a?.let {
@@ -1174,8 +1260,8 @@ internal object FaceVideoBox {
     private fun continueSwap(b: FaceVideoSession, a: FaceVideoSession?) {
         if (DisplayEmergency.isPlaybackHeld(b.host.ctx)) {
             synchronized(this) {
-                if (liveNow(b)) stopSession(b.host, b, "emergency-held")
-                a?.let { if (liveNow(it)) stopSession(it.host, it, "emergency-held") }
+                if (liveNow(b)) stopSession(b.host, b, heldReason(b.host))
+                a?.let { if (liveNow(it)) stopSession(it.host, it, heldReason(it.host)) }
             }
             return
         }
@@ -1241,7 +1327,7 @@ internal object FaceVideoBox {
     @Synchronized fun play(host: SharedVideoHost, id: String) {
         val s = byId(host, id) ?: return
         if (!live(host, s) || s.zone == null || s.onGlass || !s.held) return
-        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, "emergency-held"); return }
+        if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, s, heldReason(host)); return }
         main.post {
             synchronized(this) {
                 if (!live(host, s) || DisplayEmergency.isPlaybackHeld(host.ctx) || !s.held) return@post
@@ -1337,7 +1423,7 @@ internal object FaceVideoBox {
                 main.postDelayed({ probeOutput(host, s, sv) }, 60_000)
                 main.postDelayed({ probeOutput(host, s, sv) }, 300_000)
             } else if (s.layer.phase == SoloVideoLayer.Phase.RETIRED && live(host, s)) {
-                stopSession(host, s, if (held) "emergency-held" else if (!attached) "output-detached" else pageStopped(host, s))
+                stopSession(host, s, if (held) heldReason(host) else if (!attached) "output-detached" else pageStopped(host, s))
             }
         } else if (s.layer.request(started = true, validFrame = true)) {
             main.post {
@@ -1348,7 +1434,7 @@ internal object FaceVideoBox {
                     val uiClear = host.canOwnWindow()
                     if (!s.layer.promote(live(host, s), attached, held, uiClear)) {
                         if (live(host, s)) stopSession(host, s,
-                            if (held) "emergency-held" else if (!attached) "output-detached" else pageStopped(host, s))
+                            if (held) heldReason(host) else if (!attached) "output-detached" else pageStopped(host, s))
                         return@post
                     }
                     try {
@@ -1398,7 +1484,7 @@ internal object FaceVideoBox {
                 val attached = s.attached && sv.isAttachedToWindow && sv.holder.surface.isValid
                 val uiClear = host.canOwnWindow()
                 if (held || !attached || !uiClear || s.layer.revealTimedOut(System.nanoTime())) {
-                    stopSession(host, s, if (held) "emergency-held" else if (!attached) "output-detached" else if (!uiClear) pageStopped(host, s) else "output-unavailable")
+                    stopSession(host, s, if (held) heldReason(host) else if (!attached) "output-detached" else if (!uiClear) pageStopped(host, s) else "output-unavailable")
                     return@synchronized
                 }
                 val origin = IntArray(2); container.getLocationInWindow(origin)
@@ -1446,7 +1532,7 @@ internal object FaceVideoBox {
             val screen = s.descriptor?.screenId ?: s.screenId
             val sv = s.surface
             val why = when {
-                DisplayEmergency.isPlaybackHeld(host.ctx) -> "emergency-held"
+                DisplayEmergency.isPlaybackHeld(host.ctx) -> heldReason(host)
                 s.protocol == 2 && s.startedAt > 0 && !host.lifecycleReady -> pageStopped(host, s)
                 s.startedAt > 0 && !host.canOwnWindow() -> pageStopped(host, s)
                 s.layer.revealTimedOut(System.nanoTime()) -> "output-unavailable"
@@ -1745,7 +1831,7 @@ internal object FaceVideoBox {
         }
         s.predecessor?.let { p ->
             s.predecessor = null
-            if (p.alive) stopSession(p.host, p, if (why == "emergency-held") "emergency-held" else "content-changed")
+            if (p.alive) stopSession(p.host, p, if (FaceVideoPolicy.isEmergencyHeldReason(why)) heldReason(p.host) else "content-changed")
         }
         when (s.key) {
             NEXT -> host.faceSessions[""]?.let { a ->
@@ -1797,6 +1883,12 @@ internal object FaceVideoBox {
             }.getOrNull()
         }
         return switchValues[face]
+    }
+
+    /** Only the store's own authenticated, identity-checked source read calls this. */
+    internal fun observeStoreEnrolment(ctx: Context, face: Int, screen: String, enabled: Boolean) {
+        if (face !in 0..1 || NativeAlertWatchPolicy.screenIdOf(FaceTokenStore.read(ctx, face)) != screen) return
+        learnSwitch(ctx, face, enabled)
     }
 
     @Synchronized private fun learnSwitch(ctx: Context, face: Int, value: Boolean?) {
@@ -1996,3 +2088,9 @@ internal object FaceVideoBox {
 
 /** What a v4 session does at its next loop end (FaceVideoRenderer.freezeAtLapEnd). */
 internal enum class LapAction { NONE, SWAP, RELEASE }
+
+/** The broadcast-banner paint receipt, as pure math (2026-11-02). */
+internal object BannerPaintReceipt {
+    /** A native frame was rendered after the banner layout pass completed (both System.nanoTime). */
+    fun frameAfterLayout(laidOutNs: Long, lastRenderStampNs: Long): Boolean = laidOutNs > 0L && lastRenderStampNs > laidOutNs
+}

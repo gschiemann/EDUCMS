@@ -7,7 +7,7 @@ name: Deploy Reliability
 #   - workspace TS packages not built before Node tries to require them
 #   - lockfile drift
 #   - TS errors in apps/web that break the Vercel build
-# See CLAUDE.md "Build failure modes" appendix for the full story.
+# See docs/DEPLOY.md "Build failure modes" appendix for the full story.
 
 on:
   push:
@@ -34,26 +34,21 @@ on:
       - 'LICENSE'
   pull_request:
     branches: [master, main]
-    # Skip ONLY when a push touches nothing but non-shipping docs (added
-    # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
-    # workflow began failing with "the job was not started because ... spending
-    # limit"). Measured that day: ~45-50 BILLED job-minutes per push against a
-    # 2,000/month budget — about 40 pushes a month — while much of the churn
-    # was documentation.
-    #
-    # paths-ignore is the SAFE shape: a run is skipped only if EVERY changed
-    # file matches. Touch one line of code and the full suite runs exactly as
-    # before, so this removes waste, never coverage.
-    #
-    # Deliberately NOT ignored: apps/web/src/content/help/**.md — that markdown
-    # SHIPS in the Next build, so changing it changes the product. '*.md' below
-    # matches root-level files only (GitHub globs do not cross '/').
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.claude/**'
-      - 'scratch/**'
-      - 'LICENSE'
+    # No paths-ignore here (2026-11-01, Foundry Standard Phase 1): the four
+    # REQUIRED checks live in this workflow, and a docs-only PR skipped by a
+    # trigger-level path filter never reports them, so it could never merge
+    # (seen on PRs #196 and #198). Instead the `changes` job classifies the PR
+    # and the build jobs SKIP on docs-only changes: a skipped job satisfies a
+    # required check, a missing one blocks forever. `push` keeps its
+    # paths-ignore — master needs no run for a docs-only commit.
+  # Merge queue (2026-11-01): a queued pull request is checked on a temporary
+  # merge-group commit, not on the PR, and a workflow with no `merge_group`
+  # trigger never reports there — the queue could not merge anything. The
+  # `changes` job classifies a merge group exactly as it classifies a PR. The
+  # concurrency group below is keyed on github.ref, which is unique per merge
+  # group, so queue runs never cancel each other.
+  merge_group:
+    types: [checks_requested]
 
 permissions:
   contents: read
@@ -64,6 +59,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: What changed (docs-only PRs skip the build jobs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      # Only a pull request or a merge group has a diff to classify. Every other
+      # event (push, schedule, dispatch) needs no checkout: its answer is "code".
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        with:
+          fetch-depth: 0
+      - id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          # pull_request -> the PR's base; merge_group -> the group's base (the head
+          # of master, or of the entry ahead of it in the queue). Empty otherwise.
+          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          # merge_group -> the group's head; otherwise GITHUB_SHA (for a pull request,
+          # the test merge commit — what the checkout above has as HEAD).
+          HEAD_SHA: ${{ github.event.merge_group.head_sha || github.sha }}
+        run: |
+          set -eu
+          emit() { echo "code=$1" >> "$GITHUB_OUTPUT"; echo "$2"; }
+          case "$EVENT_NAME" in
+            pull_request|merge_group) ;;
+            *) emit true "$EVENT_NAME is not a pull request or a merge group: the gated jobs always run"; exit 0 ;;
+          esac
+          # From here on a doubt is a code change, never a skip: a classifier that
+          # stands down on an error is how a green check ends up meaning nothing.
+          # --no-renames lists BOTH ends of a rename, so code moved into docs/ still
+          # shows its old path.
+          if [ -z "$BASE_SHA" ] || [ -z "$HEAD_SHA" ] || ! files=$(git diff --name-only --no-renames "$BASE_SHA...$HEAD_SHA"); then
+            emit true "::warning::cannot diff '$BASE_SHA...$HEAD_SHA': treated as a code change, the gated jobs run"
+            exit 0
+          fi
+          if [ -z "$files" ]; then
+            emit true "no changed files found, so nothing can be proven docs-only: the gated jobs run"
+            exit 0
+          fi
+          # The same set as the push trigger's paths-ignore above. Counted with
+          # grep -c (not `grep -q`) so an early-closing pipe can never flip the answer.
+          code_files=$(printf '%s\n' "$files" | grep -vcE '^(docs/|\.claude/|scratch/|LICENSE$|[^/]+\.md$)' || true)
+          if [ "${code_files:-0}" -gt 0 ]; then
+            emit true "code changed: the gated jobs run"
+          else
+            emit false "docs-only: the gated jobs are skipped and report as such"
+          fi
+
   apk-version-tag-sync:
     # The #1 recurring OTA failure: a developer bumps versionCode /
     # versionName in build.gradle.kts but forgets to push the matching
@@ -74,58 +119,70 @@ jobs:
     # failure into a red check that prints the exact `git tag` command.
     name: APK version is tagged
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           fetch-tags: true
-      - name: Player + Manager versionName must have a matching git tag
+      # ONE RELEASE UNIT (2026-11-08): both versions live in
+      # apps/player/versions.properties. The unit (Player APK) must have its
+      # player-v<unit> tag; the Manager it carries must have shipped in SOME
+      # unit (a player-v<manager.version> tag exists, or it equals the unit
+      # being released); manager-v* tags are retired and never required.
+      - name: One release unit — versions guard
+        run: node scripts/check-apk-versions.cjs
+      - name: unit.version must have a matching player-v tag
         run: |
           fail=0
-          for entry in "app:player" "manager:manager"; do
-            dir="${entry%%:*}"; prefix="${entry##*:}"
-            gradle="apps/player/$dir/build.gradle.kts"
-            vn=$(grep -oE 'versionName = "[^"]+"' "$gradle" | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-            vc=$(grep -oE 'versionCode = [0-9]+'   "$gradle" | head -1 | sed -E 's/.*= //')
-            IFS=. read -r MA MI PA <<< "$vn"
-            want=$(( MA*10000 + MI*100 + PA ))
-            if [ "$vc" != "$want" ]; then
-              echo "::error file=$gradle::$dir versionCode=$vc but versionName=$vn implies $want — the OTA endpoint derives versionCode as major*10000+minor*100+patch, so they MUST agree."
-              fail=1
-            fi
-            tag="${prefix}-v${vn}"
-            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              echo "OK  $dir is v$vn and tag $tag exists"
-            else
-              echo "::error file=$gradle::$dir is at versionName=$vn but git tag '$tag' does NOT exist. CI only ships an OTA release on a $prefix-v* tag. Run:  git tag $tag && git push origin $tag"
-              fail=1
-            fi
+          versions="apps/player/versions.properties"
+          unit=$(sed -nE 's/^[[:space:]]*unit\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' "$versions" | head -1)
+          manager=$(sed -nE 's/^[[:space:]]*manager\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' "$versions" | head -1)
+          tag="player-v${unit}"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "OK  unit is v$unit and tag $tag exists"
+          else
+            echo "::error file=$versions::unit.version=$unit but git tag '$tag' does NOT exist. CI only ships an OTA release on a player-v* tag. Tag the MERGED commit:  git tag $tag && git push origin $tag"
+            fail=1
+          fi
+          if [ "$manager" = "$unit" ] || git rev-parse -q --verify "refs/tags/player-v${manager}" >/dev/null; then
+            echo "OK  manager.version=$manager shipped in a tagged unit"
+          else
+            echo "::error file=$versions::manager.version=$manager names a unit that was never tagged (no player-v$manager) — the companion's version must be the unit that last changed it"
+            fail=1
+          fi
 
-            # Hardening (the v1.0.66 incident): the checks above work
-            # FROM the gradle outward and cannot catch a tag cut on an
-            # un-bumped tree — player-v1.0.66 was tagged while the gradle
-            # still said 1.0.65, so the APK shipped mis-stamped and every
-            # kiosk looped on install. This check works FROM the tags:
-            # the newest $prefix-v* tag must point at a commit whose
-            # build.gradle.kts versionName equals the tag.
-            latest=$(git tag -l "${prefix}-v*" | sort -V | tail -1)
-            if [ -n "$latest" ]; then
-              tagver="${latest#${prefix}-v}"
-              tagvn=$(git show "$latest:$gradle" 2>/dev/null | grep -oE 'versionName = "[^"]+"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-              if [ "$tagvn" != "$tagver" ]; then
-                echo "::error file=$gradle::tag $latest points at a commit whose versionName is '$tagvn', not '$tagver' — a $prefix-v* tag was cut WITHOUT bumping the gradle. The APK ships mis-stamped and kiosks loop on install. Bump the gradle and re-tag (see release-apk.sh / feedback_player_release_tagging.md)."
-                fail=1
-              else
-                echo "OK  newest tag $latest matches its commit gradle ($tagvn)"
-              fi
+          # Hardening (the v1.0.66 incident): the checks above work FROM the
+          # file outward and cannot catch a tag cut on an un-bumped tree —
+          # player-v1.0.66 was tagged while the gradle still said 1.0.65, so
+          # the APK shipped mis-stamped and every kiosk looped on install.
+          # This check works FROM the tags: the newest player-v* tag must
+          # point at a commit whose unit.version equals the tag (older tags
+          # predate versions.properties and carried the version as a gradle
+          # literal — read that when the file is absent at the tag).
+          latest=$(git tag -l "player-v*" | sort -V | tail -1)
+          if [ -n "$latest" ]; then
+            tagver="${latest#player-v}"
+            tagvn=$(git show "$latest:$versions" 2>/dev/null | sed -nE 's/^[[:space:]]*unit\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' | head -1)
+            if [ -z "$tagvn" ]; then
+              tagvn=$(git show "$latest:apps/player/app/build.gradle.kts" 2>/dev/null | grep -oE 'versionName = "[^"]+"' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
             fi
-          done
+            if [ "$tagvn" != "$tagver" ]; then
+              echo "::error file=$versions::tag $latest points at a commit whose unit version is '$tagvn', not '$tagver' — a player-v* tag was cut WITHOUT bumping the version. The APK ships mis-stamped and kiosks loop on install. Bump and re-tag (see release-apk.sh / feedback_player_release_tagging.md)."
+              fail=1
+            else
+              echo "OK  newest tag $latest matches its commit version ($tagvn)"
+            fi
+          fi
           exit $fail
 
   lockfile-check:
     name: pnpm lockfile drift
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -147,6 +204,8 @@ jobs:
     # author's machine. Database-free; see the script header.
     name: schema change ships a migration
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -169,6 +228,8 @@ jobs:
   api-build:
     name: API + workspace packages build
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -207,6 +268,8 @@ jobs:
   web-jest:
     name: Web Jest (unit)
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -259,6 +322,8 @@ jobs:
   web-build:
     name: Web typecheck + build
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -328,6 +393,8 @@ jobs:
   docker-build:
     name: Docker build + boot smoke test
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -413,11 +480,76 @@ jobs:
     # has no network), and runs as a non-root user. Nothing is pushed.
     name: Renderer image build + render smoke test
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ (github.event_name != 'pull_request' && github.event_name != 'merge_group') || needs.changes.outputs.code == 'true' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build the renderer image Railway will build
         run: docker build -f apps/renderer/Dockerfile -t venueos-renderer:ci .
+
+      # ── Image security: SBOM + vulnerability scan — REPORT-ONLY (2026-11-01) ─────
+      #
+      # The API image has both (ci.yml, "Container Security Scanning": a CycloneDX SBOM,
+      # then a BLOCKING Trivy scan since SEC-005). The renderer image had neither, and it
+      # ships a full Chromium plus font packages from Alpine — a large, fast-moving CVE
+      # surface to leave unwatched.
+      #
+      # The three steps below mirror the API job's: the same trivy-action and
+      # upload-artifact commit SHAs, the same DB mirrors, the same ignore-unfixed /
+      # os,library / CRITICAL,HIGH / .trivyignore.yaml, SBOM first. ONE deliberate
+      # difference: they cannot fail this job — `exit-code: '0'` on both Trivy steps, and
+      # `continue-on-error` on all three, so a DB-download or action-install hiccup can
+      # never red the smoke test below, which is what this job exists for. The API scan
+      # blocks; this one reports, so the first runs measure the baseline before anything
+      # depends on it.
+      #
+      # ⚠️ A red step here means the step could not run — read its log. It is not a verdict
+      # on the image; findings, if any, are the table printed by the Trivy scan step.
+      #
+      # TO PROMOTE IT TO A GATE (what SEC-005 did for the API): set `exit-code: '1'` on the
+      # scan step and delete its `continue-on-error`, after triaging whatever the baseline
+      # shows — fix it, or add a dated, justified entry to .trivyignore.yaml (its header
+      # has the rules).
+      - name: Software bill of materials (CycloneDX)
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: 'venueos-renderer:ci'
+          format: 'cyclonedx'
+          output: 'sbom-renderer.cdx.json'
+          exit-code: '0'
+        env:
+          TRIVY_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2'
+          TRIVY_JAVA_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1'
+
+      - name: Keep the SBOM
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-renderer-${{ github.sha }}
+          path: sbom-renderer.cdx.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Trivy vulnerability scan (report-only)
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: 'venueos-renderer:ci'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          trivyignores: '.trivyignore.yaml'
+        env:
+          TRIVY_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2'
+          TRIVY_JAVA_DB_REPOSITORY: 'mirror.gcr.io/aquasec/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1'
+
       - name: Boot, health, render, non-root
         run: |
           docker run -d --name renderer-smoke -p 18081:8080 -e PORT=8080 --memory=2g venueos-renderer:ci

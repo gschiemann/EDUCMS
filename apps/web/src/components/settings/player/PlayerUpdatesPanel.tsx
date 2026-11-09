@@ -26,7 +26,7 @@
  *   • "Rollout verified on N/M screens" is a SEPARATE line, and it is derived
  *     only from what `Screen` rows reported about themselves.
  *   • The status pill comes from `derivePlayerRolloutState()`, which grades
- *     nothing it cannot evidence (CLAUDE.md Player Reliability rule 10).
+ *     nothing it cannot evidence (apps/web/src/app/player/CLAUDE.md Player Reliability rule 10).
  *
  * ── Audit honesty ────────────────────────────────────────────────────
  * `PUT me/ota-window` and `PUT me/canary-rollout` write an AuditLog row

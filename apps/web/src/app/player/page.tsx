@@ -16,6 +16,8 @@ import { useTranslations } from 'next-intl';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
+import { readPlayerStorageEstimate, storageEstimateText, type PlayerStorageEstimate } from './storageEstimate';
+import { DIAGNOSTICS_WS_TYPE, onLiveManifestApplied, onPushedDiagnosticsRequest } from './screenDiagnostics';
 import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
 // ⚠️ NOTHING in this file's STATIC import list may pull in the widget /
@@ -26,7 +28,7 @@ import { healPatternCss } from '@/lib/pattern-css';
 // rendererBundle.tsx — loaded after register succeeds and the first
 // manifest is applied. Re-adding a static renderer import here silently
 // puts the whole catalog back on the pairing path.
-import { MonitorPlay, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut } from 'lucide-react';
+import { MonitorPlay, WifiOff, AlertTriangle, Loader2, Settings, CheckCircle2, HardDrive, Cpu, Server, Network, Play, Pause, Monitor, Info, Power, RefreshCw, Download, LogOut, Usb } from 'lucide-react';
 import { KioskSplash, type LoadProgress, type SplashNetwork } from '@/components/player/KioskSplash';
 import { useNetworkStatus, noteNetworkAnswer, noteNetworkNoAnswer } from './useNetworkStatus';
 import type { NetworkStatus } from './networkStatus';
@@ -47,7 +49,7 @@ import { decideEmergencySurface, isBannerEmergencyMessage } from './emergencySur
 import { broadcastContentStyle, type BroadcastLayout } from './broadcastLayout';
 import { cachedManifestWouldClearLiveAlert, emergencyBoardStaysOnGlass, provisionalAlertSurvivesPreCommitManifest } from './emergencyInterlock';
 import {
-  USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseUsbPackage,
+  USB_IMPORTED_AT_HEADER, USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseImportedAt, parseUsbPackage,
   readUsbMemo, usbOnlyManifest, usbOverlayActive, writeUsbMemo, type UsbOverlayState,
 } from './usbPackage';
 import { emergencyPaintIdentity, emergencyRenderHash } from './emergencyPaintProof';
@@ -188,6 +190,8 @@ import {
   loopReportDue,
   mediaCapsRefused,
   updateReportRefused,
+  softBlankRefused,
+  softBlankOnGlass,
   videoExtrasRefused,
   LOOP_REPORT_RETRY_MS,
   initialTelemetryDelayMs,
@@ -315,6 +319,8 @@ import { bootCheck as loopGuardBootCheck, isBlocked as loopIsBlocked } from './l
 // `__tests__/remoteDialogWiring.test.ts` keeps it out of the player route.
 import { remoteSurfaceStillUp, type RemoteDialogKind, type RemoteDialogOutcome } from './remoteConfirm';
 import { RemoteDialog, REMOTE_DIALOG_COPY, useRemoteDialog } from './RemoteDialog';
+import { RemoteOptions } from './RemoteOptions';
+import { nativeStoreDiscoveryAllowed } from './nativeStoreDiscovery';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
 // initialized in apps/web/sentry.client.config.ts and is GATED on
 // NEXT_PUBLIC_SENTRY_DSN: when the DSN env is unset, Sentry.init() never runs
@@ -374,7 +380,7 @@ const OUTCOME_REPORT_COALESCE_MS = 3_000;
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
 // raise-eagerly / release-only-from-the-server-of-record rule.
-import { displayEmergencyHoldRaised, displayEmergencyPlaybackHeld, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
+import { displayEmergencyBannerRefused, displayEmergencyHoldRaised, displayEmergencyPlaybackHeld, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
 // Display CONTROL — the consumer half (2026-08-13). Everything the operator
 // presses on the dashboard (volume / brightness / blank / wake) arrives as a
 // signed DISPLAY_CONTROL push, and every on/off schedule arrives in the
@@ -1735,7 +1741,7 @@ function CalibrationFlashOverlay({
 // proof, per Standard Audit Surface §21.
 //
 // Taurus-safe by construction: longhand absolute positioning (never the
-// `inset` shorthand — CLAUDE.md #10), solid rgba background (no
+// `inset` shorthand — apps/web/CLAUDE.md #10), solid rgba background (no
 // backdrop-filter on Chromium 83), margins instead of flex `gap`.
 // The sweep/flash are driven via refs from a rAF loop (no React re-render
 // per frame); numeric readouts refresh on a 250ms interval.
@@ -2628,7 +2634,7 @@ type Phase = 'registering' | 'pairing' | 'connecting' | 'playing' | 'offline' | 
  * cutoff class Greg caught on the live 960×1080 LED).
  *
  * transform:scale is Chromium-83-safe (Taurus). longhand top/right/bottom/left,
- * no `inset` (CLAUDE.md rule #10). Re-measures on resize + font load. A
+ * no `inset` (apps/web/CLAUDE.md rule #10). Re-measures on resize + font load. A
  * one-frame unscaled flash self-corrects instantly.
  *
  * Mirrors the same component in apps/web/src/components/player/EmergencyOverlay.tsx
@@ -2936,8 +2942,12 @@ function bootContentSample(state: { rendering: boolean; sig: string; video?: boo
 function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMonitorRefs }) {
   const emergencyFaceStage = useEmergencyFaceStage();
   const tEmergency = useTranslations('emergency');
+  const tPlayerMenu = useTranslations('playerMenu');
   const emergencyRenderHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyHoldRaised, () => false);
   const emergencyPlaybackHold = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyPlaybackHeld, () => false);
+  // 2026-11-02: the app refused banner posture (its native video could not be
+  // proven correct under a banner) — the broadcast is shown as a full takeover.
+  const emergencyBannerRefused = useSyncExternalStore(subscribeDisplayEmergencyHold, displayEmergencyBannerRefused, () => false);
   const [broadcastLayout, setBroadcastLayout] = useState<BroadcastLayout | null>(null);
   const onBannerLayoutChange = useCallback((next: BroadcastLayout | null) => {
     setBroadcastLayout(previous => previous?.width === next?.width && previous?.height === next?.height && previous?.bannerHeight === next?.bannerHeight ? previous : next);
@@ -3096,7 +3106,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // instead of silently going without. Same behaviour, one implementation.
   useTaurusPolyfills();
 
-  const [storageInfo, setStorageInfo] = useState({ used: '1.2 GB', total: '32 GB', percent: 4 });
+  const [storageEstimate, setStorageEstimate] = useState<PlayerStorageEstimate | null>(null);
+  const storageInfo = storageEstimateText(storageEstimate);
 
   // One-shot admin-token handoff for preview mode. The dashboard appends
   // `#t=<jwt>&o=<portrait|landscape>` when opening the Preview link.
@@ -3512,17 +3523,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   }, []);
 
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
-      navigator.storage.estimate().then(({ usage, quota }) => {
-        if (usage && quota) {
-          setStorageInfo({
-             used: (usage / (1024 * 1024 * 1024)).toFixed(2) + ' GB',
-             total: (quota / (1024 * 1024 * 1024)).toFixed(0) + ' GB',
-             percent: Math.round((usage / quota) * 100)
-          });
-        }
-      });
-    }
+    let active = true;
+    void readPlayerStorageEstimate(typeof navigator === 'undefined' ? undefined : navigator.storage)
+      .then(value => { if (active) setStorageEstimate(value); });
+    return () => { active = false; };
   }, []);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
@@ -3628,7 +3632,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // `remoteConfirm.ts`, drawing + keys in `RemoteDialog.tsx`, mounted INSIDE
   // the paired card. Parked on the safe answer; Back cancels it and nothing
   // else; it closes — as "cancel" — when the surface that opened it closes or
-  // an alert reaches the glass (CLAUDE.md player rule 15).
+  // an alert reaches the glass (apps/player/CLAUDE.md player rule 15).
   /** The control that opened the question — the remote is parked back on it. */
   const remoteDialogOpenerRef = useRef<HTMLElement | null>(null);
   /** Runs an answer (exactly once per question). Set by a layout effect below `handleUnpair`, re-armed after every commit. */
@@ -5975,6 +5979,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const uninstall = installDeviceDiagnosticsUploader(createDeviceDiagnosticsUploader({
       screenId, token: getDeviceToken, apiRoot: getApiRoot,
       readLogs: () => nativeCall('getRecentLogs'),
+      readNativeState: () => nativeCall('sharedVideoState'),
+      readStorage: () => readPlayerStorageEstimate(navigator.storage),
       post: (url, init) => fetchJsonBounded(url, init, 15_000),
       now: Date.now,
     }));
@@ -8213,6 +8219,20 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         {
           const tag = nativeManifestTag(manifestEtagRef.current);
           if (tag) nativeFirstFaceRef.current?.sync(tag, lastEmergencySetHashRef.current || null);
+          // .64 can learn enrolment from the store's own authenticated read.
+          // Waiting for protocol 4 before nudging that read stranded a face
+          // which booted on images. Keep cached/loaded video on its current
+          // path: discovery must not take a working video away to download it.
+          const url = manifest.nativeVideo?.asset?.url;
+          if (tag && typeof url === 'string') {
+            const key = stableManifestUrlKey(playbackUrlFor(url, 'video/mp4'));
+            const available = cachedMediaKeysRef.current.has(key) || Array.from(document.querySelectorAll('video')).some(video =>
+              video.readyState >= 2 && stableManifestUrlKey(video.currentSrc || video.src) === key);
+            nativeFirstFaceRef.current?.discoverStore(tag, nativeStoreDiscoveryAllowed({
+              manifest, screenId, userAgent: navigator.userAgent,
+              holdRaised: displayEmergencyPlaybackHeld(), mediaAlreadyAvailable: available,
+            }));
+          }
         }
         // ── E-P0-01: OVERRIDE confirmation-window bookkeeping ────────────
         if (pendingOverrideConfirmRef.current) {
@@ -8269,6 +8289,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // Durable REFRESH_WEB — live manifests only (a disk-cached command
         // value is either already acked or pointless offline).
         maybeExecuteDurableRefresh(manifest, admitRefreshNow);
+        // Screen diagnostics (2026-11-08, screenDiagnostics.ts): an open self-test
+        // rides the manifest too; fire-and-forget, never touches playback.
+        onLiveManifestApplied(manifest, { apiRoot: getApiRoot(), token: getDeviceToken(), screenId });
         setPhase('playing');
         setLastSync(new Date().toLocaleTimeString());
         return;
@@ -8436,12 +8459,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     if (!hasNativeBridge()) return;
     try {
       const res = await fetch(USB_PACKAGE_PATH, { cache: 'no-store' });
-      const pkg = res.ok ? parseUsbPackage(await res.json()) : null;
+      const pkg = res.ok ? parseUsbPackage(await res.json(), parseImportedAt(res.headers.get(USB_IMPORTED_AT_HEADER))) : null;
       const prev = usbStateRef.current;
-      const next = adoptUsbPackage({ ...prev, memo: prev.memo ?? readUsbMemo(window.localStorage) }, pkg);
+      const prevMemo = prev.memo ?? readUsbMemo(window.localStorage);
+      const next = adoptUsbPackage({ ...prev, memo: prevMemo }, pkg);
       usbStateRef.current = next;
       if (pkg) writeUsbMemo(window.localStorage, next.memo);
-      if (pkg && usbOverlayActive(next) && prev.pkg?.bundleVersion !== pkg.bundleVersion) {
+      // A new package — or the same one a person brought in again (a new
+      // import time revives a retired stick: usbPackage.ts adoptUsbPackage).
+      const broughtInAgain = !!prevMemo && prevMemo.retired && next.memo?.retired === false;
+      if (pkg && usbOverlayActive(next) && (prev.pkg?.bundleVersion !== pkg.bundleVersion || broughtInAgain)) {
         console.warn(`[Player] USB playlist ${pkg.bundleVersion} ready — applying`);
         manifestEtagRef.current = null;
         void fetchContent();
@@ -8454,6 +8481,27 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     window.addEventListener(USB_IMPORTED_EVENT, onImported);
     return () => window.removeEventListener(USB_IMPORTED_EVENT, onImported);
   }, [loadUsbPackage]);
+  // 2026-10-26 — "Import from USB" in the Back menu (APK ≥ 1.1.55). The APK
+  // reads the drive and its USB card says what it found (and owns the remote
+  // while it is up; Back from it returns to this menu). When that import
+  // lands, the person asked for it to PLAY: close the menu so it does, instead
+  // of leaving it paused behind the menu they started from.
+  const usbMenuImportAtRef = useRef(0);
+  useEffect(() => {
+    const onImported = () => {
+      const at = usbMenuImportAtRef.current;
+      if (!at || Date.now() - at > 10 * 60_000) return;
+      usbMenuImportAtRef.current = 0;
+      setPlaybackStopped(false);
+      setExitUnavailable(false);
+    };
+    window.addEventListener(USB_IMPORTED_EVENT, onImported);
+    return () => window.removeEventListener(USB_IMPORTED_EVENT, onImported);
+  }, []);
+  const importFromUsb = () => {
+    usbMenuImportAtRef.current = Date.now();
+    nativeFire('importFromUsb');
+  };
 
   // Emergency preempt lane (deep-audit F2): abort any in-flight NORMAL
   // manifest request so the gate's coalesced follow-up — which will fetch
@@ -8570,6 +8618,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const mediaCapsRef = useRef<TelemetryMediaCaps | null>(null);
   const mediaCapsSentRef = useRef(false);
   const mediaCapsBlockedUntilRef = useRef(0);
+  // Soft BLANK report (2026-11-02): held back for LOOP_REPORT_RETRY_MS after an
+  // older API refused a body that carried it — liveness never pays for it.
+  const softBlankBlockedUntilRef = useRef(0);
   useEffect(() => {
     if (typeof window === 'undefined' || isPreviewMode()) return;
     let live = true;
@@ -8678,6 +8729,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         cacheSource: cacheSourceAllowedRef.current && (nativeFirstFaceRef.current?.facts?.protocolMax ?? 0) >= NATIVE_FIRST_PROTOCOL
           ? readinessSourceRef.current
           : null,
+        // Is the soft BLANK overlay on the glass (2026-11-02)? Read from the
+        // DOM node, never the state flag — the dashboard's Sleep/Awake pair
+        // confirms a soft Sleep from this.
+        softBlank: nowMs >= softBlankBlockedUntilRef.current ? softBlankOnGlass(softBlankNodeRef.current) : null,
       });
 
       let status: number | null = null;
@@ -8738,6 +8793,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       if (mediaCapsRefused(status, body)) {
         mediaCapsBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
         console.warn('[Player] the server refused the decode-capability report — holding it back for 10 minutes');
+      }
+      if (softBlankRefused(status, body)) {
+        softBlankBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
+        console.warn('[Player] the server refused the soft-blank report — holding it back for 10 minutes');
       }
       if (updateReportRefused(status, body)) {
         updateReportBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
@@ -8856,6 +8915,30 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       if (timer) clearTimeout(timer);
     };
   }, [screenId]);
+
+  // ── Soft BLANK went on / off → report it now (2026-11-02) ──────────────
+  //
+  // The dashboard's Sleep/Awake pair waits CONFIRM_WINDOW_MS (30 s) for the
+  // screen to confirm a soft Sleep; the routine report is a minute away. So
+  // when the overlay node appears or disappears, the NEXT report goes now —
+  // through the same scheduler tick (no new timer, no new route, bounded by
+  // the same request timeout). The API lets exactly this report past its
+  // 30 s per-screen floor because the value changed; anything else waits.
+  // Runs after every commit: a boolean compare, nothing more. At most one
+  // kick per 2 s, so a flapping overlay cannot become a request storm — the
+  // routine report carries whatever it settles on.
+  const softBlankKickedRef = useRef(false);
+  const softBlankKickAtRef = useRef(0);
+  useEffect(() => {
+    if (isPreviewMode()) return;
+    const onGlass = softBlankOnGlass(softBlankNodeRef.current);
+    if (onGlass === softBlankKickedRef.current) return;
+    const nowMs = Date.now();
+    if (nowMs - softBlankKickAtRef.current < 2_000) return;
+    softBlankKickedRef.current = onGlass;
+    softBlankKickAtRef.current = nowMs;
+    telemetryTickRef.current?.();
+  });
 
   // ── Content changed → bring the next report forward, don't add one ─────
   //
@@ -9643,6 +9726,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         raiseFromSignedPush(pl, 'sse');
         preemptReconcile(); // F2: don't wait out an in-flight normal fetch
       });
+      handle(DIAGNOSTICS_WS_TYPE, (pl) => {
+        onPushedDiagnosticsRequest(pl, { apiRoot: getApiRoot(), token: getDeviceToken(), screenId });
+      });
       handle('ALL_CLEAR', () => {
         if (pendingOverrideConfirmRef.current) {
           pendingOverrideConfirmRef.current = null;
@@ -10169,6 +10255,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               applyDisplayControl(msg, 'WS');
               return;
             }
+            // Screen diagnostics (2026-11-08): the push ride of a self-test. Benign —
+            // the server accepts an answer only for its own open request id.
+            if (msg.type === DIAGNOSTICS_WS_TYPE) {
+              onPushedDiagnosticsRequest(msg.payload || (msg as any).data, { apiRoot: getApiRoot(), token: getDeviceToken(), screenId });
+              return;
+            }
             if (msg.type === 'REFRESH_WEB') {
               const pl = msg.payload || msg;
               const scope = pl?.scope;
@@ -10254,6 +10346,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             //   payload.scope === 'screen' + scopeId matches this screen
             // If we're NOT running inside the Android kiosk shell, the
             // bridge isn't present — plain browser players just log + no-op.
+            // Manager wave 3 (#8): the dashboard's Clear quarantine for ONE screen.
+            // Relayed to the companion Manager through the APK; a browser player or
+            // an APK older than 1.1.66 has no such method and simply ignores it.
+            if (msg.type === 'CLEAR_UPDATE_QUARANTINE') {
+              const pl = msg.payload || msg;
+              if (pl?.scope === 'screen' && screenId && pl?.scopeId === screenId && nativeHas('clearUpdateQuarantine')) {
+                console.log(`[Player] CLEAR_UPDATE_QUARANTINE received corrId=${pl?.corrId || '(none)'}`);
+                nativeFire('clearUpdateQuarantine');
+              }
+            }
             if (msg.type === 'CHECK_FOR_UPDATES') {
               const pl = msg.payload || msg;
               const scope = pl?.scope;
@@ -11963,7 +12065,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // pushed — the same class of miss the {otaOverlay} audit notes below
   // document three times. Built once here; mounted in the template branch,
   // the media branch and the tile branch. top/right/bottom/left longhand,
-  // not `inset` — Chromium-83 Taurus, CLAUDE.md #10.
+  // not `inset` — Chromium-83 Taurus, apps/web/CLAUDE.md #10.
   const updatePromptNode = showUpdatePrompt ? (
     // role="presentation": this wrapper only CONTAINS clicks/keys so they never
     // bubble into the canvas (info-card opener fix); its buttons are the controls.
@@ -12141,7 +12243,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   };
   // Plain black, sized to the canvas — what a quiet screen shows where the
   // splash / a card used to be. Two sides + size only (never four sides:
-  // CLAUDE.md #10, the inset-serialization landmine).
+  // apps/web/CLAUDE.md #10, the inset-serialization landmine).
   const glassHoldNode = (
     <div
       data-edu-glass-hold="1"
@@ -12184,7 +12286,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // and no error at all (Chromium 83 probe, c83-regfail.png). Every
         // other fixed root sizes from --led-w/--led-h; so does this one now.
         // Three sides only (top/left + width): a four-side object would
-        // re-serialize to the `inset` shorthand (CLAUDE.md #10).
+        // re-serialize to the `inset` shorthand (apps/web/CLAUDE.md #10).
         style={{
           top: 'calc(var(--led-h, 100vh) - 232px)',
           left: 'max(16px, calc((var(--led-w, 100vw) - 576px) / 2))',
@@ -12267,8 +12369,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // class already computed, multiplied by `--splash-k` — identical at ≤1920,
   // proportional above it. Only two physical sides are ever set (bottom +
   // right / top + right), so these objects can never serialize to the
-  // Chromium-83-hostile `inset` shorthand (CLAUDE.md rule #10, 3rd variant).
-  const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet ? (
+  // Chromium-83-hostile `inset` shorthand (apps/web/CLAUDE.md rule #10, 3rd variant).
+  // A dashboard preview has no device credential by design: never warn there (2026-11-02).
+  const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet && !isPreviewMode() ? (
     <div
       data-edu-player-control-surface
       className="fixed bottom-6 right-6 z-[10001] max-w-md px-5 py-4 rounded-2xl bg-amber-500 text-amber-950 shadow-2xl border border-amber-300 flex items-start [&>*+*]:ml-3"
@@ -12470,7 +12573,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // Plus zIndex 9990, BELOW EmergencyOverlay's 9999, so the overlay would
   // lose the stacking contest anyway.
   //
-  // ⚠️ TAURUS (CLAUDE.md #10): longhand top/right/bottom/left, never `inset` /
+  // ⚠️ TAURUS (apps/web/CLAUDE.md #10): longhand top/right/bottom/left, never `inset` /
   // `inset-0`. All four are the SAME value, which is the uniform case the
   // Chromium-83 polyfill is built to force-zero — the non-uniform
   // serialization landmine (variant 3) does not apply.
@@ -12551,7 +12654,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // LAYOUT viewport — ~720×1280 CSS px on the 3× 2160×3840 WebViews
           // — so a dashboard BLANK covered one third of the panel. Size from
           // the canonical canvas like every other player root; two sides
-          // only (never the four-side shorthand — CLAUDE.md rule #10).
+          // only (never the four-side shorthand — apps/web/CLAUDE.md rule #10).
           width: 'var(--led-w, 100vw)',
           height: 'var(--led-h, 100vh)',
           zIndex: 9990,
@@ -12576,8 +12679,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // setup checklist (its only glass re-entry is a TOUCH corner-hold).
   //
   // This panel is what Back now opens on the pre-content phases. Remote-first:
-  // autoFocus on the primary so OK/Enter works with zero navigation, and
-  // every control is a real <button> so D-pad spatial nav reaches it.
+  // RemoteOptions captures arrows and OK explicitly; real buttons alone
+  // do not provide spatial navigation on every OEM WebView.
   // Spacing via margins, not `gap` (Chromium-83 Taurus floor); positioning
   // via four longhand sides (never `inset`).
   const retryConnectionNow = () => {
@@ -12600,8 +12703,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const escapeButtonCls =
     'px-6 py-3 text-sm font-bold rounded-2xl transition-all shadow-sm focus:outline-none focus:ring-4 focus:ring-indigo-300 focus:scale-95';
   const preContentEscapeOverlay = playbackStopped ? (
-    <div
-      role="dialog"
+    <RemoteOptions
       aria-label="Screen options"
       style={{
         position: 'fixed',
@@ -12649,7 +12751,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               }}
               className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700`}
             >
-              Device setup
+              Finish screen setup
             </button>
           )}
           {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (
@@ -12666,6 +12768,21 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               Network
             </button>
           )}
+          {bootMounted && isAndroidWebView() && nativeHas('importFromUsb') && (
+            <button
+              data-edu-import-usb=""
+              onClick={() => {
+                // 2026-10-26 (APK ≥ 1.1.55) — read the USB drive now; the APK's
+                // USB card says what it found, with the fix on its focused
+                // button. Fire-and-forget; the APK refuses it over an alert.
+                // This menu stays open under the card, so Back comes back HERE.
+                importFromUsb();
+              }}
+              className={`${escapeButtonCls} bg-white border border-slate-200 hover:bg-slate-50 text-slate-700`}
+            >
+              {tPlayerMenu('importFromUsb')}
+            </button>
+          )}
           <button
             onClick={handleExitApp}
             disabled={exitUnavailable}
@@ -12675,7 +12792,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           </button>
         </div>
       </div>
-    </div>
+    </RemoteOptions>
   ) : null;
   // One-line standing hint so the escape panel is discoverable from across
   // the room on a kiosk. Gated on bootMounted (hydration contract — it reads
@@ -12727,6 +12844,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           onTenantEmergencyHint={onTenantEmergencyHint}
           onPolledActiveChange={onPolledEmergencyActiveChange}
           onBannerLayoutChange={onBannerLayoutChange}
+          fullPresentation={emergencyBannerRefused}
         />
       ) : null;
 
@@ -12751,6 +12869,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     polledTakeover: polledEmergencyTakeover,
     renderHold: emergencyRenderHold,
     playbackHeld: emergencyPlaybackHold,
+    bannerRefused: emergencyBannerRefused,
     pendingOverrideConfirm: !!pendingOverrideConfirmRef.current,
     playlistIsEmergency: playlist?.isEmergency === true,
   });
@@ -13237,7 +13356,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // is the same source BuilderZone and the EXTERNAL_HTML sender
           // use, so this cannot drift again.
           //
-          // DELIBERATE BEHAVIOUR CHANGE, named per CLAUDE.md player rule
+          // DELIBERATE BEHAVIOUR CHANGE, named per apps/web/src/app/player/CLAUDE.md player rule
           // 12: the player now enforces six per-field/zone properties it
           // used to ignore. Every one of them is an override the operator
           // set on purpose and already sees in the builder.
@@ -13688,7 +13807,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // attribute — never four sides — so this object can NEVER serialize
         // to `inset` at all. Zero behavior change: an unset side and an
         // explicit 'auto' side compute identically for a `position:fixed`
-        // box whose size comes from width/height. See CLAUDE.md rule #10.
+        // box whose size comes from width/height. See apps/web/CLAUDE.md rule #10.
         width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)',
         height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)',
         // Protocol 3 (2026-10-12): while a native slide is on glass the root
@@ -13922,8 +14041,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               // milliseconds of a boot, before the first state read answered,
               // yields to native-first the moment the app says protocolMax 4.
               if (nativeEligible && nativeFirstFaceRef.current?.facts) takeoverLatchRef.current = takeoverKey;
-              const wrapNative = (browser: React.ReactNode) => nativeEligible
-                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeChoice} classes={classes} fit={slideFit}
+              // Keep the normal solo boundary mounted while admission changes
+              // (late capabilities, an overlay, or descriptor withdrawal).
+              // Switching between a wrapper and its browser child recreated
+              // the media element/loop package on every such transition.
+              const wrapNative = (browser: React.ReactNode) => nativeEligible || (!playlist?.isEmergency && isSoloPlaylist && sorted.length === 1)
+                ? <NativeDualVideo key={slideKey(item)} descriptor={nativeEligible ? nativeChoice : null} classes={classes} fit={slideFit}
                     onPlaying={markItemSucceeded}>{browser}</NativeDualVideo>
                 : zoneNative && nativeVideoItems && zoneItem
                 ? <NativeZoneVideo key={slideKey(item)} descriptor={nativeVideoItems} item={zoneItem}
@@ -14424,7 +14547,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             // Chromium-83 (NovaStar Taurus) compatibility — min/max
             // are Chrome 79+, calc + var are universal, NO cqi/cqw
             // (container queries are Chrome 105+ and would crash
-            // the Taurus). CLAUDE.md rule #10 territory.
+            // the Taurus). apps/web/CLAUDE.md rule #10 territory.
             //
             // Padding: 8px min, 32px max, 2.5% of canvas width.
             //   320 panel → 8px (clamped to min)
@@ -14860,11 +14983,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                   <div className="grid grid-cols-[auto_1fr] gap-x-3 items-center">
                     <span className="text-slate-500">Local storage</span>
                     <span className="font-mono font-semibold text-slate-700 text-right">
-                      {storageInfo.used} of {storageInfo.total}
+                      {storageInfo ? `${storageInfo.used} of ${storageInfo.total}` : '—'}
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo.percent}%` }} />
+                    <div className="h-full bg-sky-500 rounded-full transition-all duration-1000" style={{ width: `${storageInfo?.percent ?? 0}%` }} />
                   </div>
 
                   {/* 2026-05-04 — operator: "my playlist should show
@@ -15483,6 +15606,22 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       <Monitor className="w-4 h-4 text-slate-400" /> Resize LED area
                     </button>
                   )}
+                  {bootMounted && isAndroidWebView() && nativeHas('openSetupChecklist') && (
+                    <button
+                      // 2026-11-01 (APK 1.1.59) — "Finish screen setup": the
+                      // one-time permission list. The APK never asks for a
+                      // permission mid-use any more, so this is the on-glass
+                      // way back to anything still missing (the dashboard's
+                      // "Open setup on this panel" is the other). Existing
+                      // bridge method (≥ 1.1.6), fire-and-forget; the APK
+                      // refuses it over an alert and logs why.
+                      data-edu-finish-setup=""
+                      onClick={(e) => { e.stopPropagation(); nativeFire('openSetupChecklist'); }}
+                      className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                    >
+                      <Settings className="w-4 h-4 text-slate-400" /> Finish screen setup
+                    </button>
+                  )}
                   {bootMounted && isAndroidWebView() && nativeHas('openNetworkScreen') && (
                     <button
                       // 2026-10-23 (APK ≥ 1.1.53) — VenueOS's own on-screen
@@ -15493,6 +15632,20 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                       className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
                     >
                       <Network className="w-4 h-4 text-slate-400" /> Network
+                    </button>
+                  )}
+                  {bootMounted && isAndroidWebView() && nativeHas('importFromUsb') && (
+                    <button
+                      // 2026-10-26 (APK ≥ 1.1.55, M43 on site) — read the USB
+                      // drive now; the APK's USB card says what it found and
+                      // owns the remote until Back. A successful import closes
+                      // this menu so the playlist plays. Hidden on an APK that
+                      // does not prove the method.
+                      data-edu-import-usb=""
+                      onClick={(e) => { e.stopPropagation(); importFromUsb(); }}
+                      className="px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-2xl transition-all shadow-sm flex items-center gap-2 focus:scale-95 z-20 relative"
+                    >
+                      <Usb className="w-4 h-4 text-slate-400" /> {tPlayerMenu('importFromUsb')}
                     </button>
                   )}
                   <button
@@ -15874,7 +16027,7 @@ function OtaProgressOverlay({
  * Without scaling, a 1080×1920 template renders at 1080×1920 inside a
  * 960×1080 LED canvas — the bottom-right gets clipped off-LED.
  *
- * Pattern matches CLAUDE.md "Template Design Workflow" section: wrap
+ * Pattern matches docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md "Template Design Workflow" section: wrap
  * the scene in a fixed-size design-resolution div, wrap that in a
  * container that measures its parent and applies transform: scale(N)
  * to fit. fit-contain (Math.min) preserves aspect ratio and never

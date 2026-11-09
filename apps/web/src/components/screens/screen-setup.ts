@@ -153,13 +153,27 @@ export function describeStep(step: SetupStep): {
  * `openSetupChecklist` landed in the v1.1.6 APK. Below that the frame is
  * signed, delivered and then dropped as `no-bridge` on the panel — a button
  * with a 100% failure rate, which is the one thing this codebase's display
- * panel is not allowed to render (CLAUDE.md §20 / the null-verdict rule in
+ * panel is not allowed to render (docs/governance/AUDIT-SURFACE.md §20 / the null-verdict rule in
  * ScreenDisplayControls).
  *
  * Unparseable or absent → false. A screen that has not told us its version
  * has not earned the button.
  */
 export const SETUP_PUSH_MIN_VERSION = '1.1.6';
+
+/**
+ * The one-line summary the Settings tab shows (2026-11-01): how many
+ * REQUIRED steps still need doing. Optional steps and the
+ * `managerInstallPromptShown` row (whose `held` is always false — Android
+ * cannot be asked) never count, so a fully-provisioned panel reads
+ * "Setup complete" instead of nagging about things that may already be done.
+ */
+export function summarizeSetup(setup: SetupTelemetry): { needed: number; complete: boolean } {
+  const needed = setup.steps.filter(
+    (s) => s.applies && !s.optional && describeStep(s).label === 'Needed',
+  ).length;
+  return { needed, complete: needed === 0 };
+}
 
 export function supportsSetupPush(playerVersion: unknown): boolean {
   const v = str(playerVersion);

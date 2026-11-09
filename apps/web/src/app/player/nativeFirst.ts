@@ -2,7 +2,7 @@
  * NATIVE-FIRST, page side of protocol v4 (design
  * `docs/design/NATIVE-FIRST-ONE-STORE.md` §3.5 / §4.3 / §6; owner D1).
  *
- * NO NEW BRIDGE METHOD (CLAUDE.md player rule 9): v4 is a `version: 4`
+ * NO NEW BRIDGE METHOD (apps/player/CLAUDE.md player rule 9): v4 is a `version: 4`
  * message on the existing `sharedVideoPrepare`, and v4 facts are extra keys
  * on the existing `sharedVideoState` reply — exactly how protocol 3 rode the
  * same four methods. `NATIVE_VOID/VALUE_METHODS` and the nativeBridge canary

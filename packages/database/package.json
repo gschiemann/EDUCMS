@@ -5,11 +5,11 @@
   "types": "index.ts",
   "scripts": {
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
+    "db:migrate": "node ../../scripts/guard-destructive-db.cjs db:migrate && prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force"
+    "db:push": "node ../../scripts/guard-destructive-db.cjs db:push && prisma db push",
+    "db:seed": "node ../../scripts/guard-destructive-db.cjs db:seed && tsx prisma/seed.ts",
+    "db:reset": "node ../../scripts/guard-destructive-db.cjs db:reset && prisma migrate reset --force"
   },
   "dependencies": {
     "@prisma/client": "^5.12.1",

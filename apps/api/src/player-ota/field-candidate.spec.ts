@@ -83,6 +83,38 @@ describe('private field admission and download capability', () => {
         }),
       ).toBeNull();
   });
+  it('records the companion inside the unit and refuses a malformed one (2026-11-08)', () => {
+    const manager = {
+      versionName: '1.1.25-field.1',
+      versionCode: 10125,
+      sha256: 'b'.repeat(64),
+      size: 2_000_000,
+    };
+    // A well-formed companion record rides along; an old entry has none.
+    expect(configuredFieldRelease(env, { [release.versionName]: { ...release, manager } })?.manager).toEqual(manager);
+    expect(configuredFieldRelease(env, { [release.versionName]: release })?.manager).toBeUndefined();
+    // The companion did not change in this line: an older stable version is fine.
+    expect(
+      configuredFieldRelease(env, {
+        [release.versionName]: { ...release, manager: { ...manager, versionName: '1.1.20', versionCode: 10120 } },
+      }),
+    ).not.toBeNull();
+    // Every malformed shape refuses the WHOLE candidate (fail closed).
+    for (const patch of [
+      { versionName: '1.0.24', versionCode: 10024 }, // the last hand-typed Manager — never again
+      { versionName: '1.1.26', versionCode: 10126 }, // above the Player that carries it
+      { versionCode: 10124 }, // code does not derive from the name
+      { sha256: 'bad' },
+      { size: 0 },
+      { size: 17 * 1024 * 1024 },
+      { versionName: 'nonsense' },
+    ])
+      expect(
+        configuredFieldRelease(env, {
+          [release.versionName]: { ...release, manager: { ...manager, ...patch } as typeof manager },
+        }),
+      ).toBeNull();
+  });
   it('retains the shared quarantine/floor/digest policy', () => {
     process.env.PLAYER_APK_QUARANTINE = release.versionName;
     try {
@@ -319,5 +351,38 @@ describe('a window armed from the panel (field_build_windows)', () => {
     expect(isFieldCandidateTarget(id, tenant, env, now, null)).toBe(true);
     setActiveFieldWindow(null);
     expect(isFieldCandidateTarget(id, tenant, env, now)).toBe(true);
+  });
+});
+
+/**
+ * 2026-10-31 — PLAYER_FIELD_BENCH_SCREENS (fleet-push-policy.ts): the download
+ * ticket is minted and honoured only for a listed bench screen. Unset or blank,
+ * the ticket is exactly what it was before the variable existed.
+ */
+describe('the field download ticket and PLAYER_FIELD_BENCH_SCREENS', () => {
+  const other = '66666666-6666-4666-8666-666666666666';
+
+  it('UNSET or blank: the same ticket is minted and honoured as before', () => {
+    for (const bench of [undefined, '', '   ']) {
+      const e = { ...env, PLAYER_FIELD_BENCH_SCREENS: bench };
+      const ticket = mintFieldTicket(release, id, tenant, e, now, null);
+      expect(ticket).toBe(mintFieldTicket(release, id, tenant, env, now, null));
+      expect(verifyFieldTicket(ticket, release, e, now, null)?.screenId).toBe(id);
+    }
+  });
+
+  it('SET: never minted for a screen off the list, and a ticket minted earlier dies once the list no longer names it', () => {
+    const offList = { ...env, PLAYER_FIELD_BENCH_SCREENS: other };
+    expect(mintFieldTicket(release, id, tenant, offList, now, null)).toBeNull();
+    const earlier = mintFieldTicket(release, id, tenant, env, now, null)!;
+    expect(verifyFieldTicket(earlier, release, offList, now, null)).toBeNull();
+    // The gate's own admission is untouched: the screen is still a field target.
+    expect(isFieldCandidateTarget(id, tenant, offList, now, null)).toBe(true);
+  });
+
+  it('SET and listed (any case): minted and honoured', () => {
+    const listed = { ...env, PLAYER_FIELD_BENCH_SCREENS: `${other}, ${id.toUpperCase()}` };
+    const ticket = mintFieldTicket(release, id, tenant, listed, now, null)!;
+    expect(verifyFieldTicket(ticket, release, listed, now, null)?.screenId).toBe(id);
   });
 });

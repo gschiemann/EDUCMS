@@ -185,10 +185,33 @@ test.describe('remote escape — Back always reaches an actionable surface', () 
     await expect(page.getByRole('dialog', { name: 'Screen options' })).toBeVisible({ timeout: 5_000 });
     await expect(page.getByRole('button', { name: 'Exit to launcher' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry now' })).toBeVisible();
-    // Browser boot (no Android bridge): Device setup must NOT be offered.
-    await expect(page.getByRole('button', { name: 'Device setup' })).toHaveCount(0);
+    // Browser boot (no Android bridge): Finish screen setup must NOT be offered.
+    await expect(page.getByRole('button', { name: 'Finish screen setup' })).toHaveCount(0);
     // The failure reason surfaces once the register loop has been failing.
     await expect(page.getByText(/Not connected —/)).toBeVisible({ timeout: 45_000 });
+
+    // SAR55 offline install: real buttons do not imply OEM spatial navigation.
+    // Drive the same recovery menu with keys only, without browser Tab help.
+    const menu = page.getByRole('dialog', { name: 'Screen options' });
+    const waiting = menu.getByRole('button', { name: 'Keep waiting' });
+    await expect(waiting).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(menu.getByRole('button', { name: 'Retry now' })).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(menu.getByRole('button', { name: 'Exit to launcher' })).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(waiting).toBeFocused();
+    await expect(waiting).toHaveCSS('outline-color', 'rgb(253, 224, 71)');
+    await menu.screenshot({ path: test.info().outputPath('offline-remote-menu.png') });
+    await page.keyboard.down('Enter');
+    await page.keyboard.down('Enter'); // remote auto-repeat must not answer
+    await page.keyboard.up('Enter');
+    await expect(menu).toBeVisible();
+    await page.keyboard.press('Space');
+    await expect(menu).toHaveCount(0);
+    await settle(page);
+    await pressBack(page);
+    await expect(menu).toBeVisible();
 
     // Back again toggles the panel away (same toggle contract as playback).
     await settle(page);

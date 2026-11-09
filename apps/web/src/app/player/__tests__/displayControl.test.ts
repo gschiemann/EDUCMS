@@ -1538,7 +1538,7 @@ describe('page.tsx is actually wired to this module', () => {
   });
 
   it('positions the overlay with LONGHAND sides — Taurus is Chromium 83', () => {
-    // CLAUDE.md #10: the CSS four-side shorthand (and its Tailwind utility)
+    // apps/web/CLAUDE.md #10: the CSS four-side shorthand (and its Tailwind utility)
     // is Chrome 87+. On a NovaStar Taurus it is silently dropped and the
     // absolutely-positioned box collapses to 0×0 — and a blank overlay that
     // renders 0×0 is a Blank button that does nothing on exactly the
@@ -1558,7 +1558,7 @@ describe('page.tsx is actually wired to this module', () => {
     // (--led-w/--led-h) with two longhand sides, never four zero sides — a
     // four-zero-side fixed box is the LAYOUT viewport, one third of the
     // pinned document on the 3× 2160×3840 WebViews, and it also serializes
-    // to the forbidden shorthand (CLAUDE.md #10, third variant).
+    // to the forbidden shorthand (apps/web/CLAUDE.md #10, third variant).
     expect(overlay).toMatch(/top: 0/);
     expect(overlay).toMatch(/left: 0/);
     expect(overlay).toMatch(/width: 'var\(--led-w, 100vw\)'/);

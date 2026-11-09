@@ -9,7 +9,7 @@
  * Added 2026-05-25 (monetize-audit + music-overhaul).
  *
  * Tailwind classes use long-hand `top-0 right-0 bottom-0 left-0`
- * (NOT `inset-0`) per CLAUDE.md rule #10 — Chromium 83 NovaStar
+ * (NOT `inset-0`) per apps/web/CLAUDE.md rule #10 — Chromium 83 NovaStar
  * Taurus support.
  */
 

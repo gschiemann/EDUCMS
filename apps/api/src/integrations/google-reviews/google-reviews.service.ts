@@ -9,7 +9,7 @@
  *
  * ── THE KEY NEVER LEAVES THE SERVER ──────────────────────────────────────
  * `GOOGLE_MAPS_API_KEY` is already a server-only secret (see the geocode
- * proxy — CLAUDE.md's env table says so in as many words). Every call here
+ * proxy — docs/ENVIRONMENT.md's env table says so in as many words). Every call here
  * passes it in the `X-Goog-Api-Key` HEADER, never in the URL: a key in a query
  * string lands in access logs, in `Referer`, and in any proxy in between.
  * Nothing in this file logs the key, and no error path echoes an upstream body

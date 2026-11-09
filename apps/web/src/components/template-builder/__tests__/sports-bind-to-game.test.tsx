@@ -1,7 +1,7 @@
 /**
  * Sports Wave S2-2 (2026-07-02) — "Bind to game" picker in PropertiesPanel.
  *
- * Mounts the REAL `ContentFields` switch (CLAUDE.md rule #9 — the exact
+ * Mounts the REAL `ContentFields` switch (apps/web/CLAUDE.md rule #9 — the exact
  * component the sidebar renders per PropertiesPanel.tsx's own switch
  * dispatch) for each sports widget type and proves:
  *  - the picker renders (this is a real, addressable field — not a dead

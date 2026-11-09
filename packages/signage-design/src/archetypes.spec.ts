@@ -103,7 +103,7 @@ describe.each(ARCHETYPE_IDS)('resolve(%s) on landscape', (id) => {
 
   it('emits longhand-only geometry (no inset/gap leakage in style tokens)', () => {
     // The contract is %-coords + token names. Assert no styleToken value is a
-    // CSS inset/gap shorthand string (Taurus-safe invariant, CLAUDE.md #10).
+    // CSS inset/gap shorthand string (Taurus-safe invariant, apps/web/CLAUDE.md #10).
     for (const z of zones) {
       const serialized = JSON.stringify(z.styleTokens);
       expect(serialized).not.toMatch(/"inset"/);

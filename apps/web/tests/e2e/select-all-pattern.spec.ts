@@ -86,8 +86,8 @@ async function openAs(page: Page, route: 'assets' | 'playlists', viewport: { wid
   await page.setViewportSize(viewport);
   await page.goto(`/${SCHOOL_ID}/${route}`, { waitUntil: 'domcontentloaded' });
   if (route === 'assets') await page.getByTestId('files-grid').waitFor({ state: 'visible', timeout: 90_000 });
-  // The table shows from 1024 px; under it the card list does.
-  else await page.getByTestId(viewport.width >= 1024 ? 'playlist-row' : 'playlist-card-compact').first().waitFor({ state: 'visible', timeout: 90_000 });
+  // Playlists is the filmstrip gallery at every width (PlaylistGalleryV2): one card per playlist.
+  else await page.getByTestId('playlist-card-v2').first().waitFor({ state: 'visible', timeout: 90_000 });
 }
 
 /** The viewport-relative left edge of a control. */
@@ -112,23 +112,22 @@ test.describe('desktop (a mouse, the operator\'s 1325 × 758 window)', () => {
     await expect(page.getByRole('table').getByRole('columnheader').first().getByTestId('select-shown')).toHaveCount(1);
   });
 
-  test('Playlists: the select-all box sits at the same x in the table header and over the grid', async ({ page }) => {
+  // Retargeted 2026-11-08: Playlists is the content-first filmstrip gallery (#251). It has no
+  // table, no grid/list toggle and no header box, so "same x across views" has nothing to compare.
+  // What the pattern still demands is ONE select-all, the shared toolbar's, reached from the
+  // cards' own checkboxes — never a stand-alone pill.
+  test('Playlists: ticking a card brings up the shared selection toolbar, whose one Select all takes every playlist', async ({ page }) => {
     test.setTimeout(120_000);
     await openAs(page, 'playlists', OWNER_WINDOW);
-    const tableX = await leftOf(page.getByTestId('select-page'));
-    await page.getByRole('button', { name: 'Grid view' }).click();
-    await page.getByTestId('playlist-card-grid').first().waitFor();
-    const gridX = await leftOf(page.getByTestId('select-page-heading'));
-    expect(Math.abs(tableX - gridX)).toBeLessThanOrEqual(1);
-    // the heading line is the grid's; the table's header box is gone with the table
     await expect(page.getByTestId('select-page')).toHaveCount(0);
-  });
-
-  test('Playlists: at 1024 px and wider the card list\'s heading line is hidden — the table header carries the box', async ({ page }) => {
-    test.setTimeout(120_000);
-    await openAs(page, 'playlists', OWNER_WINDOW);
-    await expect(page.getByTestId('select-page')).toBeVisible();
-    await expect(page.getByTestId('select-page-heading')).toBeHidden();
+    await expect(page.getByTestId('select-page-heading')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Select all/ })).toHaveCount(0);
+    await page.getByRole('checkbox', { name: 'Select Freese' }).check();
+    await expect(page.getByTestId('bulk-count')).toHaveText('1 selected');
+    await page.getByTestId('bulk-select-all').click();
+    await expect(page.getByTestId('bulk-count')).toHaveText('6 selected');
+    // everything is selected: the toolbar offers Clear, not another Select all
+    await expect(page.getByTestId('bulk-select-all')).toHaveCount(0);
   });
 
   test('Media Library: the toolbar fits the window — no stand-alone "Select all", and the sort menu and view toggle are on screen', async ({ page }) => {
@@ -136,7 +135,8 @@ test.describe('desktop (a mouse, the operator\'s 1325 × 758 window)', () => {
     await openAs(page, 'assets', OWNER_WINDOW);
     await expect(page.getByRole('button', { name: /^Select all/ })).toHaveCount(0);
     const w = OWNER_WINDOW.width;
-    for (const loc of [page.getByLabel('Sort files'), page.getByRole('button', { name: 'List view' })]) {
+    // Media Library v2 (2026-11-02): the sort is a plain "Sort:" dropdown.
+    for (const loc of [page.getByRole('combobox', { name: /^Sort/ }), page.getByRole('button', { name: 'List view' })]) {
       const box = await loc.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.x + box!.width).toBeLessThanOrEqual(w);
@@ -161,13 +161,15 @@ test.describe('desktop (a mouse, the operator\'s 1325 × 758 window)', () => {
     await expect(hit()).toHaveAttribute('title', 'Clear selection');
   });
 
-  test('Playlists: the table header\'s box says "Select all playlists shown", then "Clear selection"', async ({ page }) => {
+  test('Playlists: each card\'s box is a named checkbox that says what a click does', async ({ page }) => {
     test.setTimeout(120_000);
     await openAs(page, 'playlists', OWNER_WINDOW);
-    const hit = page.getByTestId('select-page').locator('xpath=ancestor::label[1]');
-    await expect(hit).toHaveAttribute('title', 'Select all playlists shown');
-    await page.getByTestId('select-page').check();
-    await expect(hit).toHaveAttribute('title', 'Clear selection');
+    const box = page.getByRole('checkbox', { name: 'Select Freese' });
+    await expect(box).toHaveAttribute('aria-checked', 'false');
+    await box.check();
+    await expect(box).toHaveAttribute('aria-checked', 'true');
+    await box.uncheck();
+    await expect(box).toHaveAttribute('aria-checked', 'false');
   });
 
   test('a tile\'s box waits for the pointer — hover or keyboard focus brings it — until anything is selected, then every tile shows one', async ({ page }) => {
@@ -221,31 +223,29 @@ test.describe('a phone (390 × 844, touch)', () => {
     expect(head!.height).toBeGreaterThanOrEqual(44);
   });
 
-  test('Media Library, list view: the header box and the row boxes are 44 px targets and the header row does not grow', async ({ page }) => {
+  // Media Library v2 (owner-approved 2026-11-02, docs/research/2026-11-02-media-redesign/09-v2-iphone.png):
+  // a phone shows the tile grid only — the grid/list toggle is desktop chrome (`hidden md:flex`).
+  // The 44 px tile and select-all boxes are held by the test above.
+  test('Media Library on a phone is the tile grid only — no list view toggle, no table', async ({ page }) => {
     test.setTimeout(120_000);
     await openAs(page, 'assets', PHONE);
-    await page.getByRole('button', { name: 'List view' }).evaluate((el) => (el as HTMLElement).click());
-    const table = page.getByRole('table');
-    await table.waitFor();
-    for (const box of [page.getByTestId('select-shown'), table.getByRole('checkbox', { name: 'Select Demo photo 0.png' })]) {
-      const hit = await box.locator('xpath=ancestor::label[1]').boundingBox();
+    await expect(page.getByTestId('files-grid')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'List view' })).toBeHidden();
+    await expect(page.getByRole('table')).toHaveCount(0);
+  });
+
+  test('Playlists: every card shows its own box with nothing selected, a 44 px target, and ticking needs no hover', async ({ page }) => {
+    test.setTimeout(120_000);
+    await openAs(page, 'playlists', PHONE);
+    const boxes = page.getByTestId('card-select');
+    await expect(boxes.first()).toBeVisible();
+    for (const i of [0, 1, 5]) {
+      expect(Number(await boxes.nth(i).evaluate((el) => getComputedStyle(el).opacity))).toBe(1);
+      const hit = await boxes.nth(i).boundingBox();
       expect(hit!.width).toBeGreaterThanOrEqual(44);
       expect(hit!.height).toBeGreaterThanOrEqual(44);
     }
-    // the extra reach is a negative margin, not extra height: the header row stays one text line plus its padding
-    const headerRow = await table.locator('thead tr').boundingBox();
-    expect(headerRow!.height).toBeLessThan(44);
-  });
-
-  test('Playlists: the card list has the heading box (the only select-all a phone has), 44 px, and ticking a card needs no hover', async ({ page }) => {
-    test.setTimeout(120_000);
-    await openAs(page, 'playlists', PHONE);
-    const heading = page.getByTestId('select-page-heading');
-    await expect(heading).toBeVisible();
-    const hit = await heading.locator('xpath=ancestor::label[1]').boundingBox();
-    expect(hit!.width).toBeGreaterThanOrEqual(44);
-    expect(hit!.height).toBeGreaterThanOrEqual(44);
-    await heading.tap();
-    await expect(page.getByTestId('bulk-count')).toHaveText('6 selected');
+    await boxes.first().tap();
+    await expect(boxes.first()).toHaveAttribute('aria-checked', 'true');
   });
 });

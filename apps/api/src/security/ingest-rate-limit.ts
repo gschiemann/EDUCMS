@@ -33,7 +33,7 @@
  * an abuse guard, not a paid-feature cap like ai-hourly-cap.ts, so there is
  * no "don't block a paying customer" concern — the opposite direction, a
  * flood, is the risk being defended against). The boot-without-redis rule
- * (CLAUDE.md "Redis missing → API boots anyway") is preserved: nothing here
+ * (docs/DEPLOY.md "Redis missing → API boots anyway") is preserved: nothing here
  * throws or blocks boot when Redis is absent.
  */
 

@@ -70,7 +70,7 @@
  *                          The grid uses absolute positioning rather
  *                          than CSS Grid `gap-*` so Chromium 83
  *                          (NovaStar Taurus) renders identically to
- *                          modern browsers — see CLAUDE.md rule #10.
+ *                          modern browsers — see apps/web/CLAUDE.md rule #10.
  *
  *   - Webpage playlist   → mshots screenshot of the first URL,
  *                          same source the asset library uses.

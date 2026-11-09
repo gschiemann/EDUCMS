@@ -33,7 +33,7 @@
  *
  * ── Emergency content is never evaluated here ─────────────────────────────
  * No emergency code path may import this module; an alert is never refused,
- * delayed or rewritten on a telemetry inference (CLAUDE.md, Emergency WARNING;
+ * delayed or rewritten on a telemetry inference (apps/api/src/emergency/CLAUDE.md, Emergency WARNING;
  * Player Reliability rules 11 and 16). An API spec enforces the import rule.
  *
  * ── Copy states what the evidence proves (Player Reliability rule 10) ─────
@@ -927,12 +927,12 @@ export function playbackDemotionMode(env: Record<string, string | undefined> = {
 
 export type PlaybackGateMode = 'warn' | 'enforce' | 'off';
 
-/** `VIDEO_PLAYBACK_GATE`: `warn` (default, and for anything unrecognised), `enforce`, `off`. */
+/** `VIDEO_PLAYBACK_GATE`: `off` (default, and for anything unrecognised), `warn`, `enforce`. */
 export function playbackGateMode(env: Record<string, string | undefined> = {}): PlaybackGateMode {
   const v = (env.VIDEO_PLAYBACK_GATE ?? '').trim().toLowerCase();
   if (v === 'enforce') return 'enforce';
-  if (['off', '0', 'false', 'no'].includes(v)) return 'off';
-  return 'warn';
+  if (v === 'warn') return 'warn';
+  return 'off';
 }
 
 export type StutterAction =

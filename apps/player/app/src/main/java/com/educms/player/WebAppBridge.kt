@@ -200,6 +200,15 @@ class WebAppBridge(
      * Activity decides whether it may open (never over an alert).
      */
     private val onOpenNetworkScreen: () -> Unit = {},
+    /** Manager wave 3 (#8): clear the companion Manager's update quarantine (dashboard command). */
+    private val onClearUpdateQuarantine: () -> Unit = {},
+    /**
+     * 2026-10-26 — the Back menu's "Import from USB": read the USB drive now
+     * and show what happens on the USB card (usb.UsbImportCard). Copies
+     * nothing by itself — every package is still verified — and the card
+     * never opens over an alert.
+     */
+    private val onImportFromUsb: () -> Unit = {},
     /**
      * 2026-09-02 (P0-2) — FACT 1: the web bundle's client JS is running.
      *
@@ -385,7 +394,7 @@ class WebAppBridge(
 
     /**
      * ⚠️ DELIBERATELY NOT NONCE-GATED. A REFRESH_WEB recovery command rides
-     * this method (CLAUDE.md player rule 6), and the web side's `nativeFire`
+     * this method (apps/web/src/app/player/CLAUDE.md player rule 6), and the web side's `nativeFire`
      * reports a native refusal as a successful delivery — so a gated
      * `reload` would silently kill that recovery path on every web bundle
      * that predates the nonce, on exactly the pre-channel panels that have
@@ -531,6 +540,45 @@ class WebAppBridge(
         }
     }
 
+    /**
+     * Manager wave 3 (#8) - the dashboard's signed CLEAR_UPDATE_QUARANTINE
+     * command, relayed by the page. Tells the companion Manager to forget the
+     * versionCodes it quarantined. Nonce-gated like [checkForUpdates] (a board
+     * iframe on the legacy surface cannot call it). Fire-and-forget; it
+     * installs nothing and grants nothing. THREE-FILE ATOMIC CHANGE: the
+     * channel's METHODS + dispatch arm, the web's NATIVE_VOID_METHODS (excluded
+     * from KNOWN_METHODS until the fleet floor includes this APK), and the
+     * drift-guard canary count.
+     */
+    @JavascriptInterface
+    fun clearUpdateQuarantine(nonce: String) {
+        if (!gate("clearUpdateQuarantine", nonce)) return
+        try {
+            onClearUpdateQuarantine()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "clearUpdateQuarantine failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * 2026-10-26 (M43 on site: "inserted a USB … nothing happens") — the Back
+     * menu's "Import from USB". Fire-and-forget like [openNetworkScreen]: the
+     * screen reads the drive again (forgetting what it already read) and the
+     * USB card says what it found — the fix on its focused button. Grants
+     * nothing and skips no check: a package is still verified file by file.
+     * THREE-FILE ATOMIC CHANGE: the channel's METHODS + dispatch arm, the
+     * web's NATIVE_VOID_METHODS (excluded from KNOWN_METHODS until the fleet
+     * floor includes this APK), and the drift-guard canary count.
+     */
+    @JavascriptInterface
+    fun importFromUsb() {
+        try {
+            onImportFromUsb()
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "importFromUsb failed: ${ex.message}")
+        }
+    }
+
     // ─── BOOT + REGISTRATION PROOF (2026-09-02, P0-2, v1.1.13) ──────────
     //
     // THE THREE FACTS, AND WHY THEY ARE THREE. Player rule 5 — never equate
@@ -625,7 +673,7 @@ class WebAppBridge(
      * PULL-ONLY, BY DESIGN. This must not be folded into `deviceInfo()`
      * or the heartbeat payload: those feed Screen telemetry, and a new
      * high-frequency Screen field invalidates the manifest hot-cache
-     * fleet-wide (CLAUDE.md → manifest content cache, rule 7). The
+     * fleet-wide (packages/database/CLAUDE.md → manifest content cache, rule 7). The
      * dashboard calls this on demand, per screen.
      *
      * TRUST BOUNDARY (per the file header): like every method here, this

@@ -8,7 +8,7 @@
  * fixture is made up.
  */
 import * as React from 'react';
-import { act, render, screen as rtl, within } from '@testing-library/react';
+import { act, cleanup, render, screen as rtl, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ScreenDetailDrawer } from '../ScreenDetailDrawer';
 import { buildScreenOps, type OpsScreen } from '../screenOps';
@@ -16,6 +16,7 @@ import { buildScreenOps, type OpsScreen } from '../screenOps';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let playbackData: any;
 const interruptionsCalls: unknown[][] = [];
+const usbCalls: unknown[][] = [];
 
 jest.mock('@/hooks/use-api', () => ({
   useRefreshWeb: () => ({ mutate: jest.fn(), isPending: false }),
@@ -28,6 +29,8 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenPlaybackCapability: (_id: string, enabled: boolean) => ({ data: enabled ? playbackData : undefined, isLoading: false, isError: false }),
   // The Overview's interruptions section (2026-10-18): nothing recorded yet.
   useScreenInterruptions: (...args: unknown[]) => { interruptionsCalls.push(args); return { data: undefined, isLoading: false, isError: false }; },
+  // The USB drive line (2026-10-26): nothing reported yet.
+  useScreenUsbEvents: (...args: unknown[]) => { usbCalls.push(args); return { data: undefined, isLoading: false, isError: false }; },
   useClearPlaybackDemotion: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock('@/lib/store', () => ({
@@ -41,7 +44,14 @@ const NOW = Date.parse('2026-10-22T15:00:00.000Z');
 const HOUR = 3_600_000;
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
-function screenRow(over: Partial<OpsScreen> = {}) {
+/** The playlist this screen is scheduled to play: one video, `clip.mp4`. */
+const CLIP_PLAYLIST = {
+  id: 'pl-1', name: 'Lobby loop',
+  items: [{ id: 'it-1', sequenceOrder: 0, durationMs: 10_000,
+    asset: { id: 'as-1', fileUrl: 'https://example.test/media/clip.mp4', mimeType: 'video/mp4', originalName: 'clip.mp4', fileHash: 'c'.repeat(64) } }],
+};
+
+function screenRow(over: Partial<OpsScreen> = {}, opts: { withVideo?: boolean } = { withVideo: true }) {
   const screen: OpsScreen = {
     id: 'scr-test-1', name: 'Test lobby screen', status: 'ONLINE',
     lastPingAt: new Date(NOW - 8_000).toISOString(),
@@ -51,7 +61,9 @@ function screenRow(over: Partial<OpsScreen> = {}) {
     hardwareModel: 'Test Wall Display', resolution: '3840x2160',
     ...over,
   };
-  return buildScreenOps({ screens: [screen], schedules: [], playlists: [], deployedSha: null, now: NOW }).rows[0];
+  const schedules = opts.withVideo ? [{ id: 'sc-1', playlistId: 'pl-1', screenId: 'scr-test-1', priority: 0, isActive: true }] : [];
+  const playlists = opts.withVideo ? [CLIP_PLAYLIST] : [];
+  return buildScreenOps({ screens: [screen], schedules, playlists, deployedSha: null, now: NOW }).rows[0];
 }
 
 function renderDrawer(row: ReturnType<typeof screenRow>) {
@@ -108,6 +120,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = jest.fn();
   playbackData = undefined;
   interruptionsCalls.length = 0;
+  usbCalls.length = 0;
 });
 
 describe('ScreenDetailDrawer for an end user (2026-10-22)', () => {
@@ -132,7 +145,10 @@ describe('ScreenDetailDrawer for an end user (2026-10-22)', () => {
     const sample = rtl.getByTestId('screen-video-playback');
     expect(sample).toHaveAttribute('data-video-news', 'false');
     expect(sample.className).not.toMatch(/rose|amber/);
-    expect(sample).toHaveTextContent('5 of 1,032 frames dropped (0.5%)');
+    // Plain line up top; the raw counters wait under "For support".
+    expect(rtl.getByTestId('screen-video-plain')).toHaveTextContent('Stuttered on this screen');
+    expect(sample).not.toHaveTextContent('frames dropped (');
+    expect(rtl.getByTestId('screen-support-video')).toHaveTextContent('5 of 1,032 frames dropped (0.5%)');
     expect(within(sample).queryByText(/Open this file in the Media Library/)).not.toBeInTheDocument();
   });
 
@@ -147,8 +163,52 @@ describe('ScreenDetailDrawer for an end user (2026-10-22)', () => {
     expect(sample.className).toMatch(/rose/);
   });
 
+  it('a measurement of a video the screen is NOT playing now is hidden (the current-file match)', () => {
+    // Scheduled: clip.mp4. The sample is from an older playlist's old.mp4.
+    renderDrawer(screenRow({
+      lastVideoReport: { url: 'https://example.test/media/old.mp4', totalFrames: 1000, droppedFrames: 80, at: ago(10 * 60_000) },
+    }));
+    expect(rtl.queryByTestId('screen-video-playback')).not.toBeInTheDocument();
+    openTechnicalDetails();
+    expect(rtl.queryByTestId('screen-video-playback')).not.toBeInTheDocument();
+    expect(rtl.queryByTestId('screen-support-video')).not.toBeInTheDocument();
+    // And the file playing now does show.
+    cleanup();
+    renderDrawer(screenRow({
+      lastVideoReport: { url: 'https://example.test/media/clip.mp4?x=1', totalFrames: 1000, droppedFrames: 0, at: ago(60_000) },
+    }));
+    openTechnicalDetails();
+    expect(rtl.getByTestId('screen-video-playback')).toHaveTextContent('Playing smoothly — no dropped frames reported');
+  });
+
+  it('with no video scheduled, no old measurement is shown as current', () => {
+    renderDrawer(screenRow({
+      lastVideoReport: { url: 'https://example.test/media/clip.mp4', totalFrames: 1000, droppedFrames: 0, at: ago(60_000) },
+    }, { withVideo: false }));
+    openTechnicalDetails();
+    expect(rtl.queryByTestId('screen-video-playback')).not.toBeInTheDocument();
+  });
+
+  it('older per-file measurements sit behind "Earlier videos"; the disclaimer appears once, under For support', () => {
+    playbackData = { ...SMOOTH, files: [
+      { ...SMOOTH.files[0], sha256: 'c'.repeat(64), name: 'clip.mp4' },
+      { ...SMOOTH.files[0], sha256: 'd'.repeat(64), name: 'old.mp4' },
+    ] };
+    renderDrawer(screenRow());
+    openTechnicalDetails();
+    const now = within(rtl.getByTestId('screen-playback-files'));
+    expect(now.getByText('clip.mp4')).toBeInTheDocument();
+    expect(now.queryByText('old.mp4')).not.toBeInTheDocument();
+    const earlier = rtl.getByTestId('screen-playback-earlier') as HTMLDetailsElement;
+    expect(earlier.open).toBe(false);
+    expect(within(earlier).getByText('old.mp4')).toBeInTheDocument();
+    const tech = rtl.getByTestId('screen-technical-details');
+    expect(within(tech).getAllByText(/we can’t see the panel itself/)).toHaveLength(1);
+    expect(within(rtl.getByTestId('screen-support-details')).getByTestId('screen-support-disclaimer')).toBeInTheDocument();
+  });
+
   it('one video verdict on the Overview; the per-file list only under Technical details', () => {
-    playbackData = SMOOTH;
+    playbackData = { ...SMOOTH, files: [{ ...SMOOTH.files[0], sha256: 'c'.repeat(64), name: 'clip.mp4' }] };
     renderDrawer(screenRow());
     expect(rtl.getByTestId('screen-playback-summary')).toHaveTextContent('Plays video smoothly');
     expect(rtl.queryByTestId('screen-playback-files')).not.toBeInTheDocument();
@@ -161,7 +221,8 @@ describe('ScreenDetailDrawer for an end user (2026-10-22)', () => {
   it('a screen with nothing measured says nothing about video on the Overview', () => {
     playbackData = { ...SMOOTH, summary: 'unknown', files: [] };
     renderDrawer(screenRow());
-    expect(rtl.queryByTestId('screen-playback-card')).not.toBeInTheDocument();
+    // The panel's own size is a fact and may show; a smoothness claim may not.
+    expect(rtl.queryByTestId('screen-playback-summary')).not.toBeInTheDocument();
   });
 
   it('Technical details start closed and fetch nothing until opened', () => {
@@ -169,7 +230,9 @@ describe('ScreenDetailDrawer for an end user (2026-10-22)', () => {
     const d = rtl.getByTestId('screen-technical-details') as HTMLDetailsElement;
     expect(d.open).toBe(false);
     expect(interruptionsCalls).toHaveLength(0);
+    expect(usbCalls).toHaveLength(0);
     openTechnicalDetails();
     expect(interruptionsCalls.length).toBeGreaterThan(0);
+    expect(usbCalls.length).toBeGreaterThan(0);
   });
 });

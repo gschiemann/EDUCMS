@@ -150,7 +150,7 @@ object ManagerBootstrap {
     private fun reportBlocked(ctx: Context, reason: String) {
         postOtaState(
             ctx,
-            "Manager install blocked: $reason. Settings → Apps → EduCMS Player → " +
+            "Manager install blocked: $reason. Settings → Apps → VenueOS Player → " +
                 "Install unknown apps → Allow",
         )
     }
@@ -306,7 +306,7 @@ object ManagerBootstrap {
         PlayerLogger.i(TAG, "Installing Manager from bundled assets (${bundledFile.length()}b) — $tag")
         showToast(
             ctx,
-            if (installedVc == null) "Installing companion (EduCMS Manager)…"
+            if (installedVc == null) "Installing companion (VenueOS Manager)…"
             else "Upgrading companion: vc $installedVc → $bundledVc",
         )
         installViaPackageInstaller(ctx, bundledFile, tag)
@@ -552,7 +552,7 @@ object ManagerBootstrap {
     private fun showToast(ctx: Context, message: String) {
         mainHandler.post {
             try {
-                Toast.makeText(ctx.applicationContext, "EduCMS: $message", Toast.LENGTH_LONG).show()
+                Toast.makeText(ctx.applicationContext, "VenueOS: $message", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Log.w(TAG, "showToast failed: ${e.message}")
             }

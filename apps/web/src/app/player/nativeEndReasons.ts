@@ -23,6 +23,7 @@
 
 export const NATIVE_END_TRANSIENT: ReadonlySet<string> = new Set([
   'emergency-held',
+  'emergency-held-other-face',
   'activity-paused',
   'lifecycle-not-ready',
   'operator-ui',

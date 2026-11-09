@@ -301,7 +301,7 @@ export function KioskSplash({
         // Harmless here only because width/height already pin the box, but
         // a landmine pattern regardless — omit right/bottom so only two
         // sides ever reach the `style` attribute (never four), which can
-        // never serialize to `inset`. Zero behavior change. CLAUDE.md rule #10.
+        // never serialize to `inset`. Zero behavior change. apps/web/CLAUDE.md rule #10.
         width: 'var(--led-w, 100vw)',
         height: 'var(--led-h, 100vh)',
         top: 0,

@@ -15,7 +15,7 @@
  * Feedback is honest and quiet: one inline "Saved" / "Could not save" line next
  * to the button — no toast, so re-saving twice cannot storm the screen. The
  * card carries no `backdrop-blur` (settings mounts under the always-mounted
- * mobile chrome; see CLAUDE.md mobile-perf standard).
+ * mobile chrome; see apps/web/CLAUDE.md mobile-perf standard).
  */
 
 import { useEffect, useState } from 'react';

@@ -52,7 +52,7 @@
  * A screen whose JS never started cannot show an alert at all, so the
  * reload is the only route by which a live alert can reach that glass.
  *
- * ES5 on purpose (Chromium 83 WebViews, CLAUDE.md #10). The decision
+ * ES5 on purpose (Chromium 83 WebViews, apps/web/CLAUDE.md #10). The decision
  * function is a STRING so the Jest suite evaluates the exact bytes shipped.
  */
 

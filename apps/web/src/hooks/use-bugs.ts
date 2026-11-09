@@ -40,7 +40,7 @@ export interface BugListFilters {
  *
  * `status === 'READY'` ⇒ RESEND_API_KEY is set. Note: even when READY,
  * the EMAIL_FROM default (onboarding@resend.dev) only delivers to the
- * Resend account owner — see the row `message` / CLAUDE.md env table.
+ * Resend account owner — see the row `message` / docs/ENVIRONMENT.md env table.
  */
 export function useEmailConfigured() {
   return useQuery<{ configured: boolean; message: string | null }>({

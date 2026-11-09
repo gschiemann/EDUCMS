@@ -479,7 +479,7 @@ registerVariant({
 //
 // SOCIAL_FEED was deliberately NOT registered until 2026-09-12: it was the
 // one type in the gap that rendered "Coming soon", and a tile for it would
-// have put a widget on the palette that cannot do its job (CLAUDE.md §19).
+// have put a widget on the palette that cannot do its job (docs/governance/AUDIT-SURFACE.md §19).
 // It now has a real connector (apps/api/src/integrations/social/ — OAuth per
 // tenant, an hourly post cache the screens read) and a real renderer, so it
 // is registered below with the rest. If that connector is ever removed, take
@@ -508,7 +508,7 @@ const REACHABILITY_TILES: Array<{
   { id: 'stats-basic', widgetType: 'STATS', name: 'Stat Row', description: 'Three big numbers with labels — attendance, GPA, clubs, anything.', from: 'families', exportName: 'StatsWidget' },
   { id: 'schedule-grid-basic', widgetType: 'SCHEDULE_GRID', name: 'Schedule Grid', description: "The whole day's periods in one grid, with times.", from: 'families', exportName: 'ScheduleGridWidget' },
   { id: 'menu-item-basic', widgetType: 'MENU_ITEM', name: 'Menu Item', description: 'One featured dish with description and dietary tags.', from: 'families', exportName: 'MenuItemWidget' },
-  { id: 'streaming-basic', widgetType: 'STREAMING', name: 'Live Stream', description: 'A live channel or stream. Connect the provider in Settings, pick it here.', from: 'families', exportName: 'StreamingWidget' },
+  { id: 'streaming-basic', widgetType: 'STREAMING', name: 'Live Stream', description: 'A live stream, video link or camera. Paste the link in Properties and press Test.', from: 'families', exportName: 'StreamingWidget' },
   { id: 'playlist-basic', widgetType: 'PLAYLIST', name: 'Playlist', description: 'Play an existing playlist inside a zone. Assign it in Properties.', from: 'renderer', exportName: 'PlaylistWidget' },
   { id: 'wayfinding-map-basic', widgetType: 'WAYFINDING_MAP', name: 'Wayfinding Map', description: 'A floor map with pins. Upload the map and place pins in Properties.', from: 'renderer', exportName: 'WayfindingMapWidget' },
   { id: 'room-finder-basic', widgetType: 'ROOM_FINDER', name: 'Room Finder', description: 'Touch search for a room or a person. Needs touch mode.', from: 'renderer', exportName: 'RoomFinderWidget' },
@@ -1248,7 +1248,7 @@ function celebrationSeed(defaults: Record<string, unknown> | undefined): Record<
  * SAMPLE — v2/_shared/live-data-truth.tsx) and the Properties panel still
  * lists every field (it reads the registry, not this seed).
  */
-const LIVE_DATA_SETTING_KEYS = new Set(['style', 'accent', 'hour12', 'base', 'units', 'timezone', 'exchange']);
+const LIVE_DATA_SETTING_KEYS = new Set(['style', 'accent', 'hour12', 'base', 'units', 'timezone', 'exchange', 'dataMode', 'dataLayout', 'title', 'stationId', 'airport', 'location']);
 function liveDataSeed(defaults: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(defaults || {})) {

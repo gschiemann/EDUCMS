@@ -6,7 +6,7 @@
  * fifty-one scoreboards and celebrations would bury the school catalogue.
  * A SPORTS venue's gallery is unchanged.
  *
- * Mounts the REAL default-exported page (CLAUDE.md rule #9).
+ * Mounts the REAL default-exported page (apps/web/CLAUDE.md rule #9).
  */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { inertDesignerJobHooks } from './designer-job-hooks.mock';
@@ -130,8 +130,8 @@ describe('a K-12 school', () => {
 
   it('sees a "Sports" tab carrying the pack, and "All" without it', () => {
     render(<TemplatesPage />);
-    const sportsTab = screen.getByRole('button', { name: /^Sports\s*2$/ });
-    expect(screen.queryByRole('button', { name: /^Athletics/ })).toBeNull();
+    const sportsTab = screen.getByRole('tab', { name: /^Sports\s*2$/ });
+    expect(screen.queryByRole('tab', { name: /^Athletics/ })).toBeNull();
     // "All" — the school board is there, the pack is not.
     expect(screen.getByText('Front Office Welcome')).toBeInTheDocument();
     expect(screen.queryByText('Scoreboard · High School')).not.toBeInTheDocument();
@@ -152,7 +152,7 @@ describe('a SPORTS venue (unchanged)', () => {
     render(<TemplatesPage />);
     expect(screen.getByText('Scoreboard · High School')).toBeInTheDocument();
     expect(screen.getByText('Touchdown Celebration')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^Celebrations\s*1$/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /^Celebrations\s*1$/ }));
     expect(screen.getByText('Touchdown Celebration')).toBeInTheDocument();
     expect(screen.queryByText('Scoreboard · High School')).not.toBeInTheDocument();
   });

@@ -13,6 +13,8 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.educms.manager.health.ManagerHealth
+import com.educms.manager.health.ManagerHealthReport
 import com.educms.manager.rollback.InstallState
 import com.educms.manager.rollback.RollbackInstaller
 
@@ -53,8 +55,18 @@ class WatchdogService : Service() {
         override fun run() {
             try {
                 checkHeartbeat()
+                // 2026-11-08 — "watchdog alive" is this stamp; written after a completed tick.
+                ManagerHealth.noteWatchdogTick(applicationContext)
             } catch (e: Exception) {
                 Log.w(TAG, "watchdog tick threw: ${e.message}", e)
+            }
+            // 2026-11-08 (wave 5) — the alert-watch watchdog rides the same tick,
+            // after the liveness check and isolated from it: a fault there can
+            // never cost this service its own tick. Add-only (its rules).
+            try {
+                com.educms.manager.alertwatch.AlertWatchWatchdog.tick(applicationContext)
+            } catch (e: Throwable) {
+                Log.w(TAG, "alert-watch watchdog tick threw: ${e.message}")
             }
             handler.postDelayed(this, TICK_INTERVAL_MS)
         }
@@ -64,6 +76,8 @@ class WatchdogService : Service() {
         super.onCreate()
         Log.i(TAG, "WatchdogService.onCreate")
         startForegroundWithNotification()
+        // 2026-11-08 — Manager health (deep dive §5 item 1): the Player carries these facts.
+        ManagerHealth.noteWatchdogStarted(applicationContext)
         // 2026-05-04 — Operator: "i have never once been able to upgrade
         // from one version to another." Triage agent traced this to
         // Manager's grace window starting in the OLD process, then
@@ -157,7 +171,7 @@ class WatchdogService : Service() {
                 // promoteToGood() clears pendingVc above, so pendingVc
                 // is 0 on the next tick and this whole block is skipped.
                 Log.i(TAG, "post-install: relaunching Player activity — new version's services are up but UI was not foregrounded")
-                forceRestartPlayer()
+                forceRestartPlayer(ManagerHealthReport.REASON_AFTER_UPDATE)
             } else if (InstallState.isPendingExpired(applicationContext)) {
                 // Grace window expired with no healthy heartbeat from
                 // the new version — bad install. Roll back.
@@ -205,7 +219,7 @@ class WatchdogService : Service() {
         if (staleStreak >= STREAK_LIMIT) {
             Log.e(TAG, "Player has missed $staleStreak consecutive heartbeats — force-restart")
             staleStreak = 0
-            forceRestartPlayer()
+            forceRestartPlayer(ManagerHealthReport.REASON_UNRESPONSIVE)
         }
     }
 
@@ -253,7 +267,7 @@ class WatchdogService : Service() {
      * (Player declares this), so a duplicate launch on a healthy
      * Player is a no-op.
      */
-    private fun forceRestartPlayer() {
+    private fun forceRestartPlayer(reason: String) {
         val pm = packageManager
         val pkg = pickPlayerPackage(pm)
         if (pkg == null) {
@@ -289,7 +303,8 @@ class WatchdogService : Service() {
             } else {
                 startActivity(launchIntent)
             }
-            Log.i(TAG, "launched $pkg (recovery)")
+            Log.i(TAG, "launched $pkg (recovery, $reason)")
+            ManagerHealth.noteRelaunch(applicationContext, reason)
         } catch (e: Exception) {
             Log.e(TAG, "startActivity threw: ${e.message}", e)
         }

@@ -814,7 +814,7 @@ function verifyDeviceHmacHeader(
  * WHAT THIS DELIBERATELY DOES NOT TOUCH — read before "tidying" it. The
  * guard-protected manifest read (`GET /screens/:id/manifest`, `JwtAuthGuard` +
  * `DeviceIdentityInterceptor`) STILL accepts a bootstrap credential, on purpose:
- * it is CLAUDE.md emergency safeguard #4, the HTTP-polling backstop that
+ * it is apps/api/src/emergency/CLAUDE.md emergency safeguard #4, the HTTP-polling backstop that
  * delivers a lockdown to a screen whose credential has gone unproven. Closing
  * the realtime hole must not open a life-safety one. The split is unchanged and
  * is the same capability shape `security/revocation-posture.ts` uses for its

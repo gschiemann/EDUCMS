@@ -23,6 +23,7 @@
  * The variant id is also the value stored in `config.variant` on the zone.
  */
 
+import { isWidgetDiscoverable } from './widget-discovery';
 import type { ComponentType } from 'react';
 import type { WidgetType, ThemeWidgetProps } from './themes/registry';
 
@@ -109,7 +110,7 @@ const collisions: VariantIdCollision[] = [];
  * WHY IT DOES NOT FLIP TO FIRST-WINS. Which registration wins decides what is
  * on glass. Today `retail-loyalty-qr` resolves to the static
  * `RETAIL_LOYALTY_QR` registration; first-wins would silently swap every live
- * zone using it to the v2-loop component. Per CLAUDE.md player rule #12, new
+ * zone using it to the v2-loop component. Per apps/web/src/app/player/CLAUDE.md player rule #12, new
  * enforcement semantics never ride in silently on a fix wave — the collision
  * gets *named*, not quietly re-resolved.
  */
@@ -151,9 +152,10 @@ export function getVariant(id: string | undefined): WidgetVariant | undefined {
 }
 
 /** List variants, optionally filtered by widget type and/or style category. */
-export function listVariants(filter?: { widgetType?: WidgetType | string; category?: string }): WidgetVariant[] {
+export function listVariants(filter?: { widgetType?: WidgetType | string; category?: string; includeHidden?: boolean }): WidgetVariant[] {
   const all = Array.from(variants.values());
   return all.filter(v => {
+    if (!filter?.includeHidden && !isWidgetDiscoverable(v.id)) return false;
     if (filter?.widgetType && v.widgetType !== filter.widgetType) return false;
     if (filter?.category && v.category !== filter.category) return false;
     return true;

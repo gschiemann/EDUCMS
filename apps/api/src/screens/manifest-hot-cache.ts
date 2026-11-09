@@ -380,7 +380,7 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // bundle, is read ONLY by the fleet list (`GET /screens`) for the
     // "Page bundle out of date" chip, and appears in no manifest branch —
     // and it MUST NOT, since a manifest that varied per reporting device
-    // would kill 304s fleet-wide (CLAUDE.md manifest-cache rule).
+    // would kill 304s fleet-wide (packages/database/CLAUDE.md manifest-cache rule).
     'lastBundleSha',
     'lastBundleShaAt',
     // lastBundleId (2026-09-21) — the identity the player actually reloads
@@ -392,6 +392,10 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // surfaces, and it appears in no manifest branch — and MUST NOT, since a
     // manifest that varied per reporting device would kill 304s fleet-wide.
     'lastBundleId',
+    // softBlankAt (2026-11-02) — the soft BLANK overlay report, written by the
+    // telemetry post on the fleet's minute cadence. A fact about the glass,
+    // in no manifest branch; MUST stay here or every report busts the cache.
+    'softBlankAt',
     'lastSyncReport',
     'lastSyncReportAt',
     // Push-health stamp (2026-07-31) — written by the WS gateway on
@@ -543,6 +547,12 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'lastCrashVersion',
     'lastCrashMessage',
     'lastCrashStack',
+    // 2026-11-08 — companion Manager health, carried by the Player's signed
+    // heartbeat (screens/manager-health.ts), and the crash report's
+    // credential verdict. Dashboard-only; no manifest branch reads them.
+    'managerHealthReport',
+    'managerHealthReportAt',
+    'lastCrashAuthenticated',
 ]);
 
 export type ManifestCacheEntry =

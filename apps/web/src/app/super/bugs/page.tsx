@@ -23,13 +23,13 @@ import {
   Bug,
   CheckCircle2,
   Crown,
-  Filter,
   ImageOff,
   Loader2,
   MailWarning,
   XCircle,
 } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
+import { FilterMenu } from '@/components/ui/filter-menu';
 import { useBugList, useEmailConfigured, type BugListFilters } from '@/hooks/use-bugs';
 import type { BugStatus } from '@cms/api-types';
 
@@ -130,27 +130,26 @@ export default function SuperBugsPage() {
           </div>
         )}
 
-        {/* Status filter pills */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <Filter className="w-3.5 h-3.5 text-slate-400 mr-1" />
-          {STATUS_FILTERS.map((f) => {
-            const active = activeStatus === f.key;
-            return (
-              <button
-                key={f.key}
-                type="button"
-                onClick={() => setActiveStatus(f.key)}
-                className={[
-                  'px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider transition-colors',
-                  active
-                    ? 'bg-slate-900 text-white border border-slate-900'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50',
-                ].join(' ')}
-              >
-                {f.label}
-              </button>
-            );
-          })}
+        {/* Status filter: seven values, so one FilterMenu (pill cleanup 2026-11-02) */}
+        <div className="flex items-center gap-3">
+          <FilterMenu
+            testId="bugs-status-filter"
+            groups={[{
+              id: 'status',
+              label: 'Status',
+              type: 'single',
+              emptyValue: 'ALL',
+              options: STATUS_FILTERS.map((f) => ({ value: f.key, label: f.label })),
+            }]}
+            value={{ status: activeStatus }}
+            onChange={(_, next) => setActiveStatus(next as 'ALL' | BugStatus)}
+            onClear={() => setActiveStatus('ALL')}
+          />
+          {activeStatus !== 'ALL' && (
+            <span className="text-xs font-semibold text-slate-500">
+              {STATUS_FILTERS.find((f) => f.key === activeStatus)?.label}
+            </span>
+          )}
         </div>
 
         {error ? (

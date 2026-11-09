@@ -354,7 +354,7 @@ export class CleverService {
    * address — up to DISTRICT_ADMIN via `mapCleverRole`. Before this, that
    * rewrite happened with:
    *   • no `AuditLog` row — the single most privileged mutation in the
-   *     product, invisible in the forensic record that CLAUDE.md §16 says
+   *     product, invisible in the forensic record that docs/governance/AUDIT-SURFACE.md §16 says
    *     must carry every privileged action; and
    *   • no session revocation — so a DOWNGRADE did not bite: `role` and
    *     `canTriggerPanic` live in the JWT claim, and the old elevated token

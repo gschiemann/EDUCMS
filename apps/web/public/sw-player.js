@@ -1194,6 +1194,160 @@ async function purgeStagingExcept(liveStableUrls, tier) {
   }
 }
 
+// ─── Small-origin storage headroom (2026-11-07, Android 9 / WebView 66) ────
+// A field class reports a browser-origin quota of 167,680,409 bytes (~160 MiB:
+// an old WebView grants an origin a share of the FREE disk, not of the disk).
+// With the origin full, every PRECACHE_CHUNK still fetched its whole Range
+// body and only then failed `Cache.put` with QuotaExceededError — the same
+// bytes re-downloaded six to seventeen times an hour for a day, and the file
+// never finished. Two repairs, PLAYLIST TIER ONLY (the emergency namespace and
+// EMERGENCY_CACHE are never read, measured for deletion, or deleted here):
+//   1. leftovers no reader can ever serve are reclaimed — `tmp-<offset>`
+//      bodies a stopped worker left behind (never counted as staged) and
+//      chunks wholly covered by an earlier, longer chunk of the same file
+//      (the page halves its chunk size after a failure, so a resumed run can
+//      overlap an older one). Chunks past a gap are kept: they are resume
+//      data, and `contiguousLayout` already ignores them for serving.
+//   2. before a Range fetch, the worker asks the origin's own estimate; if the
+//      chunk cannot fit even after the reclaim it answers `storage-quota`
+//      WITHOUT downloading, with the measured free/needed bytes and where the
+//      origin's bytes sit, so the next diagnostic names the occupant.
+// An estimate that is missing, slow or nonsensical changes nothing: the fetch
+// goes ahead exactly as before (fail toward the old behaviour, never a stall).
+const STAGE_HEADROOM_MARGIN_BYTES = 1024 * 1024;
+const STORAGE_ESTIMATE_TIMEOUT_MS = 2000;
+
+/** `{ usage, quota, free }` from the origin's StorageManager, or null when it cannot be trusted. */
+async function originHeadroom() {
+  let storage = null;
+  try { storage = self.navigator && self.navigator.storage; } catch (_e) { storage = null; }
+  if (!storage || typeof storage.estimate !== 'function') return null;
+  let timer = null;
+  try {
+    const estimate = await Promise.race([
+      storage.estimate(),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(null), STORAGE_ESTIMATE_TIMEOUT_MS); }),
+    ]);
+    if (!estimate) return null;
+    const usage = Number(estimate.usage);
+    const quota = Number(estimate.quota);
+    if (!Number.isFinite(usage) || !Number.isFinite(quota) || usage < 0 || quota <= 0) return null;
+    return { usage, quota, free: Math.max(0, quota - usage) };
+  } catch (_e) {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** The directory a playlist-tier staged entry lives in (url + optional generation), or null outside that namespace. */
+function playlistStageDir(pathname) {
+  if (!pathname.startsWith(PLAYLIST_TIER.stagePrefix)) return null;
+  const slash = pathname.lastIndexOf('/');
+  if (slash < PLAYLIST_TIER.stagePrefix.length) return null;
+  return { dir: pathname.slice(0, slash + 1), leaf: pathname.slice(slash + 1) };
+}
+
+/**
+ * Reclaim playlist-tier staging no reader can serve. Returns the bytes freed.
+ * Never touches an offset a chunk event is writing right now (STAGE_IN_FLIGHT),
+ * a chunk in a file's contiguous run, or a chunk past a gap.
+ */
+async function reclaimPlaylistStagingLeftovers() {
+  const staging = await caches.open(STAGING_CACHE);
+  const byDir = new Map();
+  for (const req of await staging.keys()) {
+    let pathname;
+    try { pathname = new URL(req.url).pathname; } catch (_e) { continue; }
+    const at = playlistStageDir(pathname);
+    if (!at) continue;
+    let group = byDir.get(at.dir);
+    if (!group) { group = { chunks: [], temps: [] }; byDir.set(at.dir, group); }
+    const tmp = /^tmp-(\d+)$/.exec(at.leaf);
+    if (tmp) { group.temps.push({ req, start: Number(tmp[1]) }); continue; }
+    const parsed = parseStagedChunkPath(pathname, at.dir);
+    if (parsed) group.chunks.push({ req, start: parsed.start, length: parsed.length });
+  }
+  let freed = 0;
+  for (const [dir, group] of byDir) {
+    for (const t of group.temps) {
+      if (STAGE_IN_FLIGHT.has(`${dir}@${t.start}`)) continue;
+      let size = 0;
+      try { const res = await staging.match(t.req); const blob = res ? await res.blob() : null; size = blob ? blob.size : 0; } catch (_e) { size = 0; }
+      if (await staging.delete(t.req)) freed += size;
+    }
+    const layout = contiguousLayout(group.chunks, null);
+    const served = new Set(layout.chunks.map((c) => `${c.start}-${c.length}`));
+    for (const c of group.chunks) {
+      if (served.has(`${c.start}-${c.length}`)) continue;
+      if (c.start >= layout.nextOffset) continue; // past a gap: resume data
+      if (STAGE_IN_FLIGHT.has(`${dir}@${c.start}`)) continue;
+      if (await staging.delete(c.req)) freed += c.length;
+    }
+  }
+  return freed;
+}
+
+/** Bytes staged per tier (from the range keys; temp bodies measured). Never throws. */
+async function stagingOccupancy() {
+  const out = { playlist: { count: 0, bytes: 0 }, emergency: { count: 0, bytes: 0 } };
+  try {
+    const staging = await caches.open(STAGING_CACHE);
+    for (const req of await staging.keys()) {
+      let pathname;
+      try { pathname = new URL(req.url).pathname; } catch (_e) { continue; }
+      const tier = pathname.startsWith(PLAYLIST_TIER.stagePrefix) ? out.playlist
+        : pathname.startsWith(EMERGENCY_TIER.stagePrefix) ? out.emergency : null;
+      if (!tier) continue;
+      const leaf = pathname.slice(pathname.lastIndexOf('/') + 1);
+      const m = /^(\d+)-(\d+)$/.exec(leaf);
+      let bytes = m ? Number(m[2]) : 0;
+      if (!m) {
+        try { const res = await staging.match(req); const blob = res ? await res.blob() : null; bytes = blob ? blob.size : 0; } catch (_e) { bytes = 0; }
+      }
+      tier.count += 1;
+      tier.bytes += bytes;
+    }
+  } catch (_e) { /* best-effort */ }
+  return out;
+}
+
+/** Where the origin's bytes are, for a quota diagnostic. Never throws. */
+async function originOccupancy() {
+  const result = { staging: await stagingOccupancy() };
+  try {
+    const [pl, em, sh] = await Promise.all([
+      caches.open(PLAYLIST_CACHE), caches.open(EMERGENCY_CACHE), caches.open(SHELL_CACHE),
+    ]);
+    const [plBytes, emBytes, shBytes] = await Promise.all([sumCacheBytes(pl), sumCacheBytes(em), sumCacheBytes(sh)]);
+    result.playlistBytes = plBytes;
+    result.emergencyBytes = emBytes;
+    result.shellBytes = shBytes;
+  } catch (_e) { /* best-effort */ }
+  return result;
+}
+
+/**
+ * Playlist tier: may a chunk of `needBytes` be fetched now? Reclaims leftovers
+ * when the origin is short. `{ ok: true }` when it fits or cannot be measured.
+ */
+async function playlistChunkAdmission(needBytes) {
+  const before = await originHeadroom();
+  if (!before || before.free >= needBytes + STAGE_HEADROOM_MARGIN_BYTES) return { ok: true };
+  let reclaimed = 0;
+  try { reclaimed = await reclaimPlaylistStagingLeftovers(); } catch (_e) { reclaimed = 0; }
+  const after = reclaimed > 0 ? await originHeadroom() : before;
+  if (!after || after.free >= needBytes + STAGE_HEADROOM_MARGIN_BYTES) return { ok: true, reclaimedBytes: reclaimed };
+  return {
+    ok: false,
+    reclaimedBytes: reclaimed,
+    freeBytes: after.free,
+    quotaBytes: after.quota,
+    needBytes,
+    occupancy: await originOccupancy(),
+  };
+}
+
 /** Cached and, when the manifest carries a digest, the digest we verified matches it. */
 async function isCachedCurrent(asset, cache, meta) {
   return (await cachedDigestState(asset, cache, meta, true)) === 'current';
@@ -1371,7 +1525,56 @@ async function answerPort(event, work) {
  * A's range. `parseStagedChunkPath` still ignores every `tmp-*` entry, so a
  * temp body can never be counted as staged.
  */
-async function storeStagedChunk(staging, url, start, res, contentType, tier, onBytes) {
+async function storeStagedChunk(staging, url, start, res, contentType, tier, onBytes, expected) {
+  // Playlist chunks with a known length need only ONE disk copy. Cache.put
+  // publishes atomically after the stream has fulfilled: validate at actual
+  // EOF before closing, so a short body, overrun, read failure or worker death
+  // cannot publish a trusted range key. Never infer EOF from reaching expected.
+  // Emergency and unknown-length staging retain the measured-temp path below.
+  if (tier.name === 'playlist' && Number.isSafeInteger(expected) && expected > 0 &&
+      res.body && typeof res.body.getReader === 'function' && typeof ReadableStream === 'function') {
+    // An older worker may have filled this exact untrusted temp entry then
+    // failed its duplicate write. It is never served; reclaim only our own
+    // generation/offset so that the repair also recovers that prior state.
+    await staging.delete(new Request(`${stagePrefixFor(url, tier)}tmp-${start}`));
+    const reader = res.body.getReader();
+    let seen = 0;
+    const cancel = (reason) => {
+      try { Promise.resolve(reader.cancel(reason)).catch(() => {}); } catch (_e) { /* already closed */ }
+    };
+    const validated = new ReadableStream({
+      async pull(controller) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            if (seen !== expected) throw new Error('truncated');
+            controller.close();
+            return;
+          }
+          const length = value ? value.byteLength : 0;
+          if (length > expected - seen) throw new Error('overlong-chunk');
+          seen += length;
+          if (onBytes) { try { onBytes(seen); } catch (_e) { /* progress only */ } }
+          controller.enqueue(value);
+        } catch (e) {
+          controller.error(e);
+          cancel(e);
+        }
+      },
+      cancel,
+    });
+    try {
+      await staging.put(stageChunkKey(tier, url, start, expected),
+        new Response(validated, { status: 200, headers: {
+          'content-type': contentType, 'content-length': String(expected),
+        } }));
+    } catch (e) {
+      cancel(e);
+      // A failed atomic put leaves any prior committed entry intact.
+      throw e;
+    }
+    return expected;
+  }
   const tmpKey = new Request(`${stagePrefixFor(url, tier)}tmp-${start}`);
   let body = res.body;
   if (onBytes && body && typeof body.getReader === 'function' && typeof ReadableStream === 'function') {
@@ -1408,6 +1611,12 @@ async function stageChunk(msg, tier, report) {
   const url = msg && typeof msg.url === 'string' ? msg.url : '';
   if (!url) return { ok: false, reason: 'bad-request' };
   const offset = Number.isSafeInteger(msg.offset) && msg.offset >= 0 ? msg.offset : 0;
+  // Admission covers resume and metadata decisions too: a writer must not
+  // race another caller's view of this same generation/offset.
+  const lockKey = `${stagePrefixFor(url, tier)}@${offset}`;
+  if (STAGE_IN_FLIGHT.has(lockKey)) return { ok: false, reason: 'busy', offset };
+  STAGE_IN_FLIGHT.add(lockKey);
+  try {
   const want = Math.max(CHUNK_BYTES_MIN, Math.min(CHUNK_BYTES_MAX,
     Number.isSafeInteger(msg.chunkBytes) && msg.chunkBytes > 0 ? msg.chunkBytes : CHUNK_BYTES_DEFAULT));
   const knownSize = Number.isSafeInteger(msg.size) && msg.size > 0 ? msg.size : null;
@@ -1424,16 +1633,33 @@ async function stageChunk(msg, tier, report) {
   const have = await listStagedChunks(staging, url, tier);
   const existing = have.filter((c) => c.start === offset).sort((a, b) => b.length - a.length)[0];
   if (existing) {
+    // A worker may die after atomic chunk publication but before its info
+    // row. Recover only a manifest-known playlist total; no bytes are trusted
+    // beyond that total, and whole-file verification still gates promotion.
+    if (tier.name === 'playlist' && (!info || !info.total) && knownSize !== null &&
+        existing.start + existing.length <= knownSize) {
+      await writeStageInfo(staging, url, { ...(info || {}), total: knownSize }, tier);
+    }
     const next = offset + existing.length;
     return { ok: true, offset, nextOffset: next, total, complete: total !== null && next >= total, staged: true };
   }
   if (total !== null && offset >= total) {
     return { ok: true, offset, nextOffset: offset, total, complete: true, staged: true };
   }
+  // Small-origin headroom (2026-11-07): never download a playlist chunk the
+  // origin cannot store. Emergency staging is never gated here.
+  if (tier.name === 'playlist') {
+    const needBytes = total !== null ? Math.min(want, total - offset) : want;
+    const admission = await playlistChunkAdmission(needBytes);
+    if (!admission.ok) {
+      return {
+        ok: false, reason: 'storage-quota', offset, total, preflight: true,
+        freeBytes: admission.freeBytes, quotaBytes: admission.quotaBytes, needBytes: admission.needBytes,
+        reclaimedBytes: admission.reclaimedBytes, occupancy: admission.occupancy,
+      };
+    }
+  }
 
-  const lockKey = `${stableKey(url)}@${offset}`;
-  if (STAGE_IN_FLIGHT.has(lockKey)) return { ok: false, reason: 'busy', offset };
-  STAGE_IN_FLIGHT.add(lockKey);
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const timer = setTimeout(() => { try { if (controller) controller.abort(); } catch (_e) { /* noop */ } }, CHUNK_FETCH_TIMEOUT_MS);
   try {
@@ -1503,9 +1729,17 @@ async function stageChunk(msg, tier, report) {
     let stored;
     try {
       stored = await storeStagedChunk(staging, url, offset, res, contentType, tier,
-        report ? (n) => report('chunk', offset + n, total) : null);
+        report ? (n) => report('chunk', offset + n, total) : null,
+        total !== null ? expected : null);
     } catch (e) {
-      return { ok: false, reason: e && e.name === 'AbortError' ? 'fetch-timeout' : 'truncated', offset };
+      if (tier.name === 'playlist' && e && e.name === 'QuotaExceededError') {
+        // The estimate said it fits and the write disagreed: free what no
+        // reader can serve so the page's next attempt has a chance.
+        try { await reclaimPlaylistStagingLeftovers(); } catch (_e) { /* best-effort */ }
+      }
+      return { ok: false, reason: e && e.name === 'AbortError' ? 'fetch-timeout'
+        : e && e.name === 'QuotaExceededError' ? 'storage-quota'
+        : 'truncated', offset };
     }
     if (expected !== null && stored !== expected) {
       if (res.status === 206 && total === null && stored < expected) {
@@ -1531,6 +1765,8 @@ async function stageChunk(msg, tier, report) {
     return { ok: true, offset, nextOffset: next, total, complete: total !== null && next >= total };
   } finally {
     clearTimeout(timer);
+  }
+  } finally {
     STAGE_IN_FLIGHT.delete(lockKey);
   }
 }
@@ -2206,7 +2442,12 @@ async function replyStatus(client) {
     pl.keys(), em.keys(), sh.keys(), sumCacheBytes(pl), sumCacheBytes(em), sumCacheBytes(sh),
   ]);
   const chunked = await chunkedPlaylistEntries();
+  const staging = await stagingOccupancy();
   client.postMessage({
+    // Staged bytes (2026-11-07): half-downloads and verified-chunk files
+    // count against the same origin quota; without this the report showed
+    // 11 MB cached on an origin that was 167 MB full.
+    staging,
     type: 'STATUS_REPLY',
     playlist: { count: plKeys.length + chunked.length, bytes: plBytes + chunked.reduce((sum, entry) => sum + entry.record.total, 0) },
     emergency: { count: emKeys.length, bytes: emBytes, floorBytes: EMERGENCY_FLOOR_BYTES },
@@ -2353,5 +2594,7 @@ if (typeof self !== 'undefined') {
     META_CACHE: META_CACHE,
     PLAYLIST_TIER: PLAYLIST_TIER,
     EMERGENCY_TIER: EMERGENCY_TIER,
+    reclaimPlaylistStagingLeftovers: reclaimPlaylistStagingLeftovers,
+    STAGE_HEADROOM_MARGIN_BYTES: STAGE_HEADROOM_MARGIN_BYTES,
   });
 }

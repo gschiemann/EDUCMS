@@ -27,7 +27,7 @@ Every model is bound by the same standard and the same gates. No vendor gets a b
 
 ## Cross-vendor review
 
-Consequential changes are reviewed by a model from a **different vendor** than the one that wrote them. During a freeze the rule applies only to emergency, authentication/secrets, migrations, billing and the native player; the owner may waive it for 24 hours per change, recorded in the PR.
+Consequential changes are reviewed by a model from a **different vendor** than the one that wrote them. During a hold the rule applies only to emergency, authentication/secrets, migrations, billing and the native player; the owner may waive it for 24 hours per change, recorded in the PR.
 
 ## Shared memory is the repository
 

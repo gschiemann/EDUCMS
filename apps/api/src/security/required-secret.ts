@@ -90,7 +90,7 @@ export function assertRequiredSecretsAtBoot(): void {
  * answering confidently after the release it named had been superseded, so
  * every kiosk correctly obeyed it and nothing anywhere went red. That failure
  * mode is why `PLAYER_APK_STORAGE_REDIRECT` and `PLAYER_APK_QUARANTINE` are
- * documented in CLAUDE.md as SUBTRACTIVE ONLY: an OTA env var may remove an
+ * documented in CLAUDE.md §3 as SUBTRACTIVE ONLY: an OTA env var may remove an
  * option, never pin or name one.
  *
  * The code that read them is gone (see the 2026-05-15 note at the top of

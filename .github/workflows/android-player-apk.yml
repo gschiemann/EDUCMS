@@ -1,9 +1,11 @@
 name: Android Player APK
 
-# Builds the kiosk APK on a RELEASE TAG (player-v* / manager-v*) or on
-# demand. Uploads as a downloadable artifact named 'edu-cms-player-apk'
-# so non-developers can grab a fresh build straight from the GitHub UI:
-# Actions → latest run → Artifacts → download.
+# Builds the kiosk APK pair (Player + the Manager it carries) on a RELEASE
+# TAG (player-v*) or on demand. Uploads as downloadable artifacts named
+# 'venueos-player-apk' / 'venueos-manager-apk' so non-developers can grab a
+# fresh build straight from the GitHub UI: Actions → latest run → Artifacts.
+# Both versions come from apps/player/versions.properties (one release unit).
+# (Runs before the 2026-11-08 rebrand used 'edu-cms-*'; the API queries both.)
 #
 # Manual trigger via workflow_dispatch lets you build whenever without
 # pushing.
@@ -24,14 +26,16 @@ on:
   # `gh workflow run android-player-apk.yml --ref <branch>`.
   push:
     tags:
-      # Player release tag (existing) — produces edu-cms-player-v*.apk
-      # release attachment.
+      # ONE RELEASE UNIT (2026-11-08). The `player-v<unit.version>` tag releases
+      # the Player APK AND the Manager APK it carries (apps/player/
+      # versions.properties is the single source of both versions). Both are
+      # attached to the same GitHub Release and mirrored to storage together.
+      # `manager-v*` tags are RETIRED: the Manager's only path to a screen is
+      # inside the Player APK, through the Player's own update ladder (field
+      # window → tracked push → canary → fleet); a standalone Manager release
+      # was a fleet-wide push within 30 minutes with no gate at all. The
+      # hardware-qualification gate refuses a manager-v* tag outright.
       - 'player-v*'
-      # Manager release tag (Phase 1+) — produces edu-cms-manager-v*.apk
-      # release attachment via the parallel `softprops/action-gh-release`
-      # step further down. Both APKs are built on every run regardless;
-      # only the matching tag triggers the corresponding release attach.
-      - 'manager-v*'
     # Skip ONLY when a push touches nothing but non-shipping docs (added
     # 2026-09-08, after GitHub Actions hit the Free-plan minute cap and every
     # workflow began failing with "the job was not started because ... spending
@@ -213,8 +217,21 @@ jobs:
       # which writes an OVERRIDE row into the matrix that this step then
       # reads. That keeps every wave-through visible in git history
       # instead of hidden in a workflow input.
+      # ─── ONE RELEASE UNIT — the version guard (2026-11-08) ─────────────
+      # Both APK versions come from apps/player/versions.properties, never a
+      # gradle literal. The guard refuses a typed literal, a Manager version at
+      # or below the last hand-typed 1.0.24, or one above the unit. Dependency-
+      # free plain Node. Every build, before anything is assembled.
+      - name: One release unit — versions guard
+        run: |
+          node scripts/check-apk-versions.cjs --self-test
+          node scripts/check-apk-versions.cjs
+          # en + es + zh for the Android string resources (Manager and Player).
+          node scripts/check-android-i18n-parity.cjs --self-test
+          node scripts/check-android-i18n-parity.cjs
+
       - name: Hardware qualification gate (release tags only)
-        if: startsWith(github.ref, 'refs/tags/player-v') || startsWith(github.ref, 'refs/tags/manager-v')
+        if: startsWith(github.ref, 'refs/tags/player-v')
         run: |
           node scripts/check-hardware-qual.cjs --tag "${GITHUB_REF_NAME}" || {
             {
@@ -413,12 +430,12 @@ jobs:
             echo "::error::No signed APK was produced (universal/arm64 missing, or only an -unsigned artifact exists — check the RELEASE_* secrets)"
             exit 1
           fi
-          # Extract versionName from build.gradle.kts so operators can
-          # tell at a glance which build they downloaded — bare
-          # "app-debug.apk" told them nothing. If a tag triggered this
-          # run, use the tag instead so the filename matches the
-          # GitHub Release tag.
-          VN=$(grep -oP 'versionName\s*=\s*"\K[^"]+' apps/player/app/build.gradle.kts | head -1)
+          # The unit version from apps/player/versions.properties (the gradle
+          # files hold no literal since 2026-11-08) so operators can tell at a
+          # glance which build they downloaded — bare "app-debug.apk" told
+          # them nothing. If a tag triggered this run, use the tag instead so
+          # the filename matches the GitHub Release tag.
+          VN=$(sed -nE 's/^[[:space:]]*unit\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' apps/player/versions.properties | head -1)
           TAG="${GITHUB_REF_NAME}"
           if [ -n "$PLAYER_FIELD_CANDIDATE" ]; then
             VERSION="$PLAYER_FIELD_CANDIDATE-${GITHUB_SHA:0:7}"
@@ -429,7 +446,7 @@ jobs:
           else
             VERSION="${GITHUB_SHA:0:7}"
           fi
-          NEW_NAME="edu-cms-player-v${VERSION}.apk"
+          NEW_NAME="venueos-player-v${VERSION}.apk"
           NEW_PATH="apps/player/app/build/outputs/apk/${VARIANT}/${NEW_NAME}"
           mv "$APK" "$NEW_PATH"
           echo "apk=$NEW_PATH" >> $GITHUB_OUTPUT
@@ -439,7 +456,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: edu-cms-player-apk
+          name: venueos-player-apk
           path: ${{ steps.locate.outputs.apk }}
           retention-days: 30
           if-no-files-found: error
@@ -466,16 +483,25 @@ jobs:
             echo "::error::Signed Manager APK not found (missing, or only an -unsigned artifact — check the RELEASE_* secrets). Manager is required for OTA validation."
             exit 1
           fi
-          MVN=$(grep -oP 'versionName\s*=\s*"\K[^"]+' apps/player/manager/build.gradle.kts | head -1)
-          MTAG="${GITHUB_REF_NAME}"
-          if [[ "$MTAG" == manager-v* ]]; then
-            MVERSION="${MTAG#manager-v}"
+          # ONE RELEASE UNIT: the Manager's version is `manager.version` in
+          # apps/player/versions.properties — equal to the unit when the
+          # Manager changed in this release, otherwise the older version it
+          # already runs (so no screen reinstalls an unchanged companion).
+          # A field candidate renames the Manager only in that first case,
+          # exactly as manager/build.gradle.kts does.
+          UVN=$(sed -nE 's/^[[:space:]]*unit\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' apps/player/versions.properties | head -1)
+          MVN=$(sed -nE 's/^[[:space:]]*manager\.version[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' apps/player/versions.properties | head -1)
+          if [ -n "$PLAYER_FIELD_CANDIDATE" ] && [ "$MVN" = "$UVN" ]; then
+            MVERSION="$PLAYER_FIELD_CANDIDATE-${GITHUB_SHA:0:7}"
+          elif [[ "${GITHUB_REF_NAME}" == player-v* ]] && [ -n "$MVN" ]; then
+            MVERSION="$MVN"
           elif [ -n "$MVN" ]; then
             MVERSION="$MVN-${GITHUB_SHA:0:7}"
           else
             MVERSION="${GITHUB_SHA:0:7}"
           fi
-          MGR_NEW="edu-cms-manager-v${MVERSION}.apk"
+          echo "manager_version=$MVN" >> $GITHUB_OUTPUT
+          MGR_NEW="venueos-manager-v${MVERSION}.apk"
           MGR_NEW_PATH="apps/player/manager/build/outputs/apk/${VARIANT}/${MGR_NEW}"
           mv "$MGR_APK" "$MGR_NEW_PATH"
           echo "apk=$MGR_NEW_PATH" >> $GITHUB_OUTPUT
@@ -485,7 +511,7 @@ jobs:
       - name: Upload Manager APK artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: edu-cms-manager-apk
+          name: venueos-manager-apk
           path: ${{ steps.locate-manager.outputs.apk }}
           retention-days: 30
           if-no-files-found: error
@@ -517,7 +543,7 @@ jobs:
       # Do NOT re-add an escape hatch here. If this step fails, the correct
       # response is to fix the build, never to wave the artifact through.
       - name: Guard — published APK must not be debuggable
-        if: startsWith(github.ref, 'refs/tags/player-v') || startsWith(github.ref, 'refs/tags/manager-v')
+        if: startsWith(github.ref, 'refs/tags/player-v')
         run: |
           node scripts/check-apk-debuggable.cjs \
             "${{ steps.locate.outputs.apk }}" \
@@ -527,44 +553,39 @@ jobs:
       # /api/v1/player/apk/latest can resolve it without any Railway env
       # config. The controller auto-picks arm64-v8a first, falls back to
       # universal, then armeabi-v7a — so naming here just needs to match.
-      - name: Attach APK to GitHub Release (on tag push)
+      # ONE RELEASE UNIT (2026-11-08): the player-v* release carries BOTH
+      # artifacts. The Player APK is what every screen installs; the Manager
+      # APK is the same bytes the Player carries in its assets, published so
+      # `/api/v1/player/manager-apk/v/<vc>` (the bootstrap's network fallback)
+      # and the hardware checklist can read them. The API's player resolver
+      # ignores the manager asset by name (pickApkAsset), so the fleet is
+      # never handed the companion as a Player update.
+      - name: Attach APKs to GitHub Release (on tag push)
         if: startsWith(github.ref, 'refs/tags/player-v')
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          files: ${{ steps.locate.outputs.apk }}
+          files: |
+            ${{ steps.locate.outputs.apk }}
+            ${{ steps.locate-manager.outputs.apk }}
           tag_name: ${{ github.ref_name }}
           name: Player ${{ github.ref_name }}
           body: |
-            EduCMS Player kiosk APK.
+            VenueOS Player kiosk APK — one release unit.
+
+            The Player APK carries the companion Manager APK (version
+            `${{ steps.locate-manager.outputs.manager_version }}`) in its assets and
+            installs it on the device only when that version is newer than the
+            one installed. The standalone Manager APK attached here is the same
+            bytes, for the bootstrap fallback and the hardware checklist; it is
+            never pushed on its own. VenueOS is not the device owner on any
+            screen (owner decision 2026-10-17).
 
             Sideload onto any Android 7+ device or Nova Taurus controller.
             See `docs/PLAYER_APK_NOVA_TAURUS.md` for the ViPlex Express
             walkthrough.
 
             Dashboard hotlink: `/api/v1/player/apk/latest` resolves to
-            this asset automatically.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # On Manager tag push (manager-v*) attach the Manager APK to a
-      # GitHub Release. Separate tag namespace from Player so the two
-      # APKs version independently.
-      - name: Attach Manager APK to GitHub Release (on tag push)
-        if: startsWith(github.ref, 'refs/tags/manager-v')
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          files: ${{ steps.locate-manager.outputs.apk }}
-          tag_name: ${{ github.ref_name }}
-          name: Manager ${{ github.ref_name }}
-          body: |
-            EduCMS Manager APK — companion to Player.
-
-            ADB-provision on a freshly-reset kiosk:
-              adb shell dpm set-device-owner com.educms.manager/.AdminReceiver
-
-            Once provisioned, OTA installs of the Player APK land
-            silently (no system "Install" prompt). See
-            `docs/MANAGER_PROVISIONING.md` for the full runbook.
+            the Player asset automatically.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -595,29 +616,27 @@ jobs:
       # `node scripts/upload-apks-to-storage.mjs --from-releases`. Failing
       # the job here would instead leave a TAGGED release with no APK
       # anywhere, which is strictly worse.
-      - name: Publish APK to object storage (immutable, private bucket)
-        if: startsWith(github.ref, 'refs/tags/player-v') || startsWith(github.ref, 'refs/tags/manager-v')
+      - name: Publish APKs to object storage (immutable, private bucket)
+        if: startsWith(github.ref, 'refs/tags/player-v')
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MANAGER_VERSION: ${{ steps.locate-manager.outputs.manager_version }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
             echo "::warning::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY repo secrets are not set — skipping the storage publish. The release still ships; the fleet downloads it through the API byte proxy (Railway pays the egress). Set both secrets, then backfill with: node scripts/upload-apks-to-storage.mjs --from-releases"
             exit 0
           fi
-          # Publish whichever APK this tag released. Both are built every run,
-          # but only the tagged one was attached to a Release — mirroring the
-          # other would put an artifact in the bucket that no Release
-          # references, and the API resolves objects by released versionCode.
-          if [[ "${GITHUB_REF_NAME}" == player-v* ]]; then
-            node scripts/upload-apks-to-storage.mjs --file "${{ steps.locate.outputs.apk }}" --kind player
-          else
-            node scripts/upload-apks-to-storage.mjs --file "${{ steps.locate-manager.outputs.apk }}" --kind manager
-          fi
+          # ONE RELEASE UNIT: the player-v* release attached both APKs, so
+          # both are mirrored. The uploader never overwrites: a Manager whose
+          # version did not move in this release is already in the bucket and
+          # is reported as "already published", not rewritten.
+          node scripts/upload-apks-to-storage.mjs --file "${{ steps.locate.outputs.apk }}" --kind player
+          node scripts/upload-apks-to-storage.mjs --file "${{ steps.locate-manager.outputs.apk }}" --kind manager --version "$MANAGER_VERSION"
 
       - name: Note the storage publish in the summary
-        if: startsWith(github.ref, 'refs/tags/player-v') || startsWith(github.ref, 'refs/tags/manager-v')
+        if: startsWith(github.ref, 'refs/tags/player-v')
         run: |
           echo "### APK delivery" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -627,9 +646,9 @@ jobs:
 
       - name: Build summary
         run: |
-          echo "### EduCMS Player APK built ✓" >> $GITHUB_STEP_SUMMARY
+          echo "### VenueOS Player APK built ✓" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download from the **Artifacts** section above (\`edu-cms-player-apk\`)." >> $GITHUB_STEP_SUMMARY
+          echo "Download from the **Artifacts** section above (\`venueos-player-apk\`)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Player base URL:** \`${PLAYER_BASE_URL:-https://venue-os.app/player}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

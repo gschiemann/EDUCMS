@@ -4,7 +4,7 @@
  * builder only) a stamped school-safe sample.
  *
  * Every case drives the real `WidgetPreview` dispatcher with the variant id
- * the builder stores (CLAUDE.md rule #9), on both surfaces:
+ * the builder stores (apps/web/CLAUDE.md rule #9), on both surfaces:
  *   - builder (renderSurface unset): the sample shows AND is stamped SAMPLE;
  *   - a real screen (renderSurface="player"): with nothing configured, not
  *     one word of sample content and no stamp.

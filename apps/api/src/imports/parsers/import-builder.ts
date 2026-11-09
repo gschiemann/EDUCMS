@@ -301,7 +301,7 @@ export interface BuildOptions {
 /**
  * REMOVED 2026-09-15 — `pageBackgroundUrl`, a per-page full-bleed backdrop
  * laid UNDER the editable text. It had no caller and two test suites, which
- * is the shape CLAUDE.md rule 9 warns about: covered, and unable to run.
+ * is the shape apps/web/CLAUDE.md rule 9 warns about: covered, and unable to run.
  *
  * It was the seam a "fidelity backdrop + editable text" mode would have used,
  * and that mode does not work. pdf.js paints glyphs as PATHS, so a rendered

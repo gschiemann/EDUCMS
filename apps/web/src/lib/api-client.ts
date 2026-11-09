@@ -311,7 +311,7 @@ export async function apiFetch<T = any>(path: string, options: ApiFetchOptions =
         //   • `_sessionRetry` means each call gets at most one retry, so a
         //     genuinely dead session still reaches the logout below;
         //   • no timer anywhere — this only ever runs in response to a real
-        //     401 on a real request (CLAUDE.md mobile-perf standard).
+        //     401 on a real request (apps/web/CLAUDE.md mobile-perf standard).
         if (token && !options._sessionRetry && !sessionLogoutFired && hasRememberMarker()) {
           const activeTenantId = useUIStore.getState().user?.tenantId ?? null;
           const refreshed = await refreshRememberedSession();

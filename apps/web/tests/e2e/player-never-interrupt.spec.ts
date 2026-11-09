@@ -20,7 +20,7 @@
  *
  * "Interrupted" is measured two ways: a window marker that a reload would
  * erase, and the absence of the connecting splash. Runs on chromium + webkit
- * (CLAUDE.md cross-browser rule). Harness rules (player rule 14): the
+ * (apps/web/CLAUDE.md cross-browser rule). Harness rules (player rule 14): the
  * realtime socket is the helper's stub (non-/realtime sockets are delegated
  * to the real WebSocket), mocks key on STATE, and every wait is on a
  * rendered element, never a count.

@@ -32,7 +32,7 @@ import { createHash } from 'node:crypto';
  * registration/manifest requests fail. Previously this test explicitly
  * documented that no screen identity was restored, so content never started.
  *
- * Harness rules (per CLAUDE.md player rule 14, and copied from
+ * Harness rules (per apps/web/src/app/player/CLAUDE.md player rule 14, and copied from
  * player-canvas-geometry.spec.ts): never replace `window.WebSocket`
  * wholesale — delegate non-`/realtime` URLs, because Next dev's HMR uses it
  * and a dead stub stalls the whole page boot silently.

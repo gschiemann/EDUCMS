@@ -35,6 +35,7 @@ jest.mock('@/components/ui/AddressAutocomplete', () => ({
 }));
 const bulkMutate = jest.fn();
 jest.mock('@/hooks/use-api', () => ({
+  useAllDisplaySchedules: () => ({ data: [] }),
   useBulkScreenAction: () => ({ mutateAsync: (...a: any[]) => bulkMutate(...a), isPending: false }),
   useRefreshWeb: () => ({ mutate: refreshMutate, isPending: false }),
   useCreateScreenGroup: () => ({ mutate: createGroupMutate, mutateAsync: createGroupMutate, isPending: false }),
@@ -50,6 +51,7 @@ jest.mock('@/hooks/use-api', () => ({
   useScreenPlaybackCapability: () => ({ data: undefined, isLoading: false, isError: false }),
   // The Overview's interruptions section (2026-10-18): nothing recorded yet.
   useScreenInterruptions: () => ({ data: undefined, isLoading: false, isError: false }),
+  useScreenUsbEvents: () => ({ data: undefined, isLoading: false, isError: false }),
   // ── the "Full settings" popover's own reads/writes (2026-09-01) ──
   // It mounts INSIDE this surface now instead of behind a hop into the classic
   // page, so its hooks have to exist in this mock or the module throws on load.
@@ -198,7 +200,7 @@ describe('bulk selection', () => {
     expect(rtl.getByTestId('screens-bulk-count')).toHaveTextContent('6 screens selected');
 
     // Clear, search, select all again → only the matches.
-    fireEvent.click(within(rtl.getByTestId('screens-bulk-bar')).getByRole('button', { name: 'Clear' }));
+    fireEvent.click(within(rtl.getByTestId('screens-bulk-bar')).getByRole('button', { name: 'Clear selection' }));
     fireEvent.change(rtl.getByRole('textbox', { name: /Search screens/i }), { target: { value: 'henderson' } });
     fireEvent.click(rtl.getByTestId('screens-select-all'));
     expect(rtl.getByTestId('screens-bulk-count')).toHaveTextContent('2 screens selected');
@@ -207,12 +209,18 @@ describe('bulk selection', () => {
   });
 
   it('a search that hides a selected screen drops it from the selection (what is checked is what is sent)', () => {
+    // On desktop the toolbar BECOMES the selection bar, so search is not
+    // reachable mid-selection; on a phone the toolbar stays (the selection
+    // is in the bottom dock) — that is where this can happen.
+    const prevWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
     renderPage();
     fireEvent.click(rtl.getByTestId('screens-select-g43'));
     fireEvent.click(rtl.getByTestId('screens-select-hen1'));
     expect(rtl.getByTestId('screens-bulk-count')).toHaveTextContent('2 screens selected');
     fireEvent.change(rtl.getByRole('textbox', { name: /Search screens/i }), { target: { value: 'henderson' } });
     expect(rtl.getByTestId('screens-bulk-count')).toHaveTextContent('1 screen selected');
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: prevWidth });
   });
 
   it('the group box selects the whole group and goes tri-state; "Select all N" lives in the bar', () => {
@@ -322,11 +330,48 @@ describe('bulk confirm + results sheet', () => {
     expect(bulkMutate.mock.calls[1][0]).toMatchObject({ action: 'power', state: 'off', screenIds: ['hen1'] });
   });
 
+  // 2026-10-31 — the owner's fleet push rules (apps/api/src/player-ota/fleet-push-policy.ts)
+  // refuse a Send update by code; the sheet words it in the operator's language.
+  const refusal = (code: string, status: number) =>
+    Object.assign(new Error('English words from the server'), { code, status });
+
+  it('a fleet push rule refusal is worded in the operator’s language — and the sheet never sends the override', async () => {
+    bulkMutate.mockImplementation(async () => { throw refusal('BULK_UPDATE_MIXED_HARDWARE', 422); });
+    renderPage();
+    fireEvent.click(rtl.getByTestId('screens-select-all'));
+    fireEvent.click(rtl.getByTestId('screens-bulk-update'));
+    const sheet = await rtl.findByTestId('screens-bulk-sheet');
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent(
+      'Could not check the screens: these screens are more than one kind of hardware — send the update to one kind at a time',
+    );
+    expect(within(sheet).queryByText(/English words from the server/)).not.toBeInTheDocument();
+    expect(bulkMutate.mock.calls[0][0]).toMatchObject({ action: 'update', dryRun: true });
+    expect(bulkMutate.mock.calls[0][0]).not.toHaveProperty('overrideMassPushRules');
+  });
+
+  it('…and the same when Send itself is refused (off-hours)', async () => {
+    bulkMutate.mockImplementation(async (req: Bulk) => {
+      if (!req.dryRun) throw refusal('BULK_UPDATE_OUTSIDE_OFF_HOURS', 409);
+      return answer(req);
+    });
+    renderPage();
+    fireEvent.click(rtl.getByTestId('screens-select-all'));
+    fireEvent.click(rtl.getByTestId('screens-bulk-update'));
+    const sheet = await rtl.findByTestId('screens-bulk-sheet');
+    await within(sheet).findByText(/will get it/);
+    await act(async () => { fireEvent.click(within(sheet).getByTestId('screens-bulk-confirm')); });
+    expect(within(sheet).getByRole('alert')).toHaveTextContent(
+      "The request did not go through: an update to more than one screen goes out only between 10 PM and 6 AM in each screen's own time zone — send it to one screen at a time, or wait until then. Nothing was sent.",
+    );
+  });
+
   it('automatic updates go through the same sheet', async () => {
     bulkMutate.mockImplementation(async (req: Bulk) => answer(req));
     renderPage();
     fireEvent.click(rtl.getByTestId('screens-select-hen1'));
-    fireEvent.change(rtl.getByTestId('screens-bulk-auto'), { target: { value: 'auto-on' } });
+    // Automatic updates live in the selection bar's "⋯" menu (pill cleanup 2026-11-02).
+    fireEvent.click(rtl.getByTestId('screens-bulk-more'));
+    fireEvent.click(within(rtl.getByTestId('screens-bulk-more-menu')).getByRole('menuitem', { name: 'Automatic updates: On' }));
     const sheet = await rtl.findByTestId('screens-bulk-sheet');
     await within(sheet).findByText('1 screen will get it');
     expect(bulkMutate.mock.calls[0][0]).toMatchObject({ action: 'auto-update', mode: 'on', dryRun: true });

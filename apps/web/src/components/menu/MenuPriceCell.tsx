@@ -4,7 +4,7 @@
  * MenuPriceCell — one item × one location cell in the price-book grid.
  * ──────────────────────────────────────────────────────────────────
  *
- * The core 30-second interaction (CLAUDE.md §20): click the price →
+ * The core 30-second interaction (docs/governance/AUDIT-SURFACE.md §20): click the price →
  * type → tab/enter to save. No modal, no separate edit mode toggle.
  *
  *   • Inherited (no override): the central price renders GREYED. The

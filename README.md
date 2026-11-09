@@ -20,7 +20,7 @@ The wedge is simple: **one platform that runs everyday signage *and* native life
 
 Three things make it more than a slideshow player:
 
-- **Life-safety is load-bearing, not a feature.** A single trigger fans a signed, audited lockdown / weather / evacuate alert to every screen in scope over WebSockets, with an HTTP-polling fallback when Redis is down. Every trigger and all-clear is immutably logged. See [`docs/spec/THREAT_MODEL.md`](./docs/spec/THREAT_MODEL.md) and the emergency-system section of [`CLAUDE.md`](./CLAUDE.md).
+- **Life-safety is load-bearing, not a feature.** A single trigger fans a signed, audited lockdown / weather / evacuate alert to every screen in scope over WebSockets, with an HTTP-polling fallback when Redis is down. Every trigger and all-clear is immutably logged. See [`docs/spec/THREAT_MODEL.md`](./docs/spec/THREAT_MODEL.md) and the emergency sections of [`CLAUDE.md`](./CLAUDE.md) §5 and [`apps/api/src/emergency/CLAUDE.md`](./apps/api/src/emergency/CLAUDE.md).
 - **Real-time at fleet scale.** Signed pub/sub over Redis, per-event dedup, canary rollouts, offline-tolerant kiosk players (down to Chromium 83 on NovaStar Taurus LED controllers).
 - **The operator does the work in seconds, not with a consultant.** Auto-detecting integration concierge, brandable templates, one-click game presentation.
 
@@ -55,7 +55,7 @@ pnpm install
 # 2. Configure env (copy the template, fill in DATABASE_URL etc.)
 cp .env.example .env
 
-# 3a. Local DB via Docker (optional — skip if you point .env at Supabase)
+# 3a. Local DB via Docker — needed for db:setup: every db:* script that writes data or schema refuses a non-local DATABASE_URL / DIRECT_URL (scripts/guard-destructive-db.cjs), so pointing .env at Supabase no longer works for these commands
 docker compose up db redis -d
 
 # 4. Push the Prisma schema and seed test data
@@ -67,9 +67,9 @@ pnpm dev                 # API on :8080, web on :3000
 
 Then open **http://localhost:3000/login**. The seed creates `admin@springfield.edu` (SUPER_ADMIN outside production) and `teacher@springfield.edu` (CONTRIBUTOR) on the demo school Springfield Elementary (`00000000-0000-0000-0000-000000000002`). `pnpm db:seed` prints the two addresses but **never the password** — set `SEED_PASSWORD` before seeding, or read the public dev default in `packages/database/prisma/seed.ts`.
 
-Run one side alone with `pnpm dev:api` / `pnpm dev:web`. See [`CLAUDE.md` → How to Run](./CLAUDE.md) for the full command set (build, migrate, test, lint).
+Run one side alone with `pnpm dev:api` / `pnpm dev:web`. See [`docs/ORIENTATION.md` → How to Run](./docs/ORIENTATION.md) for the full command set (build, migrate, test, lint).
 
-> ⚠️ **`DATABASE_URL` gotcha:** when using the Supabase pooler you **must** append `&connection_limit=10&pool_timeout=20`. Prisma's default under pgBouncer is **1 connection**, which makes every concurrent request time out. This has bitten us repeatedly — the full env-var reference is in [`CLAUDE.md`](./CLAUDE.md).
+> ⚠️ **`DATABASE_URL` gotcha:** when using the Supabase pooler you **must** append `&connection_limit=10&pool_timeout=20`. Prisma's default under pgBouncer is **1 connection**, which makes every concurrent request time out. This has bitten us repeatedly — the full env-var reference is in [`docs/ENVIRONMENT.md`](./docs/ENVIRONMENT.md).
 
 ---
 
@@ -90,7 +90,7 @@ EDU CMS/
 └── docs/             spec, design, roadmap, archive, template-finalization
 ```
 
-The domain model (Tenant → Screen / ScreenGroup / Playlist / Schedule / Asset / Template / AuditLog), the 5-role RBAC matrix, the emergency endpoints, and the template/widget system are all documented in [`CLAUDE.md`](./CLAUDE.md) and [`docs/spec/DOMAIN_MODEL.md`](./docs/spec/DOMAIN_MODEL.md).
+The domain model (Tenant → Screen / ScreenGroup / Playlist / Schedule / Asset / Template / AuditLog), the 5-role RBAC matrix, the emergency endpoints, and the template/widget system are all documented in [`packages/database/CLAUDE.md`](./packages/database/CLAUDE.md) (domain model, roles), [`apps/api/src/emergency/CLAUDE.md`](./apps/api/src/emergency/CLAUDE.md) (emergency endpoints), [`apps/web/public/templates/CLAUDE.md`](./apps/web/public/templates/CLAUDE.md) (templates and widgets) and [`docs/spec/DOMAIN_MODEL.md`](./docs/spec/DOMAIN_MODEL.md).
 
 ---
 
@@ -100,7 +100,7 @@ The repo root is intentionally small — four markdown files. Everything else li
 
 | Where | What | Read it when |
 |---|---|---|
-| **[`CLAUDE.md`](./CLAUDE.md)** | **The source of truth.** Architecture, env vars, conventions, emergency safeguards, hard-won rules (render-tree #9, Chromium-83/Taurus CSS #10), the 21-section Standard Audit Surface, agent-dispatch protocol. | Before touching anything. |
+| **[`CLAUDE.md`](./CLAUDE.md)** | **The source of truth.** The always-loaded core: product, schema, emergency, player and release rules. Detail is in the nested rulebooks it indexes (`apps/web/CLAUDE.md` holds the render-tree and Taurus CSS rules, 9 and 10), the 27-section [`docs/governance/AUDIT-SURFACE.md`](./docs/governance/AUDIT-SURFACE.md), and the agent-dispatch protocol in [`docs/governance/AGENT-DISPATCH.md`](./docs/governance/AGENT-DISPATCH.md). | Before touching anything. |
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | The 5-doc reading list, preflight, verify-before-claim, parallel-agent worktree discipline, conventions. | First contribution. |
 | [`SECURITY.md`](./SECURITY.md) | How to report a vulnerability (security@venue-os.app), response targets, safe harbor. | You found a vulnerability. |
 | [`docs/CURRENT_STATE.md`](./docs/CURRENT_STATE.md) | The **canonical app status** — code-verified account of what is actually shipped. | You need ground truth on what's actually shipped. |
@@ -124,7 +124,7 @@ Health endpoints (all under `/api/v1`):
 | `GET /health/ready` | Readiness — 503 when DB unreachable. For monitoring, not Railway. |
 | `GET /health/emergency-path` | Verifies DB + WS signer chain before a life-safety drill. |
 
-Recovery runbooks (Railway redeploys, Vercel env, Supabase pooler, Redis fallback) are in [`CLAUDE.md` → Deploy reliability](./CLAUDE.md).
+Recovery runbooks (Railway redeploys, Vercel env, Supabase pooler, Redis fallback) are in [`docs/DEPLOY.md`](./docs/DEPLOY.md) (Deploy reliability).
 
 ---
 
@@ -135,4 +135,4 @@ Recovery runbooks (Railway redeploys, Vercel env, Supabase pooler, Redis fallbac
 - **Cross-browser is mandatory.** Every customer-facing surface must work in Safari/WebKit; player surfaces must also survive Chromium 83–87 (Taurus LED). Never use the CSS `inset` shorthand or Tailwind `inset-*` in widget/player styles.
 - **Migrations are additive-only** while a live pilot tenant is in production.
 
-Full rationale for each — and the scars that earned them — is in [`CLAUDE.md`](./CLAUDE.md).
+Full rationale for each — and the scars that earned them — is in [`CLAUDE.md`](./CLAUDE.md) and the nested rulebooks it indexes.

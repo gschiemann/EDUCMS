@@ -90,7 +90,7 @@ export function detectHardwareModel(input: DetectInput): HardwareModel {
     return 'maxhub-l55vec';
   }
 
-  // NovaStar Taurus LED controller. Ships Chromium 83 (CLAUDE.md rule
+  // NovaStar Taurus LED controller. Ships Chromium 83 (apps/web/CLAUDE.md rule
   // #10). The Taurus UA contains "Taurus" verbatim plus a NovaStar
   // marker on most firmware revisions.
   //

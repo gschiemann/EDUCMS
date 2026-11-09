@@ -191,6 +191,13 @@ describe('contract — every sentence recognised here is still what the API writ
         '`“${screenName}” stutters on “${fileName}” and there is no lighter copy to switch it to. It keeps playing.`',
       ],
     ],
+    [
+      'screen-diagnostics/storage-health.ts',
+      [
+        'title: `Storage almost full: ${screenName}`',
+        "body: 'New content may not download. Remove unused media from its playlists or free space on the device.'",
+      ],
+    ],
   ];
   it.each(cases)('%s', (file, fragments) => {
     const text = src(file);

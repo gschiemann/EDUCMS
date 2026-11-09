@@ -61,7 +61,7 @@ import java.util.concurrent.atomic.AtomicReference
  * ⚠️ RAISE ONLY. The one write this file makes to the emergency interlock is
  * [DisplayEmergency.raiseFromNativeWatch]. It never releases a hold and
  * never treats "no alert" as an all-clear; the page, on a LIVE manifest, is
- * the only thing that releases (CLAUDE.md player rule 11).
+ * the only thing that releases (apps/api/src/emergency/CLAUDE.md player rule 11).
  *
  * ⚠️ NO SECOND TOKEN WRITER (player rule 3). The device token is READ from
  * the canonical `edu_player`/`device_token` store exactly as
@@ -207,8 +207,42 @@ object NativeAlertWatch {
     /** One engine for the life of the process: what it knows about an alert outlives a dark period. */
     @Volatile private var engine: NativeAlertWatchEngine? = null
 
+    /** The engine's ports, kept so the stamp below reads the SAME power and hold facts the pass did. */
+    @Volatile private var ports: AndroidPorts? = null
+
     private fun engineFor(app: Context): NativeAlertWatchEngine =
-        engine ?: NativeAlertWatchEngine(AndroidPorts(app)).also { engine = it }
+        engine ?: AndroidPorts(app).let { p ->
+            ports = p
+            NativeAlertWatchEngine(p).also { engine = it }
+        }
+
+    /**
+     * 2026-11-08 (Manager wave 5) — after every pass, tell the companion
+     * Manager how the watch stands (AlertWatchStamp). Observability only: it
+     * reads the engine's status and the ports' facts, decides nothing, and a
+     * fault here is swallowed inside the stamp. The mode the server gave this
+     * screen rides along, so the Manager acts only where the lead switched it
+     * on (`display.alertWatchWatchdog`, env MANAGER_ALERT_WATCH_WATCHDOG).
+     */
+    private fun stamp(app: Context, machine: NativeAlertWatchEngine) {
+        val p = ports ?: return
+        runCatching {
+            AlertWatchStamp.publish(
+                app,
+                AlertWatchStamp.Payload(
+                    atElapsedMs = p.nowMs(),
+                    state = AlertWatchStamp.stateOf(machine.status),
+                    panelDark = !p.panelInteractive(),
+                    holdHeld = p.holdHeld(),
+                    faces = machine.watchedFaces,
+                    mode = AlertWatchStamp.modeOf(
+                        runCatching { com.educms.player.display.DisplayConfigStore.load(app).alertWatchWatchdogMode }.getOrNull(),
+                    ),
+                    reason = machine.statusReason,
+                ),
+            )
+        }
+    }
 
     private suspend fun runLoop(app: Context, why: String) {
         var leftCleanly = false
@@ -225,6 +259,7 @@ object NativeAlertWatch {
                     PlayerLogger.e(TAG, "native alert watch pass failed — trying again", t)
                     NativeAlertWatchPolicy.POLL_INTERVAL_MS
                 }
+                stamp(app, machine)
                 if (sleepMs == null) {
                     // Nothing to watch. Leave only if nobody kicked while
                     // this pass was running — a screen-off that lands in

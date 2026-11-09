@@ -8,7 +8,7 @@
  * same instant, and a widget kept running a clock the table may have stopped
  * while its poll was dead. These tests render the REAL widgets inside the
  * REAL provider next to the REAL /board scene (`DefaultBoardScene`, what
- * `ScoreboardPage` renders — CLAUDE.md rule #9) on injected fake clocks, with
+ * `ScoreboardPage` renders — apps/web/CLAUDE.md rule #9) on injected fake clocks, with
  * a scripted API, and prove:
  *   1. the widget and the board paint the SAME clock at every instant —
  *      MM:SS rounding up, tenths in a tenths sport's final minute, count-up

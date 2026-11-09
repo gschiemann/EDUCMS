@@ -408,7 +408,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     // Leader-leased (2026-09-02 multi-replica wave). Two replicas sweeping
     // means two REFRESH_WEB reboots at the same wedged screen inside one
     // cooldown, and — worse — it corrupts the escalation arithmetic that
-    // CLAUDE.md player-rule 8 makes binding: "N fires in a window" is counted
+    // apps/web/src/app/player/CLAUDE.md player-rule 8 makes binding: "N fires in a window" is counted
     // from AUTO_REFRESH_WEB rows, so doubling the fires halves the effective
     // window and a screen reaches give-up in half the intended time. The
     // retention sweep inside this pass is likewise a single-sweeper job.

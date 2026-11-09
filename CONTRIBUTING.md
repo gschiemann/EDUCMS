@@ -62,16 +62,16 @@ Do **not** tell anyone a change works until you've verified it — load the
 rendered page (Playwright / browser MCP), `curl` the deployed asset, or
 confirm the commit landed on `master` with green CI and a fresh Vercel/
 Railway deploy. "Pushed, awaiting verification" beats "Done!" every time.
-(CLAUDE.md → Standard Audit Surface §21.)
+(docs/governance/AUDIT-SURFACE.md §21.)
 
 For user-visible UI specifically: **verify the render tree before editing.**
 `grep -rn '<ComponentName'` to confirm a component is actually mounted —
-green CI does not prove a file is even rendered. (CLAUDE.md rule #9.)
+green CI does not prove a file is even rendered. (apps/web/CLAUDE.md, rule 9.)
 
 ## Working with parallel agents (worktree discipline)
 
 This repo is frequently worked by parallel AI agents. The standing rules
-(full detail in CLAUDE.md → "Agent Dispatch Protocol"):
+(full detail in docs/governance/AGENT-DISPATCH.md):
 
 - **Every agent that writes code OR runs the app** (`pnpm dev` / `build` /
   Playwright) works in an **isolated git worktree** (`isolation: "worktree"`).
@@ -89,7 +89,7 @@ This repo is frequently worked by parallel AI agents. The standing rules
   absent from a fresh clone — anything a future contributor must read belongs
   in a tracked doc.
 
-## Conventions (quick reference — see CLAUDE.md for the rest)
+## Conventions (quick reference — see docs/ORIENTATION.md for the rest)
 
 - **Package manager:** pnpm (`pnpm@9`). Never `npm` / `yarn`.
 - **Deploy:** Railway (API) + Vercel (web). Push to `master` = production.
@@ -97,7 +97,9 @@ This repo is frequently worked by parallel AI agents. The standing rules
 - **DB:** always via Prisma. Schema is
   `packages/database/prisma/schema.prisma`; run `pnpm db:generate` after
   changes. Migrations are **additive-only** (a live pilot tenant is in prod).
+  Every `db:*` script that writes data or schema refuses a non-local
+  `DATABASE_URL` / `DIRECT_URL` (`scripts/guard-destructive-db.cjs`).
 - **Tests:** Jest `*.spec.ts` next to source (API); Playwright for E2E.
 - **Cross-browser:** must work in Safari/WebKit; player surfaces must also
   survive Chromium 83–87 (Taurus). Never use the `inset` shorthand / `inset-*`
-  utility in widget/player styles (CLAUDE.md rule #10).
+  utility in widget/player styles (apps/web/CLAUDE.md, rule 10).

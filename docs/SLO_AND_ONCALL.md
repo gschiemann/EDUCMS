@@ -33,7 +33,7 @@ WAN down.
 
 | SLO | Proposed target | Measured how (proposed) | Notes |
 |---|---|---|---|
-| **Emergency-delivery latency** (T0) | Trigger → online player renders the alert in **< 2 s** p95 (WS path); **< 1 polling interval** on the manifest fallback. | Proof-of-display ACK timestamp vs trigger timestamp (data exists in the heartbeat/AuditLog; the dashboard surface is a V2 build — see B-2 in CLAUDE.md). | Content-level sync, not hardware genlock. Sufficient for K-12 / HS; genlock is a pro-tier add-on. |
+| **Emergency-delivery latency** (T0) | Trigger → online player renders the alert in **< 2 s** p95 (WS path); **< 1 polling interval** on the manifest fallback. | Proof-of-display ACK timestamp vs trigger timestamp (data exists in the heartbeat/AuditLog; the dashboard surface is a V2 build — see B-2 in docs/roadmap/ROADMAP.md). | Content-level sync, not hardware genlock. Sufficient for K-12 / HS; genlock is a pro-tier add-on. |
 | **API availability** (T1) | **99.5%** monthly (≈ 3.6 h/mo budget). | UptimeRobot keyword monitor on `GET /api/v1/health` (see `docs/UPTIME_MONITORING.md`). | Liveness only — `/health` returns 200 even if DB/Redis degraded, by design. |
 | **API latency** (T1) | p99 **< 800 ms** for read endpoints under normal load. | Sentry performance traces (10% sample) + Railway request metrics. | Cold-start tail is mitigated by the keep-warm cron (§3). |
 | **Player uptime** (T1/T0) | **99%** of paired screens reporting `lastPingAt` within the offline threshold. | `lastPingAt` on `Screen`; offline-screen-scanner flags stale screens (`notifications/offline-screen-scanner.ts`). | A screen offline to the WAN can still be playing locally — uptime here is *cloud reachability*, not *display blank*. |
@@ -79,7 +79,7 @@ them when paid monitoring + a staging env land (see Gaps).
   canary.
 - **Proof-of-display dashboard is V2.** The ACK data exists in the heartbeat /
   AuditLog, but the operator-facing "which screens rendered the alert, when"
-  surface is not yet built (CLAUDE.md V2 B-2).
+  surface is not yet built (docs/roadmap/ROADMAP.md B-2).
 - **Single API replica** — see `SECURITY_GAPS.md` G5; affects both scaling
   headroom and the correctness of in-memory rate limits.
 
@@ -108,7 +108,7 @@ This is a **proposed** human workflow, not an implemented automation:
 **Closing the on-call gap** (recommended order): (1) wire UptimeRobot + Sentry
 alerts into a single inbox/Slack channel that is actually watched; (2) write a
 lightweight rotation + response-time expectation even if it is one person; (3)
-add PagerDuty/OpsGenie (V2 responder-escalation surface in CLAUDE.md §9) when
+add PagerDuty/OpsGenie (V2 responder-escalation surface in docs/roadmap/ROADMAP.md) when
 contracts justify it.
 
 ---
@@ -119,7 +119,7 @@ contracts justify it.
   compromise, API down, cross-tenant leak).
 - `docs/OBSERVABILITY.md` — Sentry setup + what is tracked + PII scrubbing.
 - `docs/UPTIME_MONITORING.md` — UptimeRobot monitor config.
-- `CLAUDE.md` "Deploy reliability" + "Deploy Reliability" — health endpoints,
+- `docs/DEPLOY.md` "Deploy reliability" + "Deploy Reliability — CI gates" — health endpoints,
   the never-do list (don't add DB checks to liveness; keep the 10-retry restart;
   keep the 7 s Redis hard-cap), and CI gates.
 - `SECURITY_GAPS.md` — the security-side gap register.

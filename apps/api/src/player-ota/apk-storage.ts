@@ -90,7 +90,7 @@
  * loudly. The one thing this module must never do is redirect a kiosk at
  * bytes the server has not matched against its own digest: that would not
  * install anything bad (the device verifies), but it WOULD stall OTA
- * silently, which is the exact failure class CLAUDE.md's player rules
+ * silently, which is the exact failure class apps/web/src/app/player/CLAUDE.md's player rules
  * exist to prevent.
  */
 
@@ -207,15 +207,45 @@ export function versionNameFromCode(versionCode: number): string {
  * value every OTA surface already speaks) with the versionName in the
  * filename so a human browsing the bucket can read it:
  *
- *   player/v10112/edu-cms-player-v1.1.12.apk
- *   manager/v10024/edu-cms-manager-v1.0.24.apk
+ *   player/v10112/venueos-player-v1.1.12.apk
+ *   manager/v10024/venueos-manager-v1.0.24.apk
  *
  * The filename matches the GitHub Release asset name exactly, so the
  * backfill and the CI publish step cannot disagree about where a file goes.
+ *
+ * 2026-11-08 VenueOS rebrand: NEW uploads use `venueos-<kind>-v…`. Every
+ * object uploaded before that keeps its `edu-cms-<kind>-v…` name forever
+ * ([legacyApkObjectPath]), so the reader ([resolveApkDelivery]) tries the
+ * new name first and falls back to the legacy one.
  */
+export const APK_FILE_PREFIX = 'venueos';
+/** The pre-rebrand prefix. Read-only: nothing new is ever written under it. */
+export const LEGACY_APK_FILE_PREFIX = 'edu-cms';
+
+/** `venueos-player-v1.1.12.apk` — the release-asset / object file name. */
+export function apkAssetName(kind: ApkKind, versionName: string): string {
+  return `${APK_FILE_PREFIX}-${kind}-v${versionName}.apk`;
+}
+
+/** `edu-cms-player-v1.1.12.apk` — the pre-rebrand name old releases carry. */
+export function legacyApkAssetName(kind: ApkKind, versionName: string): string {
+  return `${LEGACY_APK_FILE_PREFIX}-${kind}-v${versionName}.apk`;
+}
+
 export function apkObjectPath(kind: ApkKind, versionCode: number): string {
   const versionName = versionNameFromCode(versionCode);
-  return `${kind}/v${versionCode}/edu-cms-${kind}-v${versionName}.apk`;
+  return `${kind}/v${versionCode}/${apkAssetName(kind, versionName)}`;
+}
+
+/** Where every object uploaded before the rebrand lives. Read path only. */
+export function legacyApkObjectPath(kind: ApkKind, versionCode: number): string {
+  const versionName = versionNameFromCode(versionCode);
+  return `${kind}/v${versionCode}/${legacyApkAssetName(kind, versionName)}`;
+}
+
+/** Read order: the new name first, then the legacy name. */
+export function apkObjectPathCandidates(kind: ApkKind, versionCode: number): string[] {
+  return [apkObjectPath(kind, versionCode), legacyApkObjectPath(kind, versionCode)];
 }
 
 /** The `.sha256` sidecar that sits beside every uploaded APK. */
@@ -415,31 +445,52 @@ export async function resolveApkDelivery(
     return delivery;
   };
 
-  const objectPath = apkObjectPath(kind, versionCode);
-  const objectUrl = apkAuthenticatedObjectUrl(objectPath, env);
-  const sidecarUrl = apkAuthenticatedObjectUrl(apkSidecarPath(kind, versionCode), env);
-  const signUrl = signEndpoint(objectPath, env);
-  if (!objectUrl || !sidecarUrl || !signUrl) return proxy('storage-unconfigured');
-
   // ── 1. The bucket's record of what these bytes are ─────────────────────
   // A CROSS-CHECK, never a source: it is compared against the API's own
   // digest below and can only ever cause a REFUSAL to redirect.
+  //
+  // Two candidate names (the 2026-11-08 rebrand): the new `venueos-…` object
+  // first, then the legacy `edu-cms-…` object every earlier upload carries.
+  // The first candidate whose sidecar answers 2xx is THE object — the HEAD
+  // and the signed URL below use that same path, so a sidecar can never
+  // vouch for a different file than the one we sign. A non-2xx moves on to
+  // the next name; a network error stops (proxy), exactly as before.
+  let objectPath = '';
+  let objectUrl: string | null = null;
+  let signUrl: string | null = null;
   let sidecarSha: string | null = null;
-  try {
-    // The uploader writes the APK FIRST and the sidecar SECOND, so a
-    // readable sidecar implies a complete object. The HEAD below still
-    // confirms it — once per memo window, cheap insurance against a
-    // half-finished manual upload.
-    const resp = await fetchBounded(fetchImpl, sidecarUrl, {
-      method: 'GET',
-      headers: authHeaders(env),
-    });
-    if (!resp.ok) return remember(proxy(`sidecar-http-${resp.status}`));
-    sidecarSha = parseSidecarSha(resp.text);
-    if (!sidecarSha) return remember(proxy('sidecar-unparseable'));
-  } catch (e: unknown) {
-    logger?.warn(`[ota][apk-delivery] sidecar probe failed kind=${kind} vc=${versionCode}: ${errMessage(e)}`);
-    return remember(proxy('sidecar-unreachable'));
+  let lastStatus = 0;
+  for (const candidate of apkObjectPathCandidates(kind, versionCode)) {
+    const candObjectUrl = apkAuthenticatedObjectUrl(candidate, env);
+    const candSidecarUrl = apkAuthenticatedObjectUrl(`${candidate}.sha256`, env);
+    const candSignUrl = signEndpoint(candidate, env);
+    if (!candObjectUrl || !candSidecarUrl || !candSignUrl) return proxy('storage-unconfigured');
+    try {
+      // The uploader writes the APK FIRST and the sidecar SECOND, so a
+      // readable sidecar implies a complete object. The HEAD below still
+      // confirms it — once per memo window, cheap insurance against a
+      // half-finished manual upload.
+      const resp = await fetchBounded(fetchImpl, candSidecarUrl, {
+        method: 'GET',
+        headers: authHeaders(env),
+      });
+      if (!resp.ok) {
+        lastStatus = resp.status;
+        continue;
+      }
+      sidecarSha = parseSidecarSha(resp.text);
+      if (!sidecarSha) return remember(proxy('sidecar-unparseable'));
+      objectPath = candidate;
+      objectUrl = candObjectUrl;
+      signUrl = candSignUrl;
+      break;
+    } catch (e: unknown) {
+      logger?.warn(`[ota][apk-delivery] sidecar probe failed kind=${kind} vc=${versionCode}: ${errMessage(e)}`);
+      return remember(proxy('sidecar-unreachable'));
+    }
+  }
+  if (!sidecarSha || !objectPath || !objectUrl || !signUrl) {
+    return remember(proxy(`sidecar-http-${lastStatus}`));
   }
 
   // ── 2. The API's own digest — the trust anchor ─────────────────────────

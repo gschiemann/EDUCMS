@@ -649,7 +649,7 @@ export const DISPLAY_CONTROL_WS_TYPE = 'DISPLAY_CONTROL';
  *
  * NOTE `issuedAt` rides HERE and never in the manifest: it is a per-request
  * clock value, and one of those in the manifest kills 304s fleet-wide
- * (CLAUDE.md manifest-cache rule 7).
+ * (packages/database/CLAUDE.md manifest-cache rule 7).
  */
 export interface DisplayControlWsPayload {
   /** POWER_ON identity shared with the authenticated native heartbeat backstop. */
@@ -1707,7 +1707,7 @@ export type DisplayVendorRecipeUpsertInput = z.infer<typeof DisplayVendorRecipeU
  * telemetry echo — this block is part of the ETag-hashed payload and is
  * stored verbatim in the per-screen manifest hot cache. One volatile field
  * here kills 304s fleet-wide and re-creates the 25 GB/mo Supabase egress the
- * cache was built to kill (CLAUDE.md → manifest content cache, rule 7).
+ * cache was built to kill (packages/database/CLAUDE.md → manifest content cache, rule 7).
  *
  * The player resolves "what time is it" itself; the server only says WHAT the
  * windows are.
@@ -1788,6 +1788,15 @@ export interface DisplayManifestBlock {
    * the behaviour — there is no `true` that forces it.
    */
   vendorBacklight?: false;
+  /**
+   * Manager wave 5 (2026-11-08) — the lead's switch for the companion
+   * Manager's ALERT-WATCH WATCHDOG (`MANAGER_ALERT_WATCH_WATCHDOG` on the API:
+   * `on:<uuid|all>` / `observe:<uuid|all>`). PRESENT only for a screen it
+   * names; omitted for everyone else. The Player copies it into the stamp it
+   * writes for the Manager, which does nothing without it (unset = today).
+   * An older APK drops the key.
+   */
+  alertWatchWatchdog?: 'on' | 'observe';
   /** Server-tunable safety policy, so the floor can move without an APK. */
   brightness: {
     minSafePercent: number;

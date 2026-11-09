@@ -12,7 +12,7 @@
 >   `@RequireRoles(...)` on the emergency controller (`apps/api/src/emergency/emergency.controller.ts`),
 >   plus a per-scope ownership check ("SUPER_ADMIN may act on any tenant; everyone
 >   else is strictly scoped"), plus the `@AllowPanicBypass` decorator + per-user
->   `canTriggerPanic` capability flag (CLAUDE.md emergency rules).
+>   `canTriggerPanic` capability flag (apps/api/src/emergency/CLAUDE.md).
 > - **Create/Upload Assets → approval**: CONTRIBUTOR (and RESTRICTED_VIEWER)
 >   uploads land `PENDING_APPROVAL`; the three admin roles auto-`PUBLISHED`
 >   (`apps/api/src/assets/assets.controller.ts:218-225`). The reviewer/approval

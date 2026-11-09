@@ -4,7 +4,7 @@
  * This drives the REAL ScreensController.getManifest handler rather than
  * asserting on the builder in isolation — the repo has been burned by edits
  * that type-checked and shipped into a code path nothing actually renders
- * (CLAUDE.md "VERIFY THE RENDER TREE"). The manifest has four exits and
+ * (apps/web/CLAUDE.md rule 9, "VERIFY THE RENDER TREE"). The manifest has four exits and
  * three of them return BEFORE the normal payload is assembled:
  *
  *   emergency → sports scoreboard → hot-cache hit → empty → full

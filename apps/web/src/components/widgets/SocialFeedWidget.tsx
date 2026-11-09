@@ -29,7 +29,7 @@
  * record of when it last talked to Meta. NEVER render time. A board that
  * says "just now" because it repainted is a lie the fleet has been burned by.
  *
- * ── CHROMIUM 83 / TAURUS (CLAUDE.md rule 10) ───────────────────────────
+ * ── CHROMIUM 83 / TAURUS (apps/web/CLAUDE.md rule 10) ───────────────────────────
  *  • no `inset` shorthand and no Tailwind `inset-*` — four physical sides;
  *  • no inline style object carrying all four physical sides at once (the
  *    CSSOM re-serialises that to `inset` and the polyfill then zeroes it) —

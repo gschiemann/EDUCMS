@@ -60,39 +60,26 @@ class ManagerApp : Application() {
         // → Install dialog → tap → installed. One tap per update,
         // no Settings detour.
         //
-        // Skipped when Manager is already DEVICE_OWNER (silent
-        // installs work without the permission anyway) or when
-        // the permission is already granted.
+        // Skipped when the permission is already granted.
         maybePromptForInstallPermission(this)
 
-        // Two periodic workers: Player OTA (existing) + Manager self-
-        // update (NEW in v1.0.2). Both run on independent schedules,
-        // both gracefully no-op when there's nothing to install.
+        // ONE RELEASE UNIT (2026-11-08): the Manager no longer updates itself.
+        // It ships inside the Player APK and the Player installs it when the
+        // bundled versionCode is newer (ManagerUpdatePolicy). The periodic
+        // self-update job Manager ≤ 1.0.24 persisted in WorkManager survives
+        // the upgrade to this build, so it is CANCELLED here, on every boot —
+        // otherwise it would keep polling /manager-update-check every 30 min
+        // for the rest of the panel's life.
+        cancelLegacySelfUpdate(this)
+
+        // The one periodic worker left: the Player lane, which only
+        // bootstraps a Player onto a kiosk that has none (OtaWorker).
         scheduleOtaWorker(this)
-        scheduleManagerSelfUpdateWorker(this)
 
-        // Bootstrap-fire BOTH workers on cold launch — covers two
-        // cases the periodic schedule alone misses:
-        //   1. Fresh install (Manager just sideloaded). The periodic
-        //      worker has its initial delay; we need an immediate
-        //      check so Player auto-installs without waiting.
-        //   2. Post-install warm boot (Manager just self-updated to a
-        //      new version). The new version's onCreate fires this,
-        //      which immediately probes for ANOTHER update — closes
-        //      the loop on multi-step upgrades within a single boot.
+        // Bootstrap-fire the Player lane on cold launch — a fresh sideload of
+        // the Manager onto a kiosk with no Player should not wait out the
+        // periodic initial delay. A no-op once a Player is installed.
         triggerImmediateOtaCheck(this)
-        triggerImmediateManagerSelfUpdate(this)
-
-        // v1.0.21 — pin Player as the HOME launcher. THE fix for the
-        // OTA auto-relaunch problem (see pinPlayerAsHome). Idempotent;
-        // safe on every boot. No-op unless Manager is device owner.
-        pinPlayerAsHome(this)
-
-        // 2026-08-03 — grant Player permission to enter lock task mode.
-        // GRANTS ONLY; pins nothing. Player's LockTaskController decides
-        // whether to actually use it. No-op unless Manager is device
-        // owner. See allowPlayerLockTask.
-        allowPlayerLockTask(this)
 
         if (!isPlayerInstalled()) {
             // Single-sideload UX (matches Yodeck's pattern): the
@@ -114,151 +101,9 @@ class ManagerApp : Application() {
     }
 
     /**
-     * v1.0.21 — pin Player's KioskHomeAlias as the device's persistent
-     * preferred HOME activity.
-     *
-     * THE fix for "the OTA upgrade never relaunches the player".
-     * Android 14 forbids an app from launching itself into the
-     * foreground from the background; v1.0.61/62 (Player-side receiver
-     * + FGS tricks) and Manager v1.0.20 (watchdog activity launch) all
-     * fought that policy. The canonical kiosk answer is to stop
-     * fighting it: make the Player the HOME launcher. When Player is
-     * home, the OS itself returns to it after ANY death — OTA self-
-     * update, crash, reboot — and a system-initiated HOME launch is
-     * never BAL-blocked.
-     *
-     * Only the device owner can set a persistent preferred activity
-     * without a chooser dialog, which is why this lives in Manager.
-     * The flow:
-     *   - Player ships `.KioskHomeAlias` (a HOME activity-alias)
-     *     disabled; Player enables it at runtime once it sees Manager
-     *     is device owner (PlayerApp.maybeEnableKioskHomeAlias).
-     *   - Manager (here) registers that alias as the persistent
-     *     preferred HOME handler via addPersistentPreferredActivity.
-     *
-     * We clear any prior persistent-preferred HOME entry we set first,
-     * so repeated boots don't stack duplicates and a Player package-id
-     * change (debug <-> release) can't strand a stale mapping.
-     *
-     * No-op when Manager isn't device owner — on an OEM-CMS box we are
-     * a guest and must not touch the launcher.
-     */
-    private fun pinPlayerAsHome(ctx: Context) {
-        try {
-            if (!AdminReceiver.isDeviceOwner(ctx)) {
-                Log.i(TAG, "pinPlayerAsHome skipped — Manager is not device owner")
-                return
-            }
-            val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                as? android.app.admin.DevicePolicyManager ?: return
-            val admin = android.content.ComponentName(ctx, AdminReceiver::class.java)
-
-            // Resolve whichever Player package is actually installed
-            // (release or .debug).
-            val pm = ctx.packageManager
-            val playerPkg = listOf(
-                BuildConfig.PLAYER_PACKAGE,
-                "${BuildConfig.PLAYER_PACKAGE}.debug",
-            ).firstOrNull { pkg ->
-                try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
-            }
-            if (playerPkg == null) {
-                Log.i(TAG, "pinPlayerAsHome — Player not installed yet, will retry next boot")
-                return
-            }
-
-            // Clear any HOME preference we previously set for either
-            // Player package id, then add the fresh one. clearPackage
-            // PersistentPreferredActivities only affects entries this
-            // admin created.
-            dpm.clearPackagePersistentPreferredActivities(admin, playerPkg)
-
-            val homeFilter = android.content.IntentFilter(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                addCategory(Intent.CATEGORY_DEFAULT)
-            }
-            val aliasComponent = android.content.ComponentName(
-                playerPkg,
-                "com.educms.player.KioskHomeAlias",
-            )
-            dpm.addPersistentPreferredActivity(admin, homeFilter, aliasComponent)
-            Log.i(TAG, "pinPlayerAsHome — $aliasComponent pinned as persistent preferred HOME")
-        } catch (e: Exception) {
-            Log.w(TAG, "pinPlayerAsHome failed: ${e.message}", e)
-        }
-    }
-
-    /**
-     * 2026-08-03 — put Player on the device owner's **lock task
-     * allowlist**, so Player's `LockTaskController` may pin the kiosk.
-     *
-     * This is the DEVICE-OWNER half of a deliberate two-key system:
-     *
-     *   - This call only GRANTS PERMISSION. It pins nothing, changes
-     *     nothing visible, and is a no-op on a screen whose Player never
-     *     calls `startLockTask()`.
-     *   - Player's `LockTaskController.engageIfPermitted()` is the other
-     *     key, and it re-checks device-owner status itself.
-     *
-     * Why it must live HERE: only a device owner / profile owner can call
-     * `setLockTaskPackages`, and it is what upgrades Player's
-     * `startLockTask()` from the degraded **screen pinning** variant
-     * (`LOCK_TASK_MODE_PINNED` — the "App is pinned" dialog whose only
-     * exit is hold-Back+Overview, a gesture that does not exist on a
-     * signage remote) to the real, DO-managed `LOCK_TASK_MODE_LOCKED`.
-     * Player refuses to pin at all until `isLockTaskPermitted` is true,
-     * precisely so it can never land in the trapping variant. Read
-     * `LockTaskController`'s header before changing either half.
-     *
-     * The allowlist is deliberately MINIMAL — Player and Manager only.
-     * Notably NOT Settings: while locked, the OS refuses to launch any
-     * package that isn't on this list, and "a student at the screen can
-     * reach Settings" is the exact thing lock task exists to stop.
-     *
-     * No-op when Manager isn't device owner: on an OEM-CMS signage box we
-     * are a guest and must never touch device policy (see the long
-     * comment in Player's AndroidManifest.xml). Idempotent — the list is
-     * replaced wholesale on every boot, which also self-heals a stale
-     * entry after a Player release <-> debug package swap.
-     */
-    private fun allowPlayerLockTask(ctx: Context) {
-        try {
-            if (!AdminReceiver.isDeviceOwner(ctx)) {
-                Log.i(TAG, "allowPlayerLockTask skipped — Manager is not device owner")
-                return
-            }
-            val dpm = ctx.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                as? android.app.admin.DevicePolicyManager ?: return
-            val admin = AdminReceiver.componentName(ctx)
-
-            val pm = ctx.packageManager
-            val playerPkg = listOf(
-                BuildConfig.PLAYER_PACKAGE,
-                "${BuildConfig.PLAYER_PACKAGE}.debug",
-            ).firstOrNull { pkg ->
-                try { pm.getPackageInfo(pkg, 0); true } catch (_: Exception) { false }
-            }
-            if (playerPkg == null) {
-                Log.i(TAG, "allowPlayerLockTask — Player not installed yet, will retry next boot")
-                return
-            }
-
-            // Manager rides along so a future Manager-owned prompt (e.g.
-            // InstallPromptActivity on a ROM that still wants a tap) can
-            // surface over a locked Player instead of being swallowed.
-            val packages = arrayOf(playerPkg, ctx.packageName)
-            dpm.setLockTaskPackages(admin, packages)
-            Log.i(TAG, "allowPlayerLockTask — lock-task allowlist set to ${packages.joinToString(", ")}")
-        } catch (e: Exception) {
-            Log.w(TAG, "allowPlayerLockTask failed: ${e.message}", e)
-        }
-    }
-
-    /**
      * v1.0.7 — Post a high-priority notification deep-linking to
      * Manager's "Install unknown apps" Settings page if the perm
-     * isn't already granted (and we aren't DEVICE_OWNER, which
-     * doesn't need it). Idempotent — Android dedupes by
+     * isn't already granted. Idempotent — Android dedupes by
      * INSTALL_PROMPT_NOTIF_ID + INSTALL_PROMPT_CHANNEL.
      *
      * Why this exists: the Player has its own install-unknown-apps
@@ -272,7 +117,6 @@ class ManagerApp : Application() {
     private fun maybePromptForInstallPermission(ctx: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         if (ctx.packageManager.canRequestPackageInstalls()) return
-        if (AdminReceiver.isDeviceOwner(ctx)) return
 
         try {
             // Channel must exist; OtaInstallReceiver creates it too —
@@ -281,10 +125,10 @@ class ManagerApp : Application() {
                 as android.app.NotificationManager
             val channel = android.app.NotificationChannel(
                 PERMISSION_NOTIF_CHANNEL,
-                "EduCMS Updates",
+                ctx.getString(R.string.updates_notif_channel),
                 android.app.NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = "Tap to allow EduCMS to install Player updates."
+                description = ctx.getString(R.string.permission_notif_channel_description)
             }
             nm.createNotificationChannel(channel)
 
@@ -301,11 +145,10 @@ class ManagerApp : Application() {
 
             val notification = androidx.core.app.NotificationCompat.Builder(ctx, PERMISSION_NOTIF_CHANNEL)
                 .setSmallIcon(android.R.drawable.stat_sys_warning)
-                .setContentTitle("EduCMS: enable updates")
-                .setContentText("Tap to allow Player updates without sideloading.")
+                .setContentTitle(ctx.getString(R.string.permission_notif_title))
+                .setContentText(ctx.getString(R.string.permission_notif_text))
                 .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(
-                    "Tap to grant EduCMS Manager permission to install Player updates. " +
-                    "One-time setup; future updates will install with a single tap on the Install dialog."
+                    ctx.getString(R.string.permission_notif_big_text)
                 ))
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
                 .setCategory(androidx.core.app.NotificationCompat.CATEGORY_RECOMMENDATION)
@@ -325,13 +168,13 @@ class ManagerApp : Application() {
         private const val PERIODIC_OTA_NAME = "edu-manager-ota-periodic"
         // v1.0.7 — proactive install-permission notification ids.
         // Channel matches OtaInstallReceiver's so both notifications
-        // are grouped under one "EduCMS Updates" category in Settings.
+        // are grouped under one "VenueOS Updates" category in Settings.
         private const val PERMISSION_NOTIF_CHANNEL = "edu_install_prompt"
         private const val PERMISSION_NOTIF_ID = 92482
 
         /**
          * Launches WatchdogService as a foreground service. Called
-         * from onCreate, BootReceiver, and AdminReceiver.onEnabled.
+         * from onCreate and BootReceiver.
          * Idempotent — re-calls just bump the existing service.
          */
         fun startWatchdogService(ctx: Context) {
@@ -410,60 +253,23 @@ class ManagerApp : Application() {
         }
 
         /**
-         * Schedule the Manager-self-update periodic worker.
-         *
-         * Operator (2026-04-28): "i dont want to side load any
-         * fucking thing after this next build". 30-min cadence
-         * matches the Player schedule so both stay current at
-         * roughly the same speed.
-         *
-         * REPLACE policy so future cadence changes propagate without
-         * needing to wait for the existing schedule to expire.
+         * ONE RELEASE UNIT (2026-11-08) — cancel the self-update lane Manager
+         * ≤ 1.0.24 persisted in WorkManager (`edu-manager-self-update-periodic`
+         * every 30 min, plus its one-shot). Idempotent; a name that is not
+         * enqueued is a no-op. The worker class stays as a landing pad so an
+         * already-scheduled tick that fires before this cancel does nothing
+         * (ManagerSelfUpdateWorker).
          */
-        fun scheduleManagerSelfUpdateWorker(ctx: Context) {
+        fun cancelLegacySelfUpdate(ctx: Context) {
             try {
-                val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
-                val req = PeriodicWorkRequestBuilder<ManagerSelfUpdateWorker>(30, TimeUnit.MINUTES)
-                    .setConstraints(constraints)
-                    .setInitialDelay(120, TimeUnit.SECONDS)  // staggered 30s after Player OTA
-                    .build()
-                WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(
-                    PERIODIC_MGR_SELF_NAME,
-                    ExistingPeriodicWorkPolicy.REPLACE,
-                    req,
-                )
-                Log.i(TAG, "Manager self-update worker scheduled (every 30min, network required)")
+                val wm = WorkManager.getInstance(ctx)
+                for (name in ManagerUpdatePolicy.LEGACY_SELF_UPDATE_WORK_NAMES) {
+                    wm.cancelUniqueWork(name)
+                }
+                Log.i(TAG, "legacy Manager self-update work cancelled (${ManagerUpdatePolicy.LEGACY_SELF_UPDATE_WORK_NAMES.joinToString()}) — the Player carries the Manager")
             } catch (e: Exception) {
-                Log.w(TAG, "scheduleManagerSelfUpdateWorker failed: ${e.message}", e)
+                Log.w(TAG, "cancelLegacySelfUpdate failed: ${e.message}", e)
             }
         }
-
-        /**
-         * One-shot Manager self-update fire — used on cold launch +
-         * boot + dashboard push. REPLACE policy so repeated triggers
-         * fold into a single in-flight check.
-         */
-        fun triggerImmediateManagerSelfUpdate(ctx: Context) {
-            try {
-                val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
-                val req = OneTimeWorkRequestBuilder<ManagerSelfUpdateWorker>()
-                    .setConstraints(constraints)
-                    .build()
-                WorkManager.getInstance(ctx).enqueueUniqueWork(
-                    "edu-manager-self-update-oneshot",
-                    ExistingWorkPolicy.REPLACE,
-                    req,
-                )
-                Log.i(TAG, "Manager self-update oneshot enqueued")
-            } catch (e: Exception) {
-                Log.w(TAG, "triggerImmediateManagerSelfUpdate failed: ${e.message}", e)
-            }
-        }
-
-        private const val PERIODIC_MGR_SELF_NAME = "edu-manager-self-update-periodic"
     }
 }

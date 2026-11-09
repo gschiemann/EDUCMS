@@ -25,7 +25,7 @@ import { THEMES, deriveThemeFromBrand, resolveSurfaceStyle } from './themes';
 /** A CSS string is Taurus-safe if it never uses the banned shorthands. */
 function isTaurusSafe(css: string): boolean {
   // `inset:` shorthand, `gap:` (flex/grid gap), `backdrop-filter` — all banned
-  // on the player/widget surfaces (CLAUDE.md rule #10). The engine emits CSS
+  // on the player/widget surfaces (apps/web/CLAUDE.md rule #10). The engine emits CSS
   // values only (gradients/colors/borders), so none should ever appear.
   return !/\binset\s*:/.test(css) && !/\bgap\s*:/.test(css) && !/backdrop-filter/.test(css);
 }

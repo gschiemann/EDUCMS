@@ -87,7 +87,7 @@ it('groups individual devices by office and places the shared filter with the sc
 
 it('selects all company screens including HQ, publishes through distribution, and counts mirrored reach', async () => {
   const onCreated = openToScreens();
-  expect(screen.getByRole('button', { name: 'All company screens' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('radio', { name: 'All company screens' })).toHaveAttribute('aria-checked', 'true');
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
   expect(screen.getByText('5 of 5 screens')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /^Next/ }));
@@ -119,7 +119,7 @@ it('keeps selected locations when filtering, and can pick a single independent s
 
 it('preserves local group scheduling and schedule windows', async () => {
   const onCreated = openToScreens();
-  fireEvent.click(screen.getByRole('button', { name: 'Local screens' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Local screens' }));
   fireEvent.click(screen.getByText('Lobby'));
   fireEvent.click(screen.getByRole('button', { name: /^Next/ }));
   fireEvent.click(screen.getByText('Schedule a window'));
@@ -134,14 +134,14 @@ it.each(['CONTRIBUTOR', 'SCHOOL_ADMIN'])('does not expose cached company targets
   role = localRole;
   openToScreens();
   expect(fleetHook).toHaveBeenLastCalledWith({ enabled: false });
-  expect(screen.queryByRole('button', { name: 'All company screens' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('radio', { name: 'All company screens' })).not.toBeInTheDocument();
   expect(screen.queryByText('Entrance display')).not.toBeInTheDocument();
 });
 
 it('does not expose a previous tenant’s cached company during an account switch', () => {
   currentTenant = 'different-root';
   openToScreens();
-  expect(screen.queryByRole('button', { name: 'All company screens' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('radio', { name: 'All company screens' })).not.toBeInTheDocument();
 });
 
 it('selects a child display without attempting to edit its face settings', () => {
@@ -202,7 +202,7 @@ it('blocks unsupported location templates before creating a cross-location playl
   expect(screen.getByRole('alert')).toHaveTextContent('This template belongs to this location');
   expect(screen.getByRole('button', { name: /^Next/ })).toBeDisabled();
   expect(createPlaylist).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Local screens' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Local screens' }));
   expect(screen.getByRole('button', { name: /^Next/ })).toBeEnabled();
 });
 

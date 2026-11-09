@@ -1390,7 +1390,7 @@ test.describe('Emergency path — P0-8 regression suite', () => {
   });
 
   test('12. P0-7 #2: the rev body can RAISE but never RELEASE', async ({ page }) => {
-    // CLAUDE.md player rule 11, on the new transport: a cheaper signal may
+    // apps/api/src/emergency/CLAUDE.md player rule 11, on the new transport: a cheaper signal may
     // raise an alert, never release one. Only the server-of-record manifest
     // clears. If a future change ever reads "no `alert` field" as an
     // all-clear, this is what catches it — and the cost of that bug is a

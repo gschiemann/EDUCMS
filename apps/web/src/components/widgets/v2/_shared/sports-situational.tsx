@@ -377,7 +377,7 @@ export function SituationalRow({ def, stats, h, accent, ink, dim, hairline }: Ro
   // Chromium 83 (NovaStar Taurus LED controllers) has no flex `gap` —
   // space the row's children with an adjacent-sibling margin rule
   // instead. The class is keyed by `h` so two strips at different
-  // sizes never collide on the generated rule. (CLAUDE.md rule #10.)
+  // sizes never collide on the generated rule. (apps/web/CLAUDE.md rule #10.)
   const rowClass = `venueSitRow-h${h}`;
   const gapCss = <style>{sceneCss(`.${rowClass} > * + * { margin-left: ${gap}px; }`)}</style>;
 
