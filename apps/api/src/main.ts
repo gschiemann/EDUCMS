@@ -24,6 +24,7 @@ import {
 import { assertKeyRingsAtBoot } from './security/key-ring';
 import { rejectBrotliRequestBody } from './security/reject-brotli-body';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { requestIdMiddleware } from './common/request-id.middleware';
 import { RedisService } from './realtime/redis.service';
 import {
   SessionRedisClient,
@@ -106,6 +107,9 @@ async function bootstrap() {
   // stack traces in prod, and captures 5xx to Sentry with route tags.
   // Registered BEFORE listen so it catches startup-adjacent errors too.
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  // Request / correlation id — first middleware, so every later layer (and every error body) has one.
+  app.use(requestIdMiddleware);
 
   // 2026-05-27 — bump default body-parser limit from 100 KB to 5 MB.
   // The default rejected POST /api/v1/bugs the moment the bug
