@@ -63,7 +63,7 @@ const PAYMENT_REQUIRED_FIELDS = [
  * Global exception filter.
  *
  * Responsibilities:
- *  - Normalize every response to `{ error, code, message, traceId }`.
+ *  - Normalize every response to `{ error, code, message, traceId, requestId }`.
  *  - Map Prisma known errors to meaningful HTTP statuses.
  *  - Never leak stack traces to clients (especially in prod).
  *  - Capture 5xx to Sentry with route/method/user tags. Skip 4xx.
@@ -161,6 +161,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
+    const requestId: string | undefined = typeof req?.requestId === 'string' ? req.requestId : undefined;
+    const ridTag = requestId ? ` [rid=${requestId}]` : '';
+
     // ── Sentry capture for 5xx only ──
     let traceId: string | undefined;
     if (status >= 500) {
@@ -187,6 +190,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         traceId = Sentry.withScope((scope) => {
           scope.setTag('route', routePath);
           scope.setTag('method', req?.method ?? 'unknown');
+          if (requestId) scope.setTag('request_id', requestId);
           if (req?.user?.id) scope.setUser({ id: req.user.id });
           return Sentry.captureException(exception);
         });
@@ -194,7 +198,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         /* never let Sentry errors block response */
       }
       this.logger.error(
-        `[${req?.method} ${routePath}] ${status} ${code}: ${
+        `[${req?.method} ${routePath}]${ridTag} ${status} ${code}: ${
           exception instanceof Error ? exception.message : String(exception)
         }`,
         exception instanceof Error ? exception.stack : undefined,
@@ -207,6 +211,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message: expose ? message : 'Internal server error',
     };
     if (traceId) body.traceId = traceId;
+    if (requestId) body.requestId = requestId;
     if (issues) body.issues = issues;
     Object.assign(body, paymentFacts);
 

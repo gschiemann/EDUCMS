@@ -99,6 +99,7 @@ export class RequestLogInterceptor implements NestInterceptor {
             method,
             resource: resourcePath,
             status: 'SUCCESS',
+            requestId: (req as any).requestId,
           }),
         );
       }),
