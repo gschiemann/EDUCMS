@@ -2,7 +2,7 @@
 /*
  * Inset-serialization regression guard — Rule #10, THIRD variant (2026-07-03).
  *
- * Background (see apps/web/CLAUDE.md rule #10 for variants 1 & 2): NovaStar Taurus LED
+ * Background (see apps/web/CLAUDE.md rule 10 for variants 1 & 2): NovaStar Taurus LED
  * controllers ship Chromium 83, which doesn't understand the CSS `inset`
  * shorthand (added in Chrome 87). `position: absolute` with no top/right/
  * bottom/left collapses a box to 0×0 — invisible content.
@@ -325,7 +325,7 @@ function main() {
     console.error('intended geometry, e.g. { top:0, bottom:0, left:560, width: "calc(100% - 560px)" }.');
     console.error('A 3-side object can never serialize to the `inset` shorthand (which requires');
     console.error('all four sides), so it is immune to the player/layout.tsx polyfill AND correct');
-    console.error('on Chromium 83. See CLAUDE.md rule #10 (2026-07-03 entry).');
+    console.error('on Chromium 83. See apps/web/CLAUDE.md rule 10 (2026-07-03 entry).');
     process.exit(1);
   }
 

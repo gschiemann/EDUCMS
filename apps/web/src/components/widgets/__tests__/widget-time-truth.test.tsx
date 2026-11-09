@@ -11,7 +11,7 @@
  *                       drawing the screen.
  *   PARKING_AVAILABILITY "Updated 30s ago" — a string constant.
  *
- * That is the same defect the emergency system already bans (CLAUDE.md player
+ * That is the same defect the emergency system already bans (apps/web/src/app/player/CLAUDE.md player
  * rule 10: copy states what the evidence proves). A lobby screen that says
  * nothing is honest; one that lights the wrong period, or tells a driver a
  * week-old space count is 30 seconds fresh, is not.

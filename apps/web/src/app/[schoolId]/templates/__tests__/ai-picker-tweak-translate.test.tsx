@@ -10,8 +10,8 @@
  * default flow, the refine/translate loop was invisible; only the legacy
  * engine path (which DOES set `.spec`) kept it.
  *
- * This suite mounts the REAL, exported `CandidateFullscreenPreview` (CLAUDE.md
- * rule #9 — the exact component the picker's full-screen preview renders,
+ * This suite mounts the REAL, exported `CandidateFullscreenPreview` (apps/web/CLAUDE.md
+ * rule 9 — the exact component the picker's full-screen preview renders,
  * not a re-implementation) and proves:
  *  - Tweak renders for an AI-Designer candidate (canTweak passed true when
  *    `_designerHtml` is set, mirroring the grid card's gate in page.tsx)

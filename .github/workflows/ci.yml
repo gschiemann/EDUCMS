@@ -694,7 +694,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build workspace packages (the web build imports @cms/* by package name)
-        # Each job is a fresh runner and @cms/* resolve to their dist/ (CLAUDE.md
+        # Each job is a fresh runner and @cms/* resolve to their dist/ (docs/DEPLOY.md
         # deploy-reliability failure mode #3).
         run: pnpm --filter @cms/api-types --filter @cms/scoreboard-cts --filter @cms/signage-design build
 

@@ -628,7 +628,7 @@ export function ScrapbookAnnouncement({ config, compact, onConfigChange }: {
             polyfill's attribute-substring selector for a leading-zero
             inset value — it force-zeroes ALL sides (!important), destroying
             the intended left margin. Fixed to 3 sides + explicit width —
-            identical computed geometry. See CLAUDE.md rule #10
+            identical computed geometry. See apps/web/CLAUDE.md rule 10
             (2026-07-03 entry). */}
         <div style={{
           position: 'absolute', left: '10%', top: 0, bottom: 0, width: '90%',

@@ -5,7 +5,7 @@
  * actually obeys it — that a `reboot: none` screen really has no reboot
  * button in the DOM, not merely a `false` in a resolver object. That gap
  * is exactly where "green CI, nothing changed in the operator's UI" bugs
- * live in this repo (CLAUDE.md §9), so it gets its own assertions.
+ * live in this repo (apps/web/CLAUDE.md rule 9), so it gets its own assertions.
  *
  * 2026-08-13 additions:
  *  - the WIRE SHAPE is asserted here too. The panel used to post

@@ -378,7 +378,7 @@ import {
   MsStudioPortraitWidget,
   // 16 templates ported from scratch/design/*.html (4 parallel agents, 2026-04-20).
   // Each widget is a full-screen scene (transform:scale 1920×1080 pattern, live-
-  // gated hotspots, ticker-speed helper). See CLAUDE.md "Template Design
+  // gated hotspots, ticker-speed helper). See docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md "Template Design
   // Workflow" for the port rules.
   // → ./AnimatedCafeteriaMiddleWidget
   AnimatedCafeteriaMiddleWidget,
@@ -2083,7 +2083,7 @@ function EntranceWrap({ entrance, children }: { entrance: any; children: React.R
 
 /**
  * Inject the engine font set once into <head>. We append our OWN <link> and
- * never remove it — safe under React 19 / App Router (CLAUDE.md rule #6 only
+ * never remove it — safe under React 19 / App Router (apps/web/CLAUDE.md rule 6 only
  * forbids detaching nodes React itself rendered). The CJK/Arabic set is a
  * SEPARATE link injected the same way so multilingual boards have real fonts.
  */
