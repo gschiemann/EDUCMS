@@ -21,7 +21,7 @@
  *  - Birthdays    → 3-candle cake with frosting drip
  *  - Ticker       → LED scoreboard scroll
  *
- *  DO NOT regress to rectangles-with-shadows. See CLAUDE.md
+ *  DO NOT regress to rectangles-with-shadows. See docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md
  *  "Template Design Workflow" for the gold standard rules.
  * ════════════════════════════════════════════════════════════════
  */

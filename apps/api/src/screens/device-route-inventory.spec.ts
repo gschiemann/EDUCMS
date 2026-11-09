@@ -549,7 +549,7 @@ const GUARD_PATH_ROUTES: GuardPathRoute[] = [
     route: 'GET /api/v1/screens/:id/manifest',
     method: 'GET',
     unprovenReaches: true,
-    why: 'THE life-safety read. CLAUDE.md emergency safeguard #4: the manifest carries the live `emergency` block and is the HTTP-polling backstop. Screens reach the unproven state routinely (APK re-sideload, cleared WebView storage, a token expired over summer break, a superseded epoch); refusing this would darken them and stop alert delivery. Residual exposure is content confidentiality for a screen whose fingerprint already leaked — tracked in the SEC-001 report.',
+    why: 'THE life-safety read. apps/api/src/emergency/CLAUDE.md emergency safeguard #4: the manifest carries the live `emergency` block and is the HTTP-polling backstop. Screens reach the unproven state routinely (APK re-sideload, cleared WebView storage, a token expired over summer break, a superseded epoch); refusing this would darken them and stop alert delivery. Residual exposure is content confidentiality for a screen whose fingerprint already leaked — tracked in the SEC-001 report.',
   },
   {
     route: 'GET /api/v1/emergency/status',

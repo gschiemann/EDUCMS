@@ -869,7 +869,7 @@ function HardwareIdentityBlock({ screen }: { screen: any }) {
           ))}
         </div>
       )}
-      {/* CLAUDE.md rule #10 — Chromium 83 warning. Only fires for
+      {/* apps/web/CLAUDE.md rule 10 — Chromium 83 warning. Only fires for
           hardware whose minimum WebView is ≤ 83 (today: Taurus). */}
       {caps && caps.chromiumMin <= 83 && (
         <div
@@ -879,7 +879,7 @@ function HardwareIdentityBlock({ screen }: { screen: any }) {
           <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="text-[10px] text-amber-800 leading-snug">
             <span className="font-bold">Chromium {caps.chromiumMin} device.</span>
-            {' '}Uses long-hand CSS per CLAUDE.md rule #10
+            {' '}Uses long-hand CSS per apps/web/CLAUDE.md rule 10
             (no <code className="font-mono bg-amber-100 px-1 rounded">inset</code> shorthand,
             no flex <code className="font-mono bg-amber-100 px-1 rounded">gap</code>).
           </div>

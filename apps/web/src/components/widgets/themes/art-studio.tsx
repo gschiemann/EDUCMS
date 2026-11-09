@@ -863,7 +863,7 @@ export function ArtStudioTicker({ config, compact }: { config: any; compact?: bo
           commit a flat string across the whole array. Jump to the Messages
           editor instead. (Attribute only — the four-side style object below
           is untouched; `top` is '12%', which the Chromium-83 inset polyfill
-          never matches. See CLAUDE.md rule #10.) */}
+          never matches. See apps/web/CLAUDE.md rule 10.) */}
       <div data-field-jump="messages" style={{
         position: 'absolute', left: '3%', right: '3%',
         top: '12%', bottom: '12%',

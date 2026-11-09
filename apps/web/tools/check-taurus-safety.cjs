@@ -224,7 +224,7 @@ function main() {
     }
     console.error('');
     console.error('Two ways to clear this:');
-    console.error('  1. Rewrite the new code to be Taurus-safe (see CLAUDE.md rule #10');
+    console.error('  1. Rewrite the new code to be Taurus-safe (see apps/web/CLAUDE.md rule 10');
     console.error('     and the gap/cq-unit guidance), then re-run this check.');
     console.error('  2. If the addition is intentional AND non-player-rendered code,');
     console.error('     rebaseline: `node apps/web/tools/check-taurus-safety.cjs baseline`');

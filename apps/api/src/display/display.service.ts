@@ -979,8 +979,8 @@ export class DisplayService {
     }
 
     // `issuedAt` rides the WS message, NOT the manifest — a per-request
-    // clock value in the manifest would kill 304s fleet-wide (CLAUDE.md
-    // multiscreen-sync rule 4 / manifest-cache rule 7).
+    // clock value in the manifest would kill 304s fleet-wide (apps/web/src/app/player/CLAUDE.md multiscreen-sync rule 4 /
+    // packages/database/CLAUDE.md manifest-cache rule 7).
     // Typed against the SHARED payload interface (2026-08-13 verify wave).
     // Both P0-1 (no player handler at all) and P0-3 (two ends spelling one
     // field differently) were the same defect: a wire contract that existed

@@ -28,7 +28,7 @@
  * bytes are served, or anything else with an effect. If `/apk/v/:vc` is
  * ever gated on identity, it must be gated on the DEVICE TOKEN — which
  * means first shipping a build whose downloader sends one, then waiting for
- * the fleet floor to include it (the same staging rule CLAUDE.md player
+ * the fleet floor to include it (the same staging rule apps/player/CLAUDE.md
  * rule 9 applies to new bridge methods). A missing or bad tag must always
  * mean "log a dash", never "refuse".
  */

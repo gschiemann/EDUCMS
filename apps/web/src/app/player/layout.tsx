@@ -100,7 +100,7 @@ export default function PlayerLayout({
       {/* ── CHROMIUM-83 RUNTIME FLOOR SHIM (2026-09-01, Android-9 Taurus field
           find) ────────────────────────────────────────────────────────────
           The original NovaStar Taurus (Android 9) and the TB posters run a
-          Chromium 83 WebView (CLAUDE.md #10 — the Taurus floor). Next 16 and
+          Chromium 83 WebView (apps/web/CLAUDE.md rule 10 — the Taurus floor). Next 16 and
           its dependencies call runtime APIs that shipped AFTER 83 —
           Object.hasOwn (93) inside the router at hydration, Element.
           replaceChildren (86), crypto.randomUUID (92), Array/String .at

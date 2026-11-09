@@ -9,8 +9,8 @@
  *     (only the cells true for the screen's hardware model appear)
  *   - Sport-engine UI gating — dual-RS232 wiring panel only on EP6N,
  *     GPIO panic-button setup only where caps.gpioIn > 0, etc.
- *   - Chromium-min warning chip — anything ≤ 83 surfaces a CLAUDE.md
- *     rule #10 reminder ("uses long-hand CSS — no `inset` shorthand,
+ *   - Chromium-min warning chip — anything ≤ 83 surfaces an apps/web/CLAUDE.md
+ *     rule 10 reminder ("uses long-hand CSS — no `inset` shorthand,
  *     no flex `gap`").
  *
  * 2026-05-27 — added with the EP6N becoming the canonical sports-vertical

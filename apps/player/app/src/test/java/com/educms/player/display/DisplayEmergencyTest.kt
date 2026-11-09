@@ -185,7 +185,7 @@ class DisplayEmergencyTest {
         // ⚠️ THE 2026-08-14 REVERSAL. `setHold(false)` used to be refused
         // on the legacy every-frame transport as a "risk-direction
         // mutation". On a Chromium 83-87 NovaStar Taurus — in the pilot
-        // fleet, CLAUDE.md rule 10 — NativeBridgeChannel cannot attach at
+        // fleet, apps/web/CLAUDE.md rule 10 — NativeBridgeChannel cannot attach at
         // all, so EVERY call including the all-clear arrives untrusted:
         // the first alert engaged a hold nothing could ever lift, and the
         // screen was pinned lit with all display control dead and no

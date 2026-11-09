@@ -573,7 +573,7 @@ export const MsStudioPortraitWidget = lazyWidget<ThemeWidgetProps>(loadMsMsStudi
 
 // 16 templates ported from scratch/design/*.html (4 parallel agents, 2026-04-20).
 // Each widget is a full-screen scene (transform:scale 1920×1080 pattern, live-
-// gated hotspots, ticker-speed helper). See CLAUDE.md "Template Design
+// gated hotspots, ticker-speed helper). See docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md "Template Design
 // Workflow" for the port rules.
 const loadAnimatedCafeteriaMiddleWidget = () => import('./AnimatedCafeteriaMiddleWidget');
 export const AnimatedCafeteriaMiddleWidget = lazyWidget<ThemeWidgetProps>(loadAnimatedCafeteriaMiddleWidget, 'AnimatedCafeteriaMiddleWidget');

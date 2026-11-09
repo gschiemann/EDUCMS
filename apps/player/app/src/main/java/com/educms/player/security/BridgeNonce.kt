@@ -278,7 +278,7 @@ class BridgeNonce(
          * `WebAppBridge.displayEmergencyHold`. So the gate covers the
          * control-plane and exfiltration set, and deliberately leaves:
          *
-         *  - `reload` — a REFRESH_WEB recovery command rides it (CLAUDE.md
+         *  - `reload` — a REFRESH_WEB recovery command rides it (apps/web/src/app/player/CLAUDE.md
          *    player rule 6), and the web's `nativeFire` reports a refusal as
          *    a delivery, so a gated `reload` would silently kill that
          *    recovery path on any bundle that predates the nonce. A hostile

@@ -406,7 +406,7 @@ class LegacyBridgeExposureTest {
         assertEquals(
             "NativeBridgeChannel.METHODS changed size. SEC-002 must not add a method NAME — " +
                 "if this is a deliberate new method, update the web tables and the canary " +
-                "count in nativeBridge.test.ts in the SAME commit (CLAUDE.md player rule 9).",
+                "count in nativeBridge.test.ts in the SAME commit (apps/player/CLAUDE.md rule 9).",
             // 38 -> 39 on 2026-11-08: `clearUpdateQuarantine` (Manager wave 3), the same full
             // contract; nonce-gated, kept out of KNOWN_METHODS until the fleet floor is 1.1.66.
             39, // Four optional native media names (nativeBridge.ts >=1.1.25 floors) + openNetworkScreen + importFromUsb + clearUpdateQuarantine.

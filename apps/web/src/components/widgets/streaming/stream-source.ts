@@ -11,7 +11,7 @@
  * Pure: no React, no DOM, no network. Tested per shape in
  * `__tests__/stream-source.test.ts`.
  *
- * Honesty rules (CLAUDE.md "copy states what the evidence proves"):
+ * Honesty rules (apps/web/src/app/player/CLAUDE.md rule 10, "copy states what the evidence proves"):
  *   - `supported` means the screen has an engine for it, not that the stream
  *     is up. Only the player's own frame counter proves it is playing.
  *   - RTSP / RTMP / SRT / UDP never play in a browser. They need a gateway

@@ -8,7 +8,7 @@
  *      (`/api/v1/health`, deliberately always-200) went green the moment the
  *      port was bound — before the Prisma pool was warm or Redis connected.
  *
- *   2. NEVER become the thing that kills a deploy. CLAUDE.md's standing rule
+ *   2. NEVER become the thing that kills a deploy. CLAUDE.md §10's standing rule
  *      is that a DB blip must not be able to cycle a pod; `restartPolicyMaxRetries`
  *      is 10 and `healthcheckTimeout` is 300 s, so a gate that can re-close —
  *      or that never opens — is a far worse outage than a cold start.

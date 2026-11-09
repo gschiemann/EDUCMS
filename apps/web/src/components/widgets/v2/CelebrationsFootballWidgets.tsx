@@ -230,7 +230,7 @@ export function CelFootballFieldGoalWidget({ config, live = true, height = 480 }
               Chromium-83 polyfill's attribute-substring selector for a
               leading-zero inset value, force-zeroing all sides. Fixed to
               3 sides + explicit width (100% - 40% - 40% = 20%) —
-              identical computed geometry. See CLAUDE.md rule #10
+              identical computed geometry. See apps/web/CLAUDE.md rule 10
               (2026-07-03 entry). */}
           <div style={{ position: 'absolute', left: '40%', top: 0, bottom: 0, width: '20%' }}>
             <svg viewBox="0 0 800 480" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">

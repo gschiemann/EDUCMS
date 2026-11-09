@@ -10,7 +10,7 @@
  * is RBAC-admin-locked → 403 → the widget silently fell back to
  * hardcoded DEMO_ITEMS *on every actual wall*. It demoed perfectly in
  * the admin preview (which carries a user-session token) and was dead
- * on the screen — the classic CLAUDE.md §9 "looks right on the laptop,
+ * on the screen — the classic apps/web/CLAUDE.md rule 9 "looks right on the laptop,
  * dead on the wall" failure.
  *
  * The fix is a device-authed read of `GET /api/v1/screens/:id/menu`
