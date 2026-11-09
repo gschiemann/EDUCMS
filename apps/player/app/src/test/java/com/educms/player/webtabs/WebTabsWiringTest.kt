@@ -16,7 +16,7 @@ import java.io.File
  * proves, off disk:
  *   1. the three-file bridge contract for `webTabsShow` / `webTabsHide`
  *      (channel allowlist + dispatch arm + legacy `@JavascriptInterface`,
- *      the web method table, the KNOWN_METHODS exclusion — CLAUDE.md player
+ *      the web method table, the KNOWN_METHODS exclusion — apps/player/CLAUDE.md player
  *      rule 9);
  *   2. `webTabsShow` is nonce-gated with both arities and `webTabsHide` is
  *      not (class 1 vs class 2 in BridgeNonce);

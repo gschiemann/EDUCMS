@@ -655,7 +655,7 @@ export function PlaylistPreviewThumb({ playlist, templateLookup, size = 'tile', 
         style={size === 'tile' ? { aspectRatio: '16 / 9' } : undefined}
       >
         {/* 2×2 grid using absolute positioning to avoid Tailwind
-            `gap-*` (CLAUDE.md rule #10 — gap-* on flex is Chromium 84+
+            `gap-*` (apps/web/CLAUDE.md rule 10 — gap-* on flex is Chromium 84+
             and this component MAY render on Chromium-83 contexts).
             Each cell is exactly 50% by 50% and they share a 1px
             slate divider. */}

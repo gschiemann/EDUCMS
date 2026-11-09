@@ -1092,7 +1092,7 @@ export function ScorebugTicker({ config, compact }: { config: any; compact?: boo
           offset and stacking the reel under the LIVE pill. Fixed to 3 sides
           + explicit width (never serializes to the inset shorthand, which
           requires all 4 sides) — identical computed geometry. See
-          CLAUDE.md rule #10 (2026-07-03 entry) + apps/web/tools/
+          apps/web/CLAUDE.md rule 10 (2026-07-03 entry) + apps/web/tools/
           check-inset-serialization.cjs. */}
       <div style={{
         position: 'absolute', left: 'clamp(60px, 8vw, 140px)', top: 0, bottom: 0,
@@ -1108,8 +1108,7 @@ export function ScorebugTicker({ config, compact }: { config: any; compact?: boo
             here), so nothing computed is being made editable. The hotspot is
             on THIS inner text node, which carries no physical sides at all —
             deliberately not on the 3-side wrapper above, whose shape is
-            load-bearing for the Chromium-83 inset polyfill (CLAUDE.md rule
-            #10, 2026-07-03). Do not move it up or add a fourth side. */}
+            load-bearing for the Chromium-83 inset polyfill (apps/web/CLAUDE.md rule 10, 2026-07-03). Do not move it up or add a fourth side. */}
         <div data-field-jump="messages" style={{
           whiteSpace: 'nowrap',
           fontFamily: SB_FONT_DISPLAY, fontWeight: 700,

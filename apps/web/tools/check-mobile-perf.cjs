@@ -152,7 +152,7 @@ for (const rel of CHROME_FILES) {
 }
 
 if (violations.length) {
-  console.error('Mobile-performance regressions — see CLAUDE.md "Mobile performance standard":');
+  console.error('Mobile-performance regressions — see apps/web/CLAUDE.md "Mobile performance standard":');
   for (const v of violations) console.error(`  ${v.file}:${v.line}\n    ${v.msg}`);
   console.error('');
   console.error(`Fix the pattern, or append "${ALLOW}" in a comment on the line if genuinely justified (reviewed in PR).`);

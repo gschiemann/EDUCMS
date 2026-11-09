@@ -472,7 +472,7 @@ object DisplayEmergency {
      * "no alert" from a poll that can be late, cached by a proxy or simply
      * wrong about which alert it is looking at, and a hold released by a
      * guess is the one failure this file exists to prevent. The page, on a
-     * LIVE manifest, stays the only thing that releases (CLAUDE.md player
+     * LIVE manifest, stays the only thing that releases (apps/api/src/emergency/CLAUDE.md player
      * rule 11). A hold nothing releases costs electricity.
      *
      * Goes through the same [engage] the page's raise does, so it ends a

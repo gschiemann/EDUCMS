@@ -12,7 +12,7 @@
  *   C. no screens  → Create must read honestly ("won't display yet"), still
  *                    enabled, because staging a playlist is a real choice.
  *
- * CLAUDE.md §9: a registry entry that never renders is not a feature. This
+ * apps/web/CLAUDE.md rule 9: a registry entry that never renders is not a feature. This
  * asserts against the operator's actual DOM.
  */
 

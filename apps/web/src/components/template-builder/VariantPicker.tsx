@@ -919,7 +919,7 @@ function QuickLayoutsSection() {
   // (see layoutReplacementTargets). The confirm must therefore count THAT
   // slice, not every zone in a multi-scene kiosk: telling the operator we
   // are about to delete 24 zones when we are about to delete 4 is the same
-  // class of lie as the copy rule in CLAUDE.md.
+  // class of lie as the copy rule in apps/web/src/app/player/CLAUDE.md (rule 10).
   const sceneCount = useBuilderStore((s) => s.scenes.length);
   const activeSceneId = useBuilderStore((s) => s.activeSceneId);
   const [open, setOpen] = useState(false);

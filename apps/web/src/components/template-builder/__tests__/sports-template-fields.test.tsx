@@ -1,7 +1,7 @@
 /**
  * K-12 launch audit (2026-09-27) — the Properties panel for the sports
- * template catalogue. Mounts the REAL `ContentFields` switch (CLAUDE.md rule
- * #9: the exact component the builder's sidebar renders) and proves each
+ * template catalogue. Mounts the REAL `ContentFields` switch (apps/web/CLAUDE.md rule
+ * 9: the exact component the builder's sidebar renders) and proves each
  * control writes the config key its renderer actually reads.
  */
 

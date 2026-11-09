@@ -256,7 +256,7 @@ describe('a one-answer notice', () => {
 });
 
 describe('Chromium-83 (Taurus) and the alert layers', () => {
-  it('the scrim uses two physical sides plus a size (never four — CLAUDE.md #10) and sits below every alert layer', () => {
+  it('the scrim uses two physical sides plus a size (never four — apps/web/CLAUDE.md rule 10) and sits below every alert layer', () => {
     open();
     const scrim = document.querySelector('[data-edu-remote-dialog="unpair"]') as HTMLElement;
     expect(scrim.style.top).toBe('0px');

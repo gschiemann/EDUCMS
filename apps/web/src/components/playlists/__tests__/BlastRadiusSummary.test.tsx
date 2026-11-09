@@ -6,7 +6,7 @@
  * "Publishes to 3 screens across 1 group" with the three real names one tap
  * away, and that a zero-reach selection renders an amber warning rather than
  * a confident-looking summary. That gap ("green CI, nothing changed in the
- * operator's UI") is CLAUDE.md §9's named failure mode, so it gets its own
+ * operator's UI") is apps/web/CLAUDE.md rule 9's named failure mode, so it gets its own
  * assertions.
  */
 

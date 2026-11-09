@@ -118,7 +118,7 @@ export function StaffCrayonHeroWidget({ config }: WidgetProps<StaffCfg>) {
           {/* A flex row, not an inline run: a WRAPPING inline span's box covers
               every line it touches, so on a small zone the fun-fact text box
               swallowed the bulb sitting on its first line. Margin for the gap —
-              flex `gap` is Chromium 84+ and these ship to Taurus (CLAUDE.md #10). */}
+              flex `gap` is Chromium 84+ and these ship to Taurus (apps/web/CLAUDE.md rule 10). */}
           {c.funFact && <div style={{ marginTop: '0.55em', background: '#fff', padding: '0.64em', borderRadius: 16, fontSize: '0.95em', fontWeight: 600, boxShadow: '0 4px 0 rgba(0,0,0,0.08)', display: 'flex', alignItems: 'flex-start' }}><span style={{ flexShrink: 0, marginRight: '0.3em' }}>💡</span><span data-field="funFact" style={{ flex: 1, minWidth: 0 }}>{c.funFact}</span></div>}
         </div>
       </div>

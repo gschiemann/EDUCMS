@@ -204,7 +204,7 @@ object DisplayControlApi {
      *
      *  1. **It bricked the feature on the oldest boxes.** On a Chromium
      *     83-87 NovaStar Taurus — an explicitly supported production
-     *     target (CLAUDE.md rule 10) that is in the pilot fleet TODAY —
+     *     target (apps/web/CLAUDE.md rule 10) that is in the pilot fleet TODAY —
      *     `WebViewFeature.WEB_MESSAGE_LISTENER` is unavailable, so
      *     `NativeBridgeChannel.attach()` returns false and
      *     `window.EduCmsNativeChannel` never exists. EVERY call from the

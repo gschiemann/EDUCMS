@@ -5005,8 +5005,8 @@ function sportsSurfaceForCategory(category: string): 'scoreboard' | 'ribbon' | '
 }
 
 // Exported (2026-07-02, Sports Wave S2-3) so the card-action regression
-// test can render the EXACT component the gallery mounts (CLAUDE.md
-// rule #9) rather than a hand-rolled re-implementation that could drift.
+// test can render the EXACT component the gallery mounts (apps/web/CLAUDE.md
+// rule 9) rather than a hand-rolled re-implementation that could drift.
 //
 // ── Calm v1 (2026-08-31) ────────────────────────────────────────────────
 // The card used to carry, permanently and all at once: a Landscape /

@@ -11,7 +11,7 @@
  * asserts the editor SAYS SO, in the DOM, not merely in a resolver object.
  *
  * Same discipline as ScreenDisplayControls.test.tsx next door, and for the
- * same reason (CLAUDE.md §9): a logic test passing while the string never
+ * same reason (apps/web/CLAUDE.md rule 9): a logic test passing while the string never
  * reaches the screen is this repo's signature failure.
  */
 

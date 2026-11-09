@@ -1401,7 +1401,7 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
         {/* Abstract background blobs for premium feel — desktop-only.
             2026-07-01 mobile-perf fix: these decorative blur-[…] blobs sat
             un-gated on the always-mounted builder shell, which the phone
-            pays for on every repaint (CLAUDE.md Mobile performance
+            pays for on every repaint (apps/web/CLAUDE.md Mobile performance
             standard rule #3). `hidden md:block` removes the GPU cost on
             phones with zero visual change on desktop. */}
         <div className="hidden md:block absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
