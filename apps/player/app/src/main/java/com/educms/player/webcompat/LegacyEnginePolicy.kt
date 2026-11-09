@@ -22,6 +22,21 @@ import org.json.JSONArray
  *   2. the WebView supports `DOCUMENT_START_SCRIPT` (Chromium 83/87 Taurus
  *      class does not — it is skipped, never half-installed).
  *
+ * THE LATE PATH (2026-11-09, field failure). The GUQ's WebView is the
+ * platform-signed AOSP `com.android.webview` 95, and it does NOT offer
+ * `DOCUMENT_START_SCRIPT` — so on the one panel the layer was built for it
+ * logged `skipped reason=SKIP_NO_DOCUMENT_START` and the customer's Metabase
+ * login still failed (`i?.throwIfAborted is not a function`). A view that
+ * opts in (`lateAllowed`: the URL overlay, which shows the site as its own
+ * top-level document) now gets [Decision.INSTALL_LATE] instead: the same
+ * asset, evaluated into each main-frame document at page start, commit and
+ * finish by [LegacyEngineLateInjector]. The asset feature-detects, so a
+ * repeat is a no-op. It is late — page scripts may run first — which is
+ * enough for builtins a site looks up when it calls them (the login's
+ * `throwIfAborted`), not for ones it needs while its bundle first runs; on
+ * Chrome 95 those already exist natively. Only for majors at or above
+ * [LATE_INJECTION_MIN_MAJOR], so the Chromium 83/87 Taurus class is untouched.
+ *
  * Failure direction: any doubt → not installed → today's behaviour.
  * Kill switch: none at runtime (auto-detected per device, no setting); it is
  * withdrawn by a build without it (revert, or the previous APK).
@@ -40,7 +55,10 @@ object LegacyEnginePolicy {
     /** Allowed-origin rule for `addDocumentStartJavaScript`: every frame, every origin. */
     val ALLOWED_ORIGINS: Set<String> = setOf("*")
 
-    enum class Decision { INSTALL, SKIP_MODERN, SKIP_UNKNOWN_VERSION, SKIP_NO_DOCUMENT_START }
+    /** The oldest engine the late path runs on (the asset is proven on 91; Taurus 83/87 stays untouched). */
+    const val LATE_INJECTION_MIN_MAJOR = 90
+
+    enum class Decision { INSTALL, INSTALL_LATE, SKIP_MODERN, SKIP_UNKNOWN_VERSION, SKIP_NO_DOCUMENT_START }
 
     /** `95.0.4638.74` → 95. Null for anything that does not start with a plausible major. */
     fun majorOf(versionName: String?): Int? {
@@ -49,12 +67,30 @@ object LegacyEnginePolicy {
         return head.toIntOrNull()?.takeIf { it > 0 }
     }
 
-    fun decide(major: Int?, documentStartSupported: Boolean): Decision = when {
+    fun decide(major: Int?, documentStartSupported: Boolean, lateAllowed: Boolean = false): Decision = when {
         major == null -> Decision.SKIP_UNKNOWN_VERSION
         major >= MODERN_WEBVIEW_MAJOR -> Decision.SKIP_MODERN
-        !documentStartSupported -> Decision.SKIP_NO_DOCUMENT_START
-        else -> Decision.INSTALL
+        documentStartSupported -> Decision.INSTALL
+        lateAllowed && major >= LATE_INJECTION_MIN_MAJOR -> Decision.INSTALL_LATE
+        else -> Decision.SKIP_NO_DOCUMENT_START
     }
+
+    /** The late path only targets real web documents — never `about:`, `data:` or our offline pages. */
+    fun lateTargetUrl(url: String?): Boolean {
+        val u = url?.trim()?.lowercase() ?: return false
+        return u.startsWith("https://") || u.startsWith("http://")
+    }
+
+    /**
+     * Evaluated after the layer, once per injector until it answers `true`:
+     * proof the layer is present in the page (the field case's missing builtin).
+     */
+    const val LATE_PROBE_JS =
+        "(function(){try{return typeof AbortSignal==='function'&&typeof AbortSignal.prototype.throwIfAborted==='function'}catch(e){return false}})()"
+
+    /** The durable line once the late path is proven in a page. */
+    fun lateInstalledLine(major: Int, features: Int, view: String): String =
+        installedLine(major, features, view) + " mode=late"
 
     /** Feature groups in the asset: one `feature('…'` call per line start. */
     fun featureCount(script: String): Int =
