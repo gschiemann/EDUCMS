@@ -78,6 +78,8 @@ Two facts shape everything below: only four build checks are required to merge (
 7. **#11** — re-verify the threat model (last verified 2026-05-29) and warn when it ages; review the research files that are tracked in the public repository.
 8. **#12** — standing cross-vendor review of security-touching changes.
 9. **#23 #24 #4** — repair the self-reporting tail (the on-call routine's trigger is unconfigured) and auto-close stale ops issues on the next green run.
+
+   Update 2026-11-09: the failure-issue workflow now lists every active workflow, closes its `ops` issue when that workflow next completes green on the default branch, and the morning sweep runs daily from `.github/workflows/ops-sweep.yml` (opening or closing one "ops: morning sweep found red" issue); still needing the owner: create the on-call routine and store `ROUTINE_FIRE_URL` and `ROUTINE_FIRE_TOKEN` (steps in `docs/SLO_AND_ONCALL.md`), so no page fires yet.
 10. **#29** — a weekly restore of the latest backup into a throwaway database with row-count assertions.
 11. **#15** — a generated kill-switch registry with each switch's failure direction, checked in CI (22 of 33 switches are undocumented).
 12. **#9 #35 #46** — Railway config-as-code cutoff on **2026-12-01**: migrate to IaC and version the platform configuration and the ruleset.
