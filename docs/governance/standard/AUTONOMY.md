@@ -43,11 +43,11 @@ Applied by the lead the day the trigger is seen — at the weekly review at the 
 3. **A security event** touching a category drops it to L1.
 4. **A customer-impacting error** or **a wrong call** by an autonomous action drops its category one level.
 
-## Freezes, standing approvals, waivers
+## Holds, standing approvals, waivers
 
-- **Freeze.** A written `FREEZE.md` in the application's governance folder: reason, start, expiry, named exceptions, who declared it. While active, every consequential category is ≤ L1 except the named exceptions; Frontier Intake pauses except the Tier A security re-audit. A launch is a freeze.
+- **Hold.** A row in the application's autonomy register (`AUTONOMY-REGISTER.md`, section "Holds on a class of change"): reason, start, expiry or lift condition, named exceptions, who declared it. While a hold is active, every consequential category is ≤ L1 except the named exceptions; Frontier Intake pauses except the Tier A security re-audit. A launch is a hold. (Until 1.0.1 this was a separate `FREEZE.md` file; the word "freeze" is retired from owner-facing text by the owner's rule.)
 - **Standing approvals.** The owner's "go ahead, stop asking" is written down with scope and expiry (a batch: ≤ 72 h; a launch-ready approval: until a named date) in the register. **Nothing in the standard adds a prompt for an action the owner has waived in writing** — the standard records waivers; it does not override them.
-- **Reviewer waiver.** The owner may waive the different-vendor review for 24 hours per change, recorded in the PR. During a freeze the cross-vendor rule applies only to emergency, authentication/secrets, migrations, billing and the native player.
+- **Reviewer waiver.** The owner may waive the different-vendor review for 24 hours per change, recorded in the PR. During a hold the cross-vendor rule applies only to emergency, authentication/secrets, migrations, billing and the native player.
 - **Standing mitigations (pre-authorised at L3, subtractive only).** Revert the last deployment; flip a named kill switch; pause updates and field pushes. The lead may run these at any hour; each run is logged and the owner is notified at once.
 
 ## Doors and the owner's decision budget
