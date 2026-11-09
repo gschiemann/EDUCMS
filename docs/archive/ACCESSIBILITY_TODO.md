@@ -87,4 +87,4 @@ unchanged above `lg`.
 
 ---
 
-**Last Updated:** 2026-04-16 — post responsive + a11y cleanup pass
+**Final entry written** 2026-04-16 — post responsive + a11y cleanup pass
