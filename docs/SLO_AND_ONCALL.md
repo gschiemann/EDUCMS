@@ -33,11 +33,50 @@ WAN down.
 
 | SLO | Proposed target | Measured how (proposed) | Notes |
 |---|---|---|---|
-| **Emergency-delivery latency** (T0) | Trigger → online player renders the alert in **< 2 s** p95 (WS path); **< 1 polling interval** on the manifest fallback. | Proof-of-display ACK timestamp vs trigger timestamp (data exists in the heartbeat/AuditLog; the dashboard surface is a V2 build — see B-2 in docs/roadmap/ROADMAP.md). | Content-level sync, not hardware genlock. Sufficient for K-12 / HS; genlock is a pro-tier add-on. |
+| **Emergency-delivery latency** (T0) — **contracted 2026-11-09, see §2a** | **≥ 95 % of screen-paints confirmed within 15 s of the trigger**, rolling 30 days, live and drill triggers together; every online proof-capable screen in scope confirmed within 60 s per trigger. Design goal, not yet measurable: < 2 s on the raise path. | Server-confirmed paint: the first `PLAYER_EMERGENCY_PAINTED` audit row per screen after each `TRIGGER_EMERGENCY*` row (the query in §2a); daily per-pane verdicts from the synthetic drill once it is armed (`apps/api/src/emergency/drill/`). | Content-level sync, not hardware genlock. The proof row is the server's receipt of the paint, so this bound includes network and report time; the drill's own pass bar per pane is 5 s. |
 | **API availability** (T1) | **99.5%** monthly (≈ 3.6 h/mo budget). | UptimeRobot keyword monitor on `GET /api/v1/health` (see `docs/UPTIME_MONITORING.md`). | Liveness only — `/health` returns 200 even if DB/Redis degraded, by design. |
 | **API latency** (T1) | p99 **< 800 ms** for read endpoints under normal load. | Sentry performance traces (10% sample) + Railway request metrics. | Cold-start tail is mitigated by the keep-warm cron (§3). |
 | **Player uptime** (T1/T0) | **99%** of paired screens reporting `lastPingAt` within the offline threshold. | `lastPingAt` on `Screen`; offline-screen-scanner flags stale screens (`notifications/offline-screen-scanner.ts`). | A screen offline to the WAN can still be playing locally — uptime here is *cloud reachability*, not *display blank*. |
 | **Successful deploys** | **> 95%** of merges reach "Healthy" without a rollback. | Railway deployment status + CI green rate. | Backed by the deploy-reliability CI gates. |
+
+### 2a. The T0 contract (2026-11-09)
+
+**What is measured.** For every emergency trigger — live (`TRIGGER_EMERGENCY`) or drill (`TRIGGER_EMERGENCY_DRILL`) — and every screen in its scope, the **server-confirmed paint latency** is the time from the trigger's audit row to the screen's first `PLAYER_EMERGENCY_PAINTED` audit row within the following ten minutes. The paint row is written when the server receives the screen's paint proof (`apps/api/src/screens/emergency-proof.ts`), so the number includes delivery, render, and the proof's trip back; it never includes a device clock, which is why the old "< 2 s p95" could not be measured and is kept only as the design goal for the raise path.
+
+**The contract.** Rolling 30 days, live and drill together: **at least 95 % of screen-paints within 15 s**; per trigger, **every online, proof-capable screen in scope confirmed within 60 s** (the synthetic drill reports each pane; its own pass bar is 5 s, deliberately tighter than the contract so regressions show before the contract is at risk). A screen that produces no paint row is a **coverage** question — offline, a pre-proof player build, or an LED poster on an old build — answered by the drill's dead-man rule (no PASS in 36 h → owner email), not a latency miss.
+
+**Error budget and consequence.** 5 % of screen-paints per 30 days may exceed 15 s. While the budget is burning, fleet-wide actions for the player class drop to L1 (Article 34's first automatic rule, `docs/governance/AUTONOMY-REGISTER.md`) and the weekly review names the cause; the drill emails the owner on every FAIL in `alert`/`on` mode.
+
+**Baseline when contracted** (production audit rows, read-only; UTC):
+
+| Window | Trigger kind | Screen-paints | Triggers | p50 | p90 | p95 | Within 15 s |
+|---|---|---|---|---|---|---|---|
+| 30 days to 2026-11-09 | live | 48 | 7 | 0.8 s | 9.7 s | 175 s | — |
+| 30 days to 2026-11-09 | drill | 127 | 16 | 1.9 s | 166 s | 269 s | — |
+| since 2026-11-03 (after the dual-face echo fix) | live | 29 | 2 | 0.6 s | 9.0 s | 9.8 s | 28 of 29 |
+| since 2026-11-03 | drill | 103 | 10 | 1.4 s | 9.1 s | 191 s | 93 of 103 |
+
+So the contract is **not met on the 30-day window today** (the tail is the late-October runs before paint proof existed and the 2026-11-03 echo investigation) and **met by the two live triggers since 2026-11-03**. Paint proof exists only since 2026-10-27 (player 1.1.55+); earlier triggers have no rows and are not counted.
+
+**The measurement** (read-only; run against production by the lead, or by the drill's daily verdicts once armed):
+
+```sql
+WITH trig AS (
+  SELECT id, tenant_id, created_at AS t0, action FROM audit_logs
+  WHERE action IN ('TRIGGER_EMERGENCY','TRIGGER_EMERGENCY_DRILL') AND created_at > now() - interval '30 days'
+), paints AS (
+  SELECT tenant_id, target_id AS screen_id, created_at AS tp FROM audit_logs
+  WHERE action = 'PLAYER_EMERGENCY_PAINTED' AND created_at > now() - interval '30 days'
+), firstpaint AS (
+  SELECT trig.id AS trig_id, trig.action, trig.t0, p.screen_id, min(p.tp) AS tp
+  FROM trig JOIN paints p ON p.tenant_id = trig.tenant_id AND p.tp >= trig.t0 AND p.tp < trig.t0 + interval '10 minutes'
+  GROUP BY trig.id, trig.action, trig.t0, p.screen_id
+)
+SELECT action, count(*) AS screen_paints,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM tp - t0)) AS p95_s,
+  count(*) FILTER (WHERE tp < t0 + interval '15 seconds')::float / count(*) AS share_within_15s
+FROM firstpaint GROUP BY action;
+```
 
 These are starting points sized to the current free-tier infrastructure. Tighten
 them when paid monitoring + a staging env land (see Gaps).
@@ -76,7 +115,7 @@ them when paid monitoring + a staging env land (see Gaps).
   `SECURITY_GAPS.md` G7). A bad merge hits prod; rollback is git tag + tarball.
 - **No synthetic emergency drill on a schedule.** The `emergency-path` health
   check exists but is run manually; there is no automated periodic life-safety
-  canary.
+  canary. **Update 2026-11-09:** the drill is built (`apps/api/src/emergency/drill/`, PR #282, dark until `EMERGENCY_DRILL_SCREENS` names bench screens); the T0 contract above is what it measures.
 - **Proof-of-display dashboard is V2.** The ACK data exists in the heartbeat /
   AuditLog, but the operator-facing "which screens rendered the alert, when"
   surface is not yet built (docs/roadmap/ROADMAP.md B-2).
