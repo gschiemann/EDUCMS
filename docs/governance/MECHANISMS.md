@@ -70,7 +70,7 @@ Two facts shape everything below: only four build checks are required to merge (
 ## Phase 1 backlog by article (ranked life safety → security → reliability → governance)
 
 1. **#16 #18 #19 #28** — alert-path code reaches every screen on push with no blocking gate: make the risk-weighted checks required with an owner-only bypass; PR-only for the player, the service worker and the emergency path; later a staged web-bundle channel by hardware class (2).
-2. **#20 #23** — a scheduled synthetic emergency drill (nightly on the emergency-path workflow; later a canary-tenant drill read through the alert paint proof); contract the T0 latency SLO.
+2. **#20 #23** — a scheduled synthetic emergency drill (nightly on the emergency-path workflow; later a canary-tenant drill read through the alert paint proof); contract the T0 latency SLO. **Update 2026-11-09:** drill built on bench glass (PR #282, dark by default, awaiting the different-vendor review and the owner's go); T0 contracted in `docs/SLO_AND_ONCALL.md` §2a from production paint-proof rows.
 3. **#5** — route every destructive database command through the existing guard, not only `db:reset`.
 4. **#54** — the incident runbook's secret-rotation step now points at the windowed rotation (fixed in this adoption); add a supplier-compromise section and an unpinned-action check.
 5. **#28** — field-build windows and pushes refuse to mix hardware classes or run outside off-hours (the rule exists only in prose today).
