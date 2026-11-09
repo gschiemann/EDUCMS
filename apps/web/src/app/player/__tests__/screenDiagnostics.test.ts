@@ -86,8 +86,9 @@ describe('probes are bounded and read-only', () => {
       const facts = await p;
       expect(facts.apiOk).toBe(false);
       expect(facts.apiRoundTripMs).toBeNull();
-      // A worker that did not answer is "not readable", never invented zeroes.
-      expect(facts.emergency).toEqual({ readable: false, entries: null, bytes: null });
+      // A worker that did not answer is UNKNOWN — never invented zeroes, and
+      // never "not readable" (a slow worker is not a broken emergency tier).
+      expect(facts.emergency).toEqual({ readable: null, entries: null, bytes: null });
       expect(facts.manifestAgeMs).toBeNull();
     } finally {
       jest.useRealTimers();
