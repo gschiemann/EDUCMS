@@ -404,6 +404,14 @@ class HeartbeatService : Service() {
                         com.educms.player.diagnostics.ScreenDiagnostics.storageHeaderIfDue(applicationContext, prefs)
                             ?.let { setRequestProperty("x-venueos-storage", it) }
                     }
+                    // 2026-11-08 (Manager wave 5) — the companion Manager's latest verdict on the
+                    // native alert watch, read from its provider and carried under THIS device's
+                    // credential (the Manager posts nothing itself). Its own header, omitted when
+                    // there is none; it can never cost the reports above.
+                    if (nativeAllowed) runCatching {
+                        com.educms.player.alertwatch.AlertWatchStamp.watchdogReportHeader(applicationContext)
+                            ?.let { setRequestProperty(com.educms.player.alertwatch.AlertWatchStamp.HEADER, it) }
+                    }.onFailure { PlayerLogger.w(TAG, "alert-watch watchdog report unavailable: ${it.message}") }
                 }
                 // Bound the entire exchange, including a body that trickles
                 // forever inside readTimeout. A stuck native heartbeat must

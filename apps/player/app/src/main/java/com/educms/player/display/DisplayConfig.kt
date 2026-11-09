@@ -143,6 +143,17 @@ data class DisplayConfig(
      * An older APK drops the key.
      */
     val vendorBacklightDisabled: Boolean = false,
+    /**
+     * 2026-11-08 (Manager wave 5) — the lead's switch for the companion
+     * Manager's ALERT-WATCH WATCHDOG (`MANAGER_ALERT_WATCH_WATCHDOG` on the API
+     * → `display.alertWatchWatchdog: "on" | "observe"` in the manifest). The
+     * Player only CARRIES it: the native alert watch copies it into the stamp
+     * it writes for the Manager (`alertwatch/AlertWatchStamp`), and the Manager
+     * does nothing unless the stamp says `on` (acts) or `observe` (records).
+     * Absent or anything else = null = off, today's behaviour. An older APK
+     * drops the key.
+     */
+    val alertWatchWatchdogMode: String? = null,
 ) {
     /**
      * The highest-priority recipe whose `match` block fits this box, or
@@ -209,6 +220,9 @@ object DisplayConfigParser {
             // Exactly `false`; `optBoolean` would read a string "false" as false
             // too, and a kill switch must be deliberate.
             vendorBacklightDisabled = root.opt("vendorBacklight") == false,
+            // Exactly "on" or "observe" (a string); anything else is off.
+            alertWatchWatchdogMode = (root.opt("alertWatchWatchdog") as? String)?.trim()?.lowercase()
+                ?.takeIf { it == "on" || it == "observe" },
         )
     }
 
