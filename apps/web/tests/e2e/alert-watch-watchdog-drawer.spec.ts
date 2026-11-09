@@ -82,7 +82,10 @@ async function openDrawer(page: Page, verdict: Record<string, unknown>) {
       : screenEventsScreenId(path) ? emptyScreenEvents(screenEventsScreenId(path)!)
         : path.endsWith('/faces') ? { faces: [] }
           : path.endsWith('/playback-capability') ? PLAYBACK
-            : bodies[path] ?? [];
+            // The real route always answers the drawer's Diagnostics section
+            // with a view object (wave 2); an array blanks the page.
+            : path.endsWith('/diagnostics') ? { enabled: true, canRequestLogs: true, retentionDays: 7, logs: [], storage: null, selfTest: null }
+              : bodies[path] ?? [];
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
   await page.goto(`/e2e-wave5/screens?screen=${SCREEN_ID}`);
