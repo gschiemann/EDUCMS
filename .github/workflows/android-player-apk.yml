@@ -465,7 +465,7 @@ jobs:
       # Built by the same `assembleDebug` Gradle invocation above
       # (settings.gradle.kts has `include(":manager")`). Locate, rename
       # for clarity, upload as a separate artifact. See
-      # docs/MANAGER_ARCHITECTURE.md + docs/MANAGER_PROVISIONING.md.
+      # docs/archive/MANAGER_ARCHITECTURE.md + docs/archive/MANAGER_PROVISIONING.md (archived 2026-11-09; the Manager ships inside the Player APK, see apps/player/CLAUDE.md).
       - name: Locate + version-rename Manager APK
         id: locate-manager
         # Manager is the OTA backbone; missing output is a hard failure.
@@ -581,7 +581,7 @@ jobs:
             screen (owner decision 2026-10-17).
 
             Sideload onto any Android 7+ device or Nova Taurus controller.
-            See `docs/PLAYER_APK_NOVA_TAURUS.md` for the ViPlex Express
+            See `docs/TAURUS_DEPLOYMENT_GUIDE.md` for the ViPlex Express
             walkthrough.
 
             Dashboard hotlink: `/api/v1/player/apk/latest` resolves to
