@@ -11,8 +11,8 @@
 > `apps/web/src/components/player`, `apps/web/src/components/widgets`, and the
 > sports `board` / `ribbon` / `scorebug` routes. Those run Chromium 83–87 and
 > have hard constraints — no flex `gap`, no `inset` shorthand, no
-> `backdrop-filter`, no `:has()` / container queries / `oklch()`. See CLAUDE.md
-> rule #10 and the `taurus-safety` CI gate (it scans only those paths). On the
+> `backdrop-filter`, no `:has()` / container queries / `oklch()`. See apps/web/CLAUDE.md
+> rule 10 and the `taurus-safety` CI gate (it scans only those paths). On the
 > Taurus path, build the premium version and add graceful degradation; do
 > **not** let that constraint leak back into the dashboard.
 
@@ -38,14 +38,14 @@ We utilize a modern, highly legible sans-serif font (e.g., Inter, Geist) leverag
 > **Taurus carve-out:** flex/grid `gap-*` is fine on the dashboard + standard
 > LCD, but **not on Taurus player/widget surfaces** — CSS `gap` on flex
 > containers is Chrome 84+ and silently no-ops on Chromium-83 Taurus units
-> (CLAUDE.md rule #10). On those paths use per-child `margin` instead. Padding
+> (apps/web/CLAUDE.md, rule 10). On those paths use per-child `margin` instead. Padding
 > (`p-*`) is safe everywhere.
 
 ## Glassmorphism & Depth
 - Utilize subtle glassmorphism for Modals, Popovers, and Sticky Headers: `bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800`.
 - Shadows should be soft, voluminous, and deep: `shadow-lg shadow-slate-200/50 dark:shadow-none`.
 
-> **Taurus carve-out (do not skip — see CLAUDE.md rule #10).** The
+> **Taurus carve-out (do not skip — see apps/web/CLAUDE.md, rule 10).** The
 > `backdrop-blur-*` / `backdrop-filter` mandate above is for the **dashboard +
 > standard-LCD player surfaces only**. **Never ship `backdrop-blur` to a
 > NovaStar Taurus player/widget surface** (`apps/web/src/app/player`,

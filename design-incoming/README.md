@@ -45,7 +45,7 @@ These were the gaps in batch-1 — bake them in and intake is instant:
 - **Chromium-83 / NovaStar Taurus**: only matters for LED-wall *player* surfaces, NOT
   standard LCD/TV signage. HS signage may use `inset`/`gap`/`color-mix` freely. (If a
   template is ever targeted at a Taurus LED wall, use longhand `top/right/bottom/left`
-  instead of `inset`, per CLAUDE.md rule #10.)
+  instead of `inset`, per apps/web/CLAUDE.md, rule 10.)
 - **Fonts** via Google `<link>` is fine for online panels; self-host for offline ones.
 
 ## What Claude Code does on intake (for reference)

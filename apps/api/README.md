@@ -46,7 +46,7 @@ pnpm --filter api run start:prod    # node dist/main
 ```
 
 On Railway this happens inside the root `Dockerfile` (Alpine + the native
-toolchain argon2 needs — see CLAUDE.md "Deploy Reliability" for the build
+toolchain argon2 needs — see docs/DEPLOY.md "Deploy Reliability — CI gates" for the build
 failure modes that CI catches before they reach Railway).
 
 ## Tests & lint
@@ -65,7 +65,7 @@ the same non-Docker build/type checks CI does, in under 90s.
 
 The API reads its config from `.env` (gitignored — never commit it; the
 repo is **public**). The full annotated table lives in
-[`CLAUDE.md` → Environment Variables](../../CLAUDE.md#environment-variables).
+[`docs/ENVIRONMENT.md`](../../docs/ENVIRONMENT.md).
 The load-bearing ones:
 
 | Variable | Why it matters |
@@ -76,7 +76,7 @@ The load-bearing ones:
 | `ALLOWED_ORIGINS` | CORS whitelist (comma-sep). **Required in production** — API refuses to boot if unset. |
 | `REDIS_URL` | Realtime pub/sub. If absent the API still boots and falls back to HTTP-polling realtime. |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Auth + object storage. |
-| `RESEND_API_KEY` / `EMAIL_FROM` | Outbound email. Watch the `EMAIL_FROM` Resend gotcha documented in CLAUDE.md. |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Outbound email. Watch the `EMAIL_FROM` Resend gotcha documented in docs/ENVIRONMENT.md. |
 | `STRIPE_*` | Billing. Dormant + degrades gracefully when unset. |
 | `ANTHROPIC_API_KEY` | AI content generation. Degrades gracefully when unset. |
 
@@ -105,4 +105,4 @@ src/
 Any change to emergency endpoints, payload validation, the
 `@AllowPanicBypass` decorator, audit logging, or the signed Redis fan-out
 gate requires explicit code review and end-to-end trigger/clear testing.
-See CLAUDE.md → "Emergency System (Load-Bearing)".
+See apps/api/src/emergency/CLAUDE.md (Emergency System).

@@ -1,6 +1,6 @@
 # VenueOS — Roadmap & Sprint Plan
 
-> **Extracted from CLAUDE.md 2026-05-30** (governance review #9 — split load-bearing rules from forward-looking roadmap). This is plan + context, NOT rules. The load-bearing rules, the Standard Audit Surface, the Agent Dispatch Protocol, and the For-AI-Assistants rules all stay in `CLAUDE.md`.
+> **Extracted from CLAUDE.md 2026-05-30** (governance review #9 — split load-bearing rules from forward-looking roadmap). This is plan + context, NOT rules. The load-bearing rules stay in `CLAUDE.md`; the Standard Audit Surface, the Agent Dispatch Protocol and the For-AI-Assistants rules now live in `docs/governance/AUDIT-SURFACE.md`, `docs/governance/AGENT-DISPATCH.md` and `apps/web/CLAUDE.md`.
 
 ---
 
@@ -963,7 +963,7 @@ Two deployment modes, both still supported as add-ons:
   - **Taurus-native** — player runs ON the NovaStar Taurus LED
     controller; player → LED, no separate processor. The cost-killer
     for HS gyms with existing Taurus. Note Chromium 83 ceiling
-    (CLAUDE.md rule #10 — no `inset` shorthand, no flex `gap`).
+    (apps/web/CLAUDE.md, rule 10 — no `inset` shorthand, no flex `gap`).
   - **Source mode** — player (EP6N preferred) outputs HDMI/SDI at
     the wall's EXACT pixel resolution into a third-party processor
     (NovaStar / Brompton / Megapixel) for big college/pro walls.

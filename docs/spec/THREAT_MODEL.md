@@ -60,7 +60,7 @@ High = single-account / data exposure · Medium = degradation / nuisance.
 |---|---|---|---|
 | RBAC abuse (lower role runs privileged op) | Critical | `RbacGuard` + `@Roles()` server-side; emergency trigger restricted to SUPER/DISTRICT/SCHOOL_ADMIN | `auth/rbac.guard.ts`; `auth/roles.decorator.ts` |
 | Broken object-level authz / tenant bleed (IDOR) | Critical | Every Prisma query scoped by `tenantId`; controllers verify ownership before mutate. **App-layer**, not RLS — so the discipline is "filter every query," enforced in review | per-service (e.g. `assets.service.ts`, `playlists.service.ts`) |
-| Unauthorized delegated panic trigger | Critical | `@AllowPanicBypass` decorator gates who may override the per-user `canTriggerPanic` flag; never weaken without sign-off (CLAUDE.md emergency rule) | `auth/panic-bypass.decorator.ts` |
+| Unauthorized delegated panic trigger | Critical | `@AllowPanicBypass` decorator gates who may override the per-user `canTriggerPanic` flag; never weaken without sign-off (apps/api/src/emergency/CLAUDE.md) | `auth/panic-bypass.decorator.ts` |
 | Machine identity (API key) over-reach | High | `vos_` tenant API keys hash-verified against `TenantApiKey`, attached as `userId:null` + `apiKeyId` so forensic rows attribute the key | `jwt-auth.guard.ts:41-57` |
 
 ### 2.3 Emergency / realtime integrity (life-safety — highest bar)
@@ -70,7 +70,7 @@ High = single-account / data exposure · Medium = degradation / nuisance.
 | Forged emergency injected onto a Redis channel | Critical | **Server-side HMAC gate**: every `tenant:*`/`group:*`/`device:*` message is `verifyWsHmac`-checked at the fan-out chokepoint *before* it reaches any WS/SSE client; failures are dropped + logged | `redis.service.ts:128-144`; `security/ws-signature.ts:51-91` |
 | Replay of a captured trigger | High | 120 s freshness window (`maxAgeMs`) + clock-skew guard + player per-`eventId` dedup; a replayed ALL_CLEAR self-corrects within ~10 s via manifest poll | `security/ws-signature.ts:60,71-73` |
 | Single-use nonce starves multi-replica fan-out | (design note) | Deliberately **no** single-use nonce — it would make only the first replica accept and starve the rest; replay is benign for OVERRIDE and caught downstream | `security/ws-signature.ts:38-50` |
-| Redis outage drops a real alert | Critical | HTTP-polling backstop: the player polls its device-authenticated manifest carrying the live `emergency` field (same `Tenant.emergencyStatus` source of truth) | manifest endpoint `screens.controller.ts`; CLAUDE.md safeguard #4 |
+| Redis outage drops a real alert | Critical | HTTP-polling backstop: the player polls its device-authenticated manifest carrying the live `emergency` field (same `Tenant.emergencyStatus` source of truth) | manifest endpoint `screens.controller.ts`; apps/api/src/emergency/CLAUDE.md Key Safeguards #4 |
 | Player can't verify end-to-end | (residual) | **ACCEPTED GAP — no asymmetric path exists yet** (corrected 2026-08-03, R-08: an earlier revision claimed a `ws-ed25519.ts` that was never built). The player smoke-tests only for the *presence* of a `signature` field; the primary safeguard is the server-side HMAC gate at the fan-out chokepoint. Per-tenant Ed25519 verification at pair time (ControlEnvelopeV2) is the documented follow-up | `security/ws-signature.ts` header; `packages/api-types/src/capability-registry.ts` → `emergency-signed-fanout-gate` |
 
 ### 2.4 Injection & input
@@ -118,8 +118,8 @@ High = single-account / data exposure · Medium = degradation / nuisance.
 
 | Threat | Impact | Control (shipped) | Cite |
 |---|---|---|---|
-| Player tampering / token extraction | Medium | Kiosk mode + device-scoped token with no admin authority; USB ingest requires signed manifest + SHA verify + operator PIN (spec, Sprint 7) | `KIOSK_HARDENING.md` (repo root); CLAUDE.md Sprint 7 |
-| Offline screen goes blank on WAN loss | High (availability) | Service-worker cache tiers + never-evict emergency floor; falls back to pre-cached text-only emergency message | CLAUDE.md Sprint 7; `apps/web/public/sw-player.js` |
+| Player tampering / token extraction | Medium | Kiosk mode + device-scoped token with no admin authority; USB ingest requires signed manifest + SHA verify + operator PIN (spec, Sprint 7) | `KIOSK_HARDENING.md` (repo root); docs/roadmap/ROADMAP.md Sprint 7 |
+| Offline screen goes blank on WAN loss | High (availability) | Service-worker cache tiers + never-evict emergency floor; falls back to pre-cached text-only emergency message | docs/roadmap/ROADMAP.md Sprint 7; `apps/web/public/sw-player.js` |
 
 ---
 

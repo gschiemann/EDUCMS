@@ -4,7 +4,7 @@
 **Scope:** security breaches, false / failed **emergency** fires (life-safety),
 and data leaks. Reuses the existing recovery procedures rather than inventing
 new ones: rollback lives in `docs/BACKUP_AND_ROLLBACK.md`; deploy/health
-recovery lives in CLAUDE.md "Deploy reliability". This runbook is the
+recovery lives in docs/DEPLOY.md ("Deploy reliability"). This runbook is the
 **incident wrapper** around those tools: detect → contain → eradicate →
 recover → communicate → post-mortem.
 
@@ -65,7 +65,7 @@ containment tool — it is faster and safer than a rollback.**
      `DEVICE_SECRET_KEY`** (the HMAC key, `redis.service.ts:14`) immediately;
      redeploy; treat as full SEV-1 secret-rotation (§4).
 5. **DO NOT** weaken the emergency safeguards to "make it stop" — never disable
-   the HMAC gate, never skip the audit write (CLAUDE.md emergency rule).
+   the HMAC gate, never skip the audit write (apps/api/src/emergency/CLAUDE.md).
 
 ## 2b. SEV-1 · Emergency FAILED to fire (operator triggered, screens didn't change)
 
@@ -116,7 +116,7 @@ The repo is **PUBLIC** — a committed secret is live to the world immediately.
 
 ## 5. SEV-2 · API down / fleet can't reach the server
 
-Follow CLAUDE.md "Deploy reliability":
+Follow docs/DEPLOY.md "Deploy reliability":
 1. `curl https://<railway-api>/api/v1/health` — if 502, the container is down
    (health always returns 200 when merely degraded).
 2. **Railway → Deployments → Restart latest** (auto-restart covers most blips:
@@ -157,7 +157,7 @@ missing filter or an authz regression, not a DB-policy failure.
   `docs/BACKUP_AND_ROLLBACK.md`; redeploy; verify `/health` + `prod-smoke`.
 - **Before risky changes** (so rollback exists): tag + push per the same doc.
 - **Verify before declaring resolved** — screens normal, health green, smoke
-  green, Vercel/Railway "Ready" newer than the fix (CLAUDE.md §21).
+  green, Vercel/Railway "Ready" newer than the fix (docs/governance/AUDIT-SURFACE.md §21).
 
 ## 9. Post-incident (required for every SEV-1, recommended for SEV-2)
 

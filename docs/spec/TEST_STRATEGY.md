@@ -24,7 +24,7 @@ enforcement is the same theater pattern that burned us elsewhere.
 | Secret scanning | **gitleaks** (pre-commit + CI) | `.husky/pre-commit`; `.github/workflows/ci.yml:142` |
 | Local preflight | `pnpm preflight` (lockfile + workspace builds + api + web) | root `package.json` |
 
-Convention: tests live next to source as `*.spec.ts` (CLAUDE.md Conventions).
+Convention: tests live next to source as `*.spec.ts` (docs/ORIENTATION.md, Conventions).
 No production PII / real school data in any test — fixtures are synthetic.
 
 ## 2. CI gates (what runs on push to master + every PR)
@@ -34,7 +34,7 @@ No production PII / real school data in any test — fixtures are synthetic.
 | `ci.yml` | Lint, build, **API Jest suite** | Build/lint block; **API tests are `continue-on-error:true` → run but do NOT block merge** (`ci.yml:36-38`). **This is a known coverage-gating gap — see §5.** |
 | `deploy-reliability.yml` | `docker-build`, `api-build`, `web-build`, `lockfile-check` (the exact Railway/Vercel build failure modes) | **Yes** — blocks merge |
 | `cross-browser.yml` | Holiday + celebration bridge protocol checks in WebKit (the 2026-05-09 Safari regression class) | **Yes** |
-| `taurus-safety.yml` | Scans player/widget paths for Chromium-83 landmines (`inset:0`/`inset-*`, flex `gap`, etc. — CLAUDE.md rule #10) | **Yes** |
+| `taurus-safety.yml` | Scans player/widget paths for Chromium-83 landmines (`inset:0`/`inset-*`, flex `gap`, etc. — apps/web/CLAUDE.md, rule 10) | **Yes** |
 | `emergency-path.yml` | DB + WS-signer chain reachable before a drill (`/health/emergency-path`) | **Yes** |
 | `prod-smoke.yml` | Post-deploy smoke against the live URL | **Yes** |
 | `a11y.yml` | axe-core baseline ratchet (down only, never up) | **Yes** (ratchet) |
@@ -106,6 +106,6 @@ floor-gated. Treat this table as the roadmap for §5 item 1.
   failed Railway's clean build twice (memory: `feedback_audits_must_be_exhaustive`).
 - **Verify before claiming a fix** — load the rendered page / curl the deployed
   asset / confirm CI green + Vercel "Ready" before saying "done"
-  (CLAUDE.md Standard Audit Surface §21).
+  (docs/governance/AUDIT-SURFACE.md §21).
 - **Green CI ≠ correct** — CI checks syntax + types + the gates above, not
-  "is this component actually mounted" (CLAUDE.md rule #9).
+  "is this component actually mounted" (apps/web/CLAUDE.md, rule 9).

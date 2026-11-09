@@ -61,7 +61,7 @@ pnpm --filter web run lhci                 # Lighthouse CI
 holiday-bridge checks in WebKit and blocks merge in CI. Anything shipped to
 the player route must also survive **Chromium 83–87** (Taurus) — never use
 the `inset` shorthand / `inset-*` Tailwind class in widget or player styles.
-The full rule set (rule #9 render-tree, rule #10 Taurus CSS) is in CLAUDE.md.
+The full rule set (rule 9 render-tree, rule 10 Taurus CSS) is in apps/web/CLAUDE.md.
 
 ## Environment
 
@@ -96,7 +96,7 @@ The widgets panel renders **`VariantPicker`** (reads
 (dead code). Editing the wrong file ships nothing while CI stays green.
 Always `grep -rn '<ComponentName'` to confirm a component is actually
 mounted before editing it, and verify user-visible changes in the rendered
-DOM. See CLAUDE.md rule #9.
+DOM. See apps/web/CLAUDE.md, rule 9.
 
 ## If the deployed app breaks
 

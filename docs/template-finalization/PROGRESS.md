@@ -2,14 +2,14 @@
 
 **Started:** 2026-06-01 · **Owner:** Greg (feedback) + lead agent (fix/verify)
 
-## The loop (one template at a time — NO batching, per CLAUDE.md)
+## The loop (one template at a time — NO batching, per docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md)
 
 For each template:
 1. **Render** — lead screenshots the live render at production resolution (1920×1080, or the template's native canvas) from `https://venue-os.app/...` and posts it.
 2. **Feedback** — Greg reacts: what's good, what to change.
 3. **Fix** — lead fixes the template **and its corresponding widget(s)** (the widget components the template's zones render, or the inline shim for HTML templates).
 4. **Verify** — re-screenshot the live render, compare to the approved direction. Match required.
-5. **Approve** — stamp the template `APPROVED <date> — reviewed by Greg` (HTML: comment near top; React: comment above the component, per CLAUDE.md Template Design Workflow §"Track which templates have been approved").
+5. **Approve** — stamp the template `APPROVED <date> — reviewed by Greg` (HTML: comment near top; React: comment above the component, per docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md §"Track which templates have been approved").
 
 Status legend: ⬜ pending · 👀 in review (awaiting feedback) · 🔧 fixing · ✅ approved for production
 

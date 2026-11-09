@@ -103,8 +103,8 @@ Bucket each by which sprint / capability gets cheaper or higher-confidence:
   next to the operator without adding USB.
 - **Auto-celebration via crowd audio** — the 6 TOPS NPU can run a
   small audio-classifier on-device (cheer-vs-applause-vs-whistle).
-  Not in the codebase yet; mentioned as god-tier in CLAUDE.md
-  Sprint 13 §10.
+  Not in the codebase yet; mentioned as god-tier in docs/roadmap/ROADMAP.md
+  §10 (God-tier).
 - **Streaming overlay (NFHS Network / Hudl)** — HDMI IN can capture
   the broadcast feed; player composites the scorebug overlay; HDMI
   OUT feeds the venue display. The current architecture assumes a
@@ -117,7 +117,7 @@ Bucket each by which sprint / capability gets cheaper or higher-confidence:
   (signed pub/sub, hold-to-trigger UX); a dry-contact wire is just
   another input. No new server work; just a small APK listener.
 - **Fire-alarm integration** — GPIO IN2 reads the building fire panel
-  dry contact. The CLAUDE.md V2 Phase 1 spec calls for "dry-contact +
+  dry contact. The docs/roadmap/ROADMAP.md V2 Phase 1 spec calls for "dry-contact +
   webhook adapter for fire/access/door systems"; this is the
   dry-contact half wired to a single screen, no central appliance.
 - **Status lamp / horn output** — GPIO OUT drives a relay to a lobby
