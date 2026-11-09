@@ -12,6 +12,20 @@ Same bug pattern as the 2026-05-09 Safari minified-bridge regression (Cross-brow
 
 The mechanism (Chromium 83 drops the `inset` shorthand; a positioned box with no `top/right/bottom/left` collapses to 0×0 and `transform: scale(0)` hides it) stays in the rule.
 
+## Why our system let it reach a customer
+
+The record names the same pattern as the 2026-05-09 regression: modern Chromium tolerates features that older Chromium forks on locked-firmware controllers do not, and the development and test browsers were modern Chromium. No gate scanned for the `inset` shorthand until the pre-commit block and the CI scan listed in the evidence were added.
+
+## What pins it
+
+- `.husky/pre-commit`
+- `apps/web/tools/check-taurus-safety.cjs`
+- `.github/workflows/taurus-safety.yml`
+
+## What worked
+
+The operator reported the unrenderable Rainbow Animated Portrait template on the Taurus. The mass replacement of the shorthand contained it.
+
 ## The rule it produced
 
 `apps/web/CLAUDE.md` → rule 10, "NEVER use the `inset` shorthand in widget or player styles", with the scope clarification of 2026-05-29 (Taurus-shipped code only).

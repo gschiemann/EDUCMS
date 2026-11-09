@@ -12,6 +12,18 @@ From the rule that stays in `docs/DEPLOY.md`:
 
 > `pnpm preflight` is NOT proof CI will pass. It skips Docker AND it runs on *your* machine, where native modules (argon2; `bcrypt` is no longer a dependency) are already built and cached. The raw GitHub runner is a fresh `pnpm install --frozen-lockfile` that does **not** rebuild those bindings for the Jest job — so a suite that's green locally can have 5 suites *fail to load* in CI (`Cannot find module .../argon2.node`).
 
+## Why our system let it reach a customer
+
+The API Jest gate was made blocking on the strength of a local run, where native modules are already built and cached, and no one watched the pull request's checks to completion before the change was treated as safe. The operator caught the red CI, not the lead.
+
+## What pins it
+
+Nothing pins this yet — GAP.
+
+## What worked
+
+The operator noticed the red Deploy Reliability runs on subsequent pushes. The record does not say what contained it.
+
 ## The rule it produced
 
 `docs/DEPLOY.md` → "Post-push: WATCH CI TO GREEN — do not declare "done" before it resolves": after every push of a branch, watch the pull request's checks to completion and react to red before telling anyone anything shipped. `AGENTS.md` rule 5 and `/CLAUDE.md` §10 carry it.

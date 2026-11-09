@@ -14,6 +14,19 @@ From the rule that stays in `apps/web/CLAUDE.md` (cross-browser rule 6):
 
 > `document.querySelector('link[rel=icon]').remove()` / `parentNode.removeChild(reactNode)` leaves React holding a fiber whose `stateNode.parentNode` is now `null`; the **next client navigation** runs React `commitDeletion` → `node.parentNode.removeChild(node)` → `TypeError: null is not an object (… parentNode.removeChild)`, which unmounts the **whole root** and the app hard-reloads.
 
+## Why our system let it reach a customer
+
+The crash did not reproduce in Chrome, and the bug was chased about seven times there before anyone looked in WebKit. The rule it produced says to switch to WebKit immediately and read the in-app bug telemetry first.
+
+## What pins it
+
+- `apps/web/tests/cross-browser/webkit-nav-smoke.cjs`
+- `.github/workflows/prod-smoke.yml`
+
+## What worked
+
+One in-app bug telemetry row (Safari 27, `/assets`, 0 console errors, all data loaded) finally cracked a bug chased about seven times in Chrome. Commit `ddb64dab` fixed it.
+
 ## The rule it produced
 
 `apps/web/CLAUDE.md` → "Cross-browser support — non-negotiable", rule 6 (never imperatively detach a DOM node that React rendered; mutate it in place or render your own node) and rule 7 (when a UI bug cannot be reproduced in Chrome, switch to WebKit immediately and read the in-app bug telemetry first, through a read-only role in a sub-agent).

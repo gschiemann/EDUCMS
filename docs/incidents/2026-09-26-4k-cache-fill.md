@@ -14,6 +14,19 @@ Two limits in `sw-player.js` explained the empty cache, and both scale with file
 
 The first fix (`bdb3f59a`) also played the 1080p rendition as a stand-in until the 4K file cached; **Greg rejected the stand-in the same day** ("a screen never plays a lower-resolution stand-in and then switches up — it downloads the whole native file, THEN plays it"), `93fa9ef7` removed `fallback_url/hash/size` from the manifest and the player's fallback path was deleted.
 
+## Why our system let it reach a customer
+
+Both limits in `sw-player.js` scale with file size (a whole-body SHA-256 in worker memory and one `PRECACHE_PLAYLIST` `waitUntil` that Chromium kills after five minutes), so small test files never reached them. The first fix also shipped a stand-in the owner rejected the same day; the record names no review that would have caught that beforehand.
+
+## What pins it
+
+- `apps/web/src/app/player/__tests__/sw-large-asset-cache.test.ts`
+- `apps/web/src/app/player/__tests__/sw-emergency-large-assets.test.ts`
+
+## What worked
+
+The customer's 4K screen reported 0 cached files for hours and dropped 121 of 264 frames, and that report and frame count exposed it. The owner's same-day rejection of the stand-in led to `93fa9ef7`.
+
 ## The rule it produced
 
 `apps/web/src/app/player/CLAUDE.md` → rule 17: a big file downloads WHOLE, in short verified resumable steps, and only then plays — never streamed from origin, never a lower-resolution stand-in; part (f), the emergency tier, lives in `apps/api/src/emergency/CLAUDE.md`.

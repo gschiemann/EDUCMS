@@ -10,6 +10,19 @@
 
 The 2026-05-13 sweep searched only for the literal CSS property `inset: 0`; the Tailwind `inset-0` utility class (and `inset-x-*` / `inset-y-*`) compiles to the same Chromium-83-incompatible CSS (all of this is in the record above).
 
+## Why our system let it reach a customer
+
+The 2026-05-13 sweep searched only for the literal CSS property `inset: 0`, so the Tailwind utility form that compiles to the same CSS was never scanned. 391 classes in 44 files stayed live until an operator template crash-looped a Taurus.
+
+## What pins it
+
+- `apps/web/tools/check-taurus-safety.cjs`
+- `.github/workflows/taurus-safety.yml`
+
+## What worked
+
+An operator's custom template with 3 IMAGE widgets crash-looped a 960×1080 Taurus, which exposed the second variant. Sweeping every class to physical longhand contained it.
+
 ## The rule it produced
 
 `apps/web/CLAUDE.md` → rule 10: physical longhand classes only (`top-0 right-0 bottom-0 left-0`), never `inset-*`; "The grep below now catches BOTH forms."

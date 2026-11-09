@@ -14,6 +14,19 @@ Every CI gate was green, and `db:push` had made it work on the author's machine 
 
 It was then misdiagnosed for three days as "Greg needs to run `db:push`", because two comments in this repo said Railway never migrates. They were stale (true before 2026-05-04).
 
+## Why our system let it reach a customer
+
+Every CI gate was green and `db:push` had made the change work on the author's machine, so nothing flagged the missing migration. The failure was then misdiagnosed for three days because two stale comments said Railway never migrates. The gate `scripts/check-schema-has-migration.cjs` was added and verified red against the offending commit.
+
+## What pins it
+
+- `scripts/check-schema-has-migration.cjs`
+- `.github/workflows/deploy-reliability.yml`
+
+## What worked
+
+The fleet erroring on the regenerated client made the break visible, and reverting the code contained it.
+
 ## The rule it produced
 
 `packages/database/CLAUDE.md` → "A schema change ships a MIGRATION FILE, or it takes production down", rules 1–5; production applies migration files at boot (`scripts/railway-start.sh` → `prisma migrate deploy`).

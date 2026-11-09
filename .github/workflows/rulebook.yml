@@ -50,3 +50,5 @@ jobs:
         env:
           NODE_PATH: ${{ runner.temp }}/rulebook-ts/node_modules
         run: node scripts/check-rulebook.cjs --self-test && node scripts/check-rulebook.cjs
+      - name: Incident records keep the standard's shape (Articles 47, 48, 25)
+        run: node scripts/check-incident-records.cjs

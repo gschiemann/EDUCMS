@@ -10,6 +10,18 @@
 
 The lead never wrote the returned reports to disk before the context compacted (stated in the record above). The agents' transcripts were the emergency path, not the design.
 
+## Why our system let it reach a customer
+
+Nothing in the dispatch process required a returned agent report to be written to disk before the next step, so the lead's memory was the only copy. The rule it produced makes persisting the report to a tracked path the first action on return.
+
+## What pins it
+
+Nothing pins this yet — GAP.
+
+## What worked
+
+Every agent's full transcript persists under `/private/tmp/claude-501/<project>/<session>/tasks/<agentId>.output`, which let all four reports be recovered. The record calls that the emergency path, not the design.
+
 ## The rule it produced
 
 `docs/governance/AGENT-DISPATCH.md` → rule 8, "Persist agent work to disk THE MOMENT it returns", to a tracked path (`docs/handoffs/<date>-<topic>/`) before the next user-facing summary. `AGENTS.md` carries it as "Never discard agent work".

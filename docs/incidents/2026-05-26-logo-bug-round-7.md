@@ -10,6 +10,18 @@ The "logo bug, round 7" from 2026-05-26 was the lesson: I told the user "fixed" 
 
 A fix was reported as shipped before anyone loaded the rendered page, fetched the deployed asset or read the deploy status (the record above: "I told the user 'fixed' six times in a row without verifying").
 
+## Why our system let it reach a customer
+
+A fix was reported as done six times without anyone loading the rendered page, fetching the deployed asset or reading the deploy status. The record names no gate or review that would have stopped the claim; the rule it produced is a discipline written into the audit surface and the rulebook.
+
+## What pins it
+
+Nothing pins this yet — GAP.
+
+## What worked
+
+Not recorded.
+
 ## The rule it produced
 
 `docs/governance/AUDIT-SURFACE.md` → §21 "Verification Before Claim — discipline": before saying a fix shipped, load the rendered page, use the browser tools on the live URL, fetch the deployed asset, or confirm the commit landed with CI green and a newer deploy — otherwise say so. The always-loaded form is `/CLAUDE.md` §10 ("Done" means the commit is on `master`, CI is green and `/health` reports the merge SHA).
