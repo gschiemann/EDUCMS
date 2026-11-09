@@ -663,8 +663,14 @@ function loadedShellScripts(): string[] {
 
 const EMPTY_SHELL = { count: 0, bytes: 0 };
 
-/** Ask the SW for its current cache utilisation. Resolves with null if SW absent. */
-export async function getCacheStatus(): Promise<CacheStatus | null> {
+/**
+ * Ask the SW for its current cache utilisation. Resolves with null if SW absent
+ * or if it does not answer within `timeoutMs`. The worker sums every cached
+ * body to answer, which on a 700 MB origin on a slow board takes longer than
+ * the 2 s default; callers that only need the numbers once (the self-test)
+ * pass a longer bound.
+ */
+export async function getCacheStatus(timeoutMs = 2_000): Promise<CacheStatus | null> {
   const sw = await activeWorker();
   if (!sw) return { supported: false, playlist: { count: 0, bytes: 0 }, emergency: { count: 0, bytes: 0, floorBytes: 0 }, shell: EMPTY_SHELL };
   return new Promise((resolve) => {
@@ -699,7 +705,7 @@ export async function getCacheStatus(): Promise<CacheStatus | null> {
         // zeroes to the dashboard as if the device measured them.
         resolve(null);
       }
-    }, 2_000);
+    }, timeoutMs);
   });
 }
 
