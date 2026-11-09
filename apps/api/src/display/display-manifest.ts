@@ -1,7 +1,7 @@
 /**
  * The player manifest's `display` block (2026-08-13).
  *
- * ⚠️ READ CLAUDE.md → "Manifest content cache (2026-07-30)" BEFORE TOUCHING
+ * ⚠️ READ packages/database/CLAUDE.md → "Manifest content cache (2026-07-30)" BEFORE TOUCHING
  * THIS FILE. The manifest is served from a per-screen in-process cache and
  * carries an ETag hashed over the whole payload minus `generatedAt`. Two
  * rules follow, and both are load-bearing:

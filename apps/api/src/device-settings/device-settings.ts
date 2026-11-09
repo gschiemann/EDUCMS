@@ -13,7 +13,7 @@
  * ─────────────────────────────────────────────────────────────────────
  * Every stored value carries `id = "r<revision>"`, the record revision at
  * which THAT value last changed. The unit acknowledges by echoing the id;
- * equality is the only comparison anyone makes (CLAUDE.md player rule 6 —
+ * equality is the only comparison anyone makes (apps/web/src/app/player/CLAUDE.md player rule 6 —
  * signage clocks run minutes off). The revision only ever goes up for a
  * screen, so an id can never name two different values.
  */

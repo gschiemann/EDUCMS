@@ -4,7 +4,7 @@ import { StripeService } from './stripe.service';
 import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
 
 /**
- * LicenseReconcileCron — P1-5 audit fix (CLAUDE.md §16: "Cron-triggered
+ * LicenseReconcileCron — P1-5 audit fix (docs/governance/AUDIT-SURFACE.md §16: "Cron-triggered
  * consistency checks (License vs Stripe quantity ...)").
  *
  * The Stripe subscription quantity (what the tenant is billed for) is

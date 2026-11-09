@@ -1,5 +1,5 @@
 /**
- * "PAGE DOWN, GLASS PLAYING" (native-first design §4.4, CLAUDE.md player rule
+ * "PAGE DOWN, GLASS PLAYING" (native-first design §4.4, apps/web/src/app/player/CLAUDE.md player rule
  * 10 — copy states what the evidence proves). On a native-first face the
  * app's session survives a dead page, so a stale render proof no longer means
  * a frozen screen. The detector still recovers the PAGE (a reload no longer

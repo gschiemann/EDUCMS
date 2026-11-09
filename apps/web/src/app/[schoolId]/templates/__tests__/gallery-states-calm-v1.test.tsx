@@ -1,7 +1,7 @@
 /**
  * Templates Gallery — Calm v1 · the page states (§4.1, §5.2, §10, §12).
  *
- * Mounts the REAL default-exported page (CLAUDE.md rule #9) against a
+ * Mounts the REAL default-exported page (apps/web/CLAUDE.md rule #9) against a
  * staged data layer, because these are exactly the states an operator
  * hits on a bad day and the ones nobody screenshots:
  *

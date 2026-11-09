@@ -7,7 +7,7 @@ name: Deploy Reliability
 #   - workspace TS packages not built before Node tries to require them
 #   - lockfile drift
 #   - TS errors in apps/web that break the Vercel build
-# See CLAUDE.md "Build failure modes" appendix for the full story.
+# See docs/DEPLOY.md "Build failure modes" appendix for the full story.
 
 on:
   push:

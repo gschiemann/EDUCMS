@@ -85,7 +85,7 @@ export const REV_THROTTLE_STRIKES = 3;
  * ── WHAT THIS MUST NEVER BECOME ──────────────────────────────────────────
  * It RAISES and only raises. There is no clear envelope, and the ABSENCE of
  * one means nothing at all — the manifest stays the sole arbiter that
- * RELEASES an alert (CLAUDE.md player rule 11). It also does not replace the
+ * RELEASES an alert (apps/api/src/emergency/CLAUDE.md player rule 11). It also does not replace the
  * reconcile: `decideRevAction` still returns `fetch: true` on the same tick,
  * on the preempt lane, so the authoritative manifest lands right behind it
  * and is what actually installs the emergency playlist.
@@ -360,7 +360,7 @@ export function decideRevAction(input: RevActionInput): RevAction {
  *
  * `serverActive` is the server's last-known alert state for this screen. It
  * only ever RAISES the cadence — it can never be read as permission to slow
- * down or as grounds to clear anything (CLAUDE.md player rule 11: a cheaper
+ * down or as grounds to clear anything (apps/api/src/emergency/CLAUDE.md player rule 11: a cheaper
  * signal may raise an alert, never release one).
  */
 export function revPollCadenceMs(state: {

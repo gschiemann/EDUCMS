@@ -159,7 +159,7 @@ export interface TenantEmergencyEpoch {
  *
  * ── WHAT KEEPS THIS SAFE ─────────────────────────────────────────────────
  * 1. **RAISE ONLY.** There is no "clear" descriptor and the player must never
- *    read absence as an all-clear (CLAUDE.md player rule 11). The manifest
+ *    read absence as an all-clear (apps/api/src/emergency/CLAUDE.md player rule 11). The manifest
  *    remains the sole arbiter that RELEASES an alert. Deleting this feature
  *    entirely would slow raises back down and change nothing else.
  * 2. **Never overrides a live alert.** `resolveEmergencyRev` withholds the

@@ -12,7 +12,7 @@ import org.junit.Test
  * Everything here is what the Android-9 Goodview failure needed and did
  * not have: a per-fact deadline, a latch so a broken screen does not
  * re-report forever, and an escalation whose arithmetic is provable rather
- * than asserted (CLAUDE.md player rule 8 — escalation math must be
+ * than asserted (apps/web/src/app/player/CLAUDE.md player rule 8 — escalation math must be
  * provably reachable).
  */
 class BootProgressTest {

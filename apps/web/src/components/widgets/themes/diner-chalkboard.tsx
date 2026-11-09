@@ -37,7 +37,7 @@ import { useElementSize } from '../v2/_shared/useElementSize';
  * Measured in JS rather than with container queries on purpose: a NovaStar
  * Taurus LED controller runs Chromium 83, which has no container queries at
  * all, so a `cqh` size there is an invalid declaration and the text falls back
- * to 16px on the very wall this is meant to be read from (CLAUDE.md rule #10).
+ * to 16px on the very wall this is meant to be read from (apps/web/CLAUDE.md rule #10).
  *
  * Height drives the scale; the width term keeps a short, wide strip (a ticker
  * rail) from asking for type taller than the strip is deep.

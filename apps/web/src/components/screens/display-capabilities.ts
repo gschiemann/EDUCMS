@@ -8,7 +8,7 @@
  * POSTs its `verdict` to /screens/:id/display-capabilities. That verdict is
  * the ONLY thing that may decide which controls the dashboard renders.
  *
- * The standing rule this enforces (CLAUDE.md §20 "Coming soon wearing a
+ * The standing rule this enforces (docs/governance/AUDIT-SURFACE.md §20 "Coming soon wearing a
  * real-button costume", plus the APK-push precedent in screens/page.tsx
  * lines ~1041-1095): we do not render a control the hardware cannot
  * perform, and we do not imply a control does more than it does. A box

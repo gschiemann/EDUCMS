@@ -19,7 +19,7 @@ import { defineConfig, devices } from '@playwright/test';
  *   - Locating the config next to the tests keeps `playwright test`
  *     discoverable from `apps/web/` (`pnpm test:e2e` script).
  *
- * Per CLAUDE.md "Cross-browser support — non-negotiable": run BOTH chromium
+ * Per apps/web/CLAUDE.md "Cross-browser support — non-negotiable": run BOTH chromium
  * AND webkit. The 2026-05-09 holiday-bridge bug shipped because local dev
  * was Chrome-only; we don't repeat that mistake on a life-safety surface.
  */

@@ -6,7 +6,7 @@
  * would fail nothing — and would grade every 4K file as "larger than your
  * biggest screen" on a fleet of 4K panels. This renders the real SchoolLayout
  * with a child that reads the target and proves the fleet's answer reaches
- * it (CLAUDE.md #9: verify the render tree, not the component's own word).
+ * it (apps/web/CLAUDE.md #9: verify the render tree, not the component's own word).
  */
 import { render, screen, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

@@ -43,7 +43,7 @@ const cacheTierSchema = z.strictObject({
 /**
  * The large file the player is downloading right now (2026-09-27, download
  * visibility). A file ≥ 8 MiB plays only once it is completely on disk
- * (readiness-gated playback, CLAUDE.md player rule 17), so until it is the
+ * (readiness-gated playback, apps/web/src/app/player/CLAUDE.md player rule 17), so until it is the
  * screen either shows its own "Downloading content" splash or keeps the
  * previous content on glass — and before this field the dashboard could not
  * tell either from "nothing scheduled". Sent only while a download is in

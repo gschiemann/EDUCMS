@@ -5,7 +5,7 @@
  *
  * A fixed horizontal pill row pinned inside the Run-mode top area.
  * Each pill represents one screen paired to the tenant, showing:
- *   - Colored status dot (+ shape/icon for color-blind parity per CLAUDE.md §18)
+ *   - Colored status dot (+ shape/icon for color-blind parity per docs/governance/AUDIT-SURFACE.md §18)
  *   - Surface-kind icon (board / ribbon / concourse / off)
  *   - Screen name (truncated)
  *   - Age sub-text ("Scoreboard", "Frozen", "Off", "Offline")

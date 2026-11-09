@@ -7,7 +7,7 @@
  * Integration Concierge (`/integrations/discover`) what to put on the
  * operator's screens — "here's what we can put on your screens" — instead
  * of making the operator find this out later by opening a template's Apps
- * tab. See CLAUDE.md "AI Integration Concierge — vision" workstream 3.
+ * tab. See docs/product/CONCIERGE.md "AI Integration Concierge — vision" workstream 3.
  *
  * REUSE, not rebuild (per the mission brief): the suggestion-chip UI
  * (ConciergeSuggestionRow / ConciergeDescribeIntake), the resolver

@@ -14,7 +14,7 @@
  * below a B is a launch blocker"; this was an F.
  *
  * These tests mount the REAL `ContentFields` — the same component
- * `PropertiesPanel` dispatches — per CLAUDE.md rule #9 (green CI is not proof a
+ * `PropertiesPanel` dispatches — per apps/web/CLAUDE.md rule #9 (green CI is not proof a
  * file is mounted; drive the actual surface).
  */
 import { render, screen, fireEvent } from '@testing-library/react';

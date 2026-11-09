@@ -11,7 +11,7 @@
  * ignored the ambient game entirely and played the sample there too.
  *
  * These tests drive the same `WidgetPreview` dispatcher the player, the
- * builder and /board use (CLAUDE.md rule #9).
+ * builder and /board use (apps/web/CLAUDE.md rule #9).
  */
 
 import { render, screen, waitFor, act } from '@testing-library/react';

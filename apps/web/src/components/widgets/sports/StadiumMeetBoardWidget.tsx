@@ -20,7 +20,7 @@
  * record footer, sponsor slot). The Stadium Lane design is a DIFFERENT
  * visual language — big Anton display type, angled blue header banner,
  * per-team-color lane washes, a footer strip for record chase + sponsor —
- * and per CLAUDE.md's Template Design Workflow, "if a pixel value is in
+ * and per docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md's Template Design Workflow, "if a pixel value is in
  * the mockup, keep it," not blend it into an existing component's knobs.
  *
  * ── Structure — router + sibling scenes ─────────────────────────────────
@@ -93,9 +93,9 @@
  * SportElementWidgets.tsx uses (`injectScoreboardFonts`), which is safe
  * on Chromium-83 (a `<link rel=stylesheet>` parses fine; no `@import`
  * CSSOM, no modern-only API) and never touches a React-owned DOM node
- * (CLAUDE.md cross-browser rule #6 — this only APPENDS, never removes).
+ * (apps/web/CLAUDE.md cross-browser rule #6 — this only APPENDS, never removes).
  *
- * ── Chromium-83 / NovaStar Taurus safety (CLAUDE.md rule #10) ──────────
+ * ── Chromium-83 / NovaStar Taurus safety (apps/web/CLAUDE.md rule #10) ──────────
  * No `inset`/`inset-*` shorthand (physical top/right/bottom/left only),
  * no flex `gap` (margins instead), no `backdrop-filter`. Fixed
  * 1920×1080 natural scene + `useScaleToFit` transform:scale — the same

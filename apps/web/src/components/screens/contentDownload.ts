@@ -4,7 +4,7 @@
  *
  * ── Why this exists ──────────────────────────────────────────────────
  * A file of 8 MiB or more plays only once it is COMPLETELY on the screen
- * (readiness-gated playback, CLAUDE.md player rule 17: never streamed from
+ * (readiness-gated playback, apps/web/src/app/player/CLAUDE.md player rule 17: never streamed from
  * origin, never a lower-resolution stand-in). While it downloads, the glass
  * shows one of two things:
  *   • nothing to keep → the player's own "Downloading content" splash, proved

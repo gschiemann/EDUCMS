@@ -2,7 +2,7 @@
  * Elements-wave registry drift-catcher — Wave B / editor-crush B2+B3+B5
  * (2026-07-02).
  *
- * THE BUG CLASS THIS PINS: dead palette registration (CLAUDE.md rule #9).
+ * THE BUG CLASS THIS PINS: dead palette registration (apps/web/CLAUDE.md rule #9).
  * The 8 Decoration animations shipped complete on 2026-04-27 — widget,
  * renderer case, Properties editor, store canonicalization — but their only
  * "palette" listing was constants.ts WIDGET_GROUPS, which NO rendered

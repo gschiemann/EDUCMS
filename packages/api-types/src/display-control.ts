@@ -649,7 +649,7 @@ export const DISPLAY_CONTROL_WS_TYPE = 'DISPLAY_CONTROL';
  *
  * NOTE `issuedAt` rides HERE and never in the manifest: it is a per-request
  * clock value, and one of those in the manifest kills 304s fleet-wide
- * (CLAUDE.md manifest-cache rule 7).
+ * (packages/database/CLAUDE.md manifest-cache rule 7).
  */
 export interface DisplayControlWsPayload {
   /** POWER_ON identity shared with the authenticated native heartbeat backstop. */
@@ -1707,7 +1707,7 @@ export type DisplayVendorRecipeUpsertInput = z.infer<typeof DisplayVendorRecipeU
  * telemetry echo — this block is part of the ETag-hashed payload and is
  * stored verbatim in the per-screen manifest hot cache. One volatile field
  * here kills 304s fleet-wide and re-creates the 25 GB/mo Supabase egress the
- * cache was built to kill (CLAUDE.md → manifest content cache, rule 7).
+ * cache was built to kill (packages/database/CLAUDE.md → manifest content cache, rule 7).
  *
  * The player resolves "what time is it" itself; the server only says WHAT the
  * windows are.

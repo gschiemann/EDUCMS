@@ -17,7 +17,7 @@
  *
  * Taurus / Chromium-83 rules: no `inset`, no flex `gap`, no `backdrop-filter`,
  * longhand sides only; the box is sized by width/height off the canonical LED
- * canvas (`--led-w`), never by four sides (CLAUDE.md rule #10, third variant).
+ * canvas (`--led-w`), never by four sides (apps/web/CLAUDE.md rule #10, third variant).
  * `backgroundColor` is an inline hex so the banner paints opaque even if
  * Tailwind fails to load on the kiosk WebView.
  */

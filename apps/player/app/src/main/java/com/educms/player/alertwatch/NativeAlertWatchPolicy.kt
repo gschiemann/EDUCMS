@@ -51,7 +51,7 @@ import java.io.ByteArrayInputStream
  *  2. RAISE ONLY. [WatchAction] has no release member and nothing in this
  *     package can lower a hold. "No alert" from here is never an all-clear:
  *     the page, on a LIVE manifest, stays the only thing that releases
- *     (CLAUDE.md player rule 11). A hold nothing releases costs electricity;
+ *     (apps/api/src/emergency/CLAUDE.md player rule 11). A hold nothing releases costs electricity;
  *     a hold released by a guess costs someone their safety.
  *  3. UNKNOWN IS NOT AN ANSWER. A network failure, a timeout, a 401/403, a
  *     5xx, a body that is not a complete manifest — none is an alert and

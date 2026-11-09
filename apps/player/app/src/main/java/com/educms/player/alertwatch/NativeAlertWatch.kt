@@ -61,7 +61,7 @@ import java.util.concurrent.atomic.AtomicReference
  * ⚠️ RAISE ONLY. The one write this file makes to the emergency interlock is
  * [DisplayEmergency.raiseFromNativeWatch]. It never releases a hold and
  * never treats "no alert" as an all-clear; the page, on a LIVE manifest, is
- * the only thing that releases (CLAUDE.md player rule 11).
+ * the only thing that releases (apps/api/src/emergency/CLAUDE.md player rule 11).
  *
  * ⚠️ NO SECOND TOKEN WRITER (player rule 3). The device token is READ from
  * the canonical `edu_player`/`device_token` store exactly as

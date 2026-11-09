@@ -13,7 +13,7 @@
  * creatives yet". The widget lied about its own state: empty looked
  * populated, so the operator reasonably tried to edit text that has no
  * field behind it. His words: "added the first widget and i cant edit
- * anything on it, wtf are we doing here bro". That is CLAUDE.md §19, and
+ * anything on it, wtf are we doing here bro". That is docs/governance/AUDIT-SURFACE.md §19, and
  * the same class of lie produced this product's loudest complaint ever.
  *
  * ── THE RULE ──────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@
  * ── SIZING ────────────────────────────────────────────────────────────
  * These zones range from a 200px builder tile to a 3840px 4K wall, so the
  * panel measures its own box and scales from it. `vw`/`%` font sizing is
- * banned here for the same reason CLAUDE.md's template workflow bans it —
+ * banned here for the same reason docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md's template workflow bans it —
  * it reads the viewport, not the container, and a widget inside a
  * transform:scale'd scene gets it badly wrong.
  *
@@ -52,7 +52,7 @@
  * Inline styles only. There is deliberately no runtime <style> block here, so
  * this component has no scene CSS to route through the scene-css helper at all.
  * No `inset` shorthand, and never four physical sides in one
- * style object (CLAUDE.md rule #10, all three variants), no flex `gap`, no
+ * style object (apps/web/CLAUDE.md rule #10, all three variants), no flex `gap`, no
  * `backdrop-filter`.
  */
 

@@ -530,7 +530,7 @@ internal class SetupChecklistView(
      *
      * Anything that is not one of THIS card's live controls counts as
      * unparked — null, the root, the ScrollView, a detached row. See
-     * CLAUDE.md player rule 15: a focusable root holding focus is not
+     * apps/player/CLAUDE.md player rule 15: a focusable root holding focus is not
      * parked, it only looks parked.
      */
     private fun isFocusParked(): Boolean {

@@ -92,7 +92,7 @@ const REQUIRE_LOGIN = /^(1|true)$/i.test(process.env.A11Y_REQUIRE_LOGIN || '');
 const SEED_TENANT = '00000000-0000-0000-0000-000000000002';
 // Seeded system preset id (apps/api/src/templates/system-presets.ts) used to
 // audit the template builder route. "Animated Rainbow · Welcome" is the
-// flagship/gold-standard preset (CLAUDE.md Template Design Workflow) and its
+// flagship/gold-standard preset (docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md Template Design Workflow) and its
 // ANIMATED_WELCOME widget type is not in system-presets.ts's
 // RETIRED_LEGACY_WIDGET_TYPES set, so this id is about as stable as any in
 // the catalog. `pnpm db:seed` always (re)creates every id in
@@ -221,9 +221,9 @@ async function login(page: Page): Promise<boolean> {
 // a real, pre-existing backlog that this one CI-harness fix cannot also
 // fix: contrast/structure issues inside `apps/web/src/app/[schoolId]/
 // dashboard/**`, `screens/**`, and `templates/page.tsx` (explicitly owned by
-// other in-flight work per CLAUDE.md's Agent Dispatch Protocol at the time
+// other in-flight work per docs/governance/AGENT-DISPATCH.md's Agent Dispatch Protocol at the time
 // this wave shipped) and inside the emergency system (`/panic`,
-// `/[tenant]/emergency/broadcast` — CLAUDE.md: emergency changes need lead
+// `/[tenant]/emergency/broadcast` — CLAUDE.md §5: emergency changes need lead
 // sign-off, so this harness reports them rather than editing them). Making
 // errors DOWN-only-ratcheted, identically to the warning ratchet below,
 // keeps the zero-tolerance INTENT (any NEW error-level regression anywhere

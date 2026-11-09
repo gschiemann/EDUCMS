@@ -1,7 +1,7 @@
 /**
  * The companion line (2026-11-08, companionHealth.ts): the pure grading, then
  * the REAL ScreenDetailDrawer's Device card ("a green test is not proof of a
- * mount", CLAUDE.md #9). Every fixture is made up.
+ * mount", apps/web/CLAUDE.md #9). Every fixture is made up.
  */
 import * as React from 'react';
 import { act, render, screen as rtl } from '@testing-library/react';

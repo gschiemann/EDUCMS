@@ -10,7 +10,7 @@ import org.json.JSONObject
  * (PlaybackLeaseTest, NativeFirstBoundaryTest); FaceVideoBox is the Android
  * half that acts on these decisions.
  *
- *  • PROTOCOL 4 rides the EXISTING `sharedVideoPrepare` (CLAUDE.md player rule
+ *  • PROTOCOL 4 rides the EXISTING `sharedVideoPrepare` (apps/player/CLAUDE.md player rule
  *    9: no new bridge method). A `version: 4` message carries an `op`:
  *      {version:4, op:"intend",  screenId, revision, sha256, assetId, start:"now"|"boundary", lease}
  *      {version:4, op:"release", lease, at:"now"|"boundary"}

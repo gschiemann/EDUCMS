@@ -46,7 +46,7 @@ import { Logger } from '@nestjs/common';
  * NOTE ON DEPENDENCIES: this is a hand-rolled ~1 KB store rather than
  * `connect-redis` on purpose — it reuses the ioredis client the app already
  * owns, adds no package (no lockfile churn, no Alpine/Docker build risk per
- * CLAUDE.md's deploy-reliability list), and lets the fail-soft semantics
+ * docs/DEPLOY.md's deploy-reliability list), and lets the fail-soft semantics
  * above be explicit instead of inherited.
  */
 

@@ -2,7 +2,7 @@
 /*
  * Inset-serialization regression guard — Rule #10, THIRD variant (2026-07-03).
  *
- * Background (see CLAUDE.md rule #10 for variants 1 & 2): NovaStar Taurus LED
+ * Background (see apps/web/CLAUDE.md rule #10 for variants 1 & 2): NovaStar Taurus LED
  * controllers ship Chromium 83, which doesn't understand the CSS `inset`
  * shorthand (added in Chrome 87). `position: absolute` with no top/right/
  * bottom/left collapses a box to 0×0 — invisible content.

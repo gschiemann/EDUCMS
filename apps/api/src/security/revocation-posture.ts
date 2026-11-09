@@ -22,7 +22,7 @@
  *   (GET/HEAD) request, for at most REVOCATION_CONTINUITY_GRACE_MS after the
  *   outage began.
  *
- * WHY THAT ONE EXISTS. `GET /screens/:id/manifest` is CLAUDE.md emergency
+ * WHY THAT ONE EXISTS. `GET /screens/:id/manifest` is apps/api/src/emergency/CLAUDE.md emergency
  * safeguard #4: the HTTP-polling backstop that delivers a lockdown when the
  * push channel is down. It is served from an in-process hot cache, so it
  * keeps working while Postgres is unreachable. Failing it closed would take

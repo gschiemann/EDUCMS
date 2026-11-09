@@ -19,7 +19,7 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  *
  *   This is the same class of blind spot that shipped the 2026-05-09
  *   "works in Chrome, dead in Safari" holiday-bridge regression for two
- *   months. CLAUDE.md cross-browser rule #4: "When adding a new test
+ *   months. apps/web/CLAUDE.md cross-browser rule #4: "When adding a new test
  *   surface that touches DOM, port the WebKit check pattern." This is
  *   that port, for the React widget surface.
  *

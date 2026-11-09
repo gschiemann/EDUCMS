@@ -19,7 +19,7 @@
  * apps/api/src/feeds/feeds.controller.ts for why that route has no auth
  * guard (same reasoning as /proxy/web).
  *
- * Polling discipline (CLAUDE.md mobile-perf standard):
+ * Polling discipline (apps/web/CLAUDE.md mobile-perf standard):
  *   - Poll only while the tab/board is visible — a backgrounded dashboard
  *     tab must not keep firing requests. `perf-allow`: on the LIVE PLAYER
  *     specifically, a signage board is meant to keep showing fresh content
@@ -107,7 +107,7 @@ export function usePolledFeed<T>(
     };
 
     const tick = async () => {
-      // Never poll a backgrounded tab (CLAUDE.md mobile-perf standard).
+      // Never poll a backgrounded tab (apps/web/CLAUDE.md mobile-perf standard).
       // Re-check on wake via the visibilitychange listener below instead
       // of burning a timer while hidden.
       if (!isVisible()) {

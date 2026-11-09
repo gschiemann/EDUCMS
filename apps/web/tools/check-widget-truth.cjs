@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * WIDGET TRUTH guard — CLAUDE.md §19, the half no gate has ever covered.
+ * WIDGET TRUTH guard — docs/governance/AUDIT-SURFACE.md §19, the half no gate has ever covered.
  *
  * ── THE BUG (2026-09-11) ─────────────────────────────────────────────────
  * The operator added his first widget to a gym tenant — FITNESS_AD_BANNER —

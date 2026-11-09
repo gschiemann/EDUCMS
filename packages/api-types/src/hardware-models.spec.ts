@@ -8,7 +8,7 @@
  * future (e.g. to `Partial<Record<…>>`), the runtime check still fires
  * loudly.
  *
- * 2026-05-27 — co-located with the source per CLAUDE.md "Testing"
+ * 2026-05-27 — co-located with the source per docs/ORIENTATION.md "Testing"
  * convention: `*.spec.ts` next to the file under test. The api-types
  * tsconfig excludes `*.spec.ts` from the published build (only the
  * compiled .d.ts / .js ship to the API and web). Jest is opt-in here;

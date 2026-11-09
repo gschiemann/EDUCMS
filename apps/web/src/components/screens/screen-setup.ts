@@ -153,7 +153,7 @@ export function describeStep(step: SetupStep): {
  * `openSetupChecklist` landed in the v1.1.6 APK. Below that the frame is
  * signed, delivered and then dropped as `no-bridge` on the panel — a button
  * with a 100% failure rate, which is the one thing this codebase's display
- * panel is not allowed to render (CLAUDE.md §20 / the null-verdict rule in
+ * panel is not allowed to render (docs/governance/AUDIT-SURFACE.md §20 / the null-verdict rule in
  * ScreenDisplayControls).
  *
  * Unparseable or absent → false. A screen that has not told us its version

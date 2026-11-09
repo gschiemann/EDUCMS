@@ -9,7 +9,7 @@
  *    channel was dead never received the operator's click — the exact hole
  *    the wedge cron closed for its own pushes (AUTO_RECOVERY_PUSH_DEAD).
  *    The push now also stamps `pendingRefreshAt`, which the manifest
- *    carries as `refreshRequestedAt`. Per CLAUDE.md player rule 12 a change
+ *    carries as `refreshRequestedAt`. Per apps/web/src/app/player/CLAUDE.md player rule 12 a change
  *    operators can observe ships tested per shape, never silently — that is
  *    what these cases are.
  *

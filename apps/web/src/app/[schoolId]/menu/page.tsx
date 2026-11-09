@@ -11,7 +11,7 @@
  * One-click revert-to-inherited. One-click 86 (per cell, or all
  * locations for an item).
  *
- * UX time-budget (CLAUDE.md §20): the core task — change one item's
+ * UX time-budget (docs/governance/AUDIT-SURFACE.md §20): the core task — change one item's
  * price at one location — is a single click into the cell, type, tab
  * out. No forms, no modals for the common case. Bulk + 86 are one click
  * each. Defaults do the work: every cell inherits until the operator

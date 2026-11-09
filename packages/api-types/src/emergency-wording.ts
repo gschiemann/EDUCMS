@@ -29,7 +29,7 @@
  * explain the words to a Spanish or Chinese-speaking operator.
  *
  * ⚠️ Emergency content. Any change to these words needs the owner's sign-off
- * (CLAUDE.md "WARNING: Emergency System Changes") — and a change here changes
+ * (apps/api/src/emergency/CLAUDE.md "WARNING: Emergency System Changes") — and a change here changes
  * every screen that has no content of its own for that alert type.
  */
 

@@ -6,7 +6,7 @@
  * and the unit test renders the editor WITHOUT the shell. Only a browser can
  * answer "does the rail actually appear at 1440, does the editor survive at
  * 390, and does WebKit render the same thing Chromium does" — the exact
- * class of bug CLAUDE.md's cross-browser rule exists for.
+ * class of bug apps/web/CLAUDE.md's cross-browser rule exists for.
  *
  * Every API call is intercepted (the suite's contract — see
  * apps/web/playwright.config.ts); nothing here touches a database.

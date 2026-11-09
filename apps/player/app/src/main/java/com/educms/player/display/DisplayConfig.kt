@@ -61,7 +61,7 @@ import org.json.JSONObject
  * drops unknown keys, so it costs nothing.
  *
  * ─────────────────────────────────────────────────────────────────────
- * MANIFEST-CACHE RULE (CLAUDE.md rule 7) — READ BEFORE EXTENDING
+ * MANIFEST-CACHE RULE (packages/database/CLAUDE.md, manifest content cache rule 7) — READ BEFORE EXTENDING
  * ─────────────────────────────────────────────────────────────────────
  * This block is part of the ETag-hashed manifest payload, so it must
  * carry ONLY STABLE fields. Schedule rows, a brightness policy and a

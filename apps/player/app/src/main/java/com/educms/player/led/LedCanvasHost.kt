@@ -42,7 +42,7 @@ object LedCanvasHost {
      * manifest and reaches the WEB player's localStorage (`edu_canvasW`),
      * which Kotlin cannot read, and this wave deliberately adds no bridge
      * method for it (a new method is a three-file atomic contract and a
-     * fleet-floor problem — see CLAUDE.md player rule 9). Reading them here
+     * fleet-floor problem — see apps/player/CLAUDE.md player rule 9). Reading them here
      * means the day a writer exists, the rule needs no change. Until then a
      * chained poster falls to rule 4 and draws in its LEFTMOST panel —
      * visible and operable, which is the whole point, rather than exact.

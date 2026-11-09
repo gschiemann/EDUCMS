@@ -1741,7 +1741,7 @@ function CalibrationFlashOverlay({
 // proof, per Standard Audit Surface §21.
 //
 // Taurus-safe by construction: longhand absolute positioning (never the
-// `inset` shorthand — CLAUDE.md #10), solid rgba background (no
+// `inset` shorthand — apps/web/CLAUDE.md #10), solid rgba background (no
 // backdrop-filter on Chromium 83), margins instead of flex `gap`.
 // The sweep/flash are driven via refs from a rAF loop (no React re-render
 // per frame); numeric readouts refresh on a 250ms interval.
@@ -2634,7 +2634,7 @@ type Phase = 'registering' | 'pairing' | 'connecting' | 'playing' | 'offline' | 
  * cutoff class Greg caught on the live 960×1080 LED).
  *
  * transform:scale is Chromium-83-safe (Taurus). longhand top/right/bottom/left,
- * no `inset` (CLAUDE.md rule #10). Re-measures on resize + font load. A
+ * no `inset` (apps/web/CLAUDE.md rule #10). Re-measures on resize + font load. A
  * one-frame unscaled flash self-corrects instantly.
  *
  * Mirrors the same component in apps/web/src/components/player/EmergencyOverlay.tsx
@@ -3632,7 +3632,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // `remoteConfirm.ts`, drawing + keys in `RemoteDialog.tsx`, mounted INSIDE
   // the paired card. Parked on the safe answer; Back cancels it and nothing
   // else; it closes — as "cancel" — when the surface that opened it closes or
-  // an alert reaches the glass (CLAUDE.md player rule 15).
+  // an alert reaches the glass (apps/player/CLAUDE.md player rule 15).
   /** The control that opened the question — the remote is parked back on it. */
   const remoteDialogOpenerRef = useRef<HTMLElement | null>(null);
   /** Runs an answer (exactly once per question). Set by a layout effect below `handleUnpair`, re-armed after every commit. */
@@ -12065,7 +12065,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // pushed — the same class of miss the {otaOverlay} audit notes below
   // document three times. Built once here; mounted in the template branch,
   // the media branch and the tile branch. top/right/bottom/left longhand,
-  // not `inset` — Chromium-83 Taurus, CLAUDE.md #10.
+  // not `inset` — Chromium-83 Taurus, apps/web/CLAUDE.md #10.
   const updatePromptNode = showUpdatePrompt ? (
     // role="presentation": this wrapper only CONTAINS clicks/keys so they never
     // bubble into the canvas (info-card opener fix); its buttons are the controls.
@@ -12243,7 +12243,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   };
   // Plain black, sized to the canvas — what a quiet screen shows where the
   // splash / a card used to be. Two sides + size only (never four sides:
-  // CLAUDE.md #10, the inset-serialization landmine).
+  // apps/web/CLAUDE.md #10, the inset-serialization landmine).
   const glassHoldNode = (
     <div
       data-edu-glass-hold="1"
@@ -12286,7 +12286,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // and no error at all (Chromium 83 probe, c83-regfail.png). Every
         // other fixed root sizes from --led-w/--led-h; so does this one now.
         // Three sides only (top/left + width): a four-side object would
-        // re-serialize to the `inset` shorthand (CLAUDE.md #10).
+        // re-serialize to the `inset` shorthand (apps/web/CLAUDE.md #10).
         style={{
           top: 'calc(var(--led-h, 100vh) - 232px)',
           left: 'max(16px, calc((var(--led-w, 100vw) - 576px) / 2))',
@@ -12369,7 +12369,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // class already computed, multiplied by `--splash-k` — identical at ≤1920,
   // proportional above it. Only two physical sides are ever set (bottom +
   // right / top + right), so these objects can never serialize to the
-  // Chromium-83-hostile `inset` shorthand (CLAUDE.md rule #10, 3rd variant).
+  // Chromium-83-hostile `inset` shorthand (apps/web/CLAUDE.md rule #10, 3rd variant).
   // A dashboard preview has no device credential by design: never warn there (2026-11-02).
   const unsignedWsBanner = unsignedWsTokenWarning && !glassQuiet && !isPreviewMode() ? (
     <div
@@ -12573,7 +12573,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // Plus zIndex 9990, BELOW EmergencyOverlay's 9999, so the overlay would
   // lose the stacking contest anyway.
   //
-  // ⚠️ TAURUS (CLAUDE.md #10): longhand top/right/bottom/left, never `inset` /
+  // ⚠️ TAURUS (apps/web/CLAUDE.md #10): longhand top/right/bottom/left, never `inset` /
   // `inset-0`. All four are the SAME value, which is the uniform case the
   // Chromium-83 polyfill is built to force-zero — the non-uniform
   // serialization landmine (variant 3) does not apply.
@@ -12654,7 +12654,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // LAYOUT viewport — ~720×1280 CSS px on the 3× 2160×3840 WebViews
           // — so a dashboard BLANK covered one third of the panel. Size from
           // the canonical canvas like every other player root; two sides
-          // only (never the four-side shorthand — CLAUDE.md rule #10).
+          // only (never the four-side shorthand — apps/web/CLAUDE.md rule #10).
           width: 'var(--led-w, 100vw)',
           height: 'var(--led-h, 100vh)',
           zIndex: 9990,
@@ -13356,7 +13356,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // is the same source BuilderZone and the EXTERNAL_HTML sender
           // use, so this cannot drift again.
           //
-          // DELIBERATE BEHAVIOUR CHANGE, named per CLAUDE.md player rule
+          // DELIBERATE BEHAVIOUR CHANGE, named per apps/web/src/app/player/CLAUDE.md player rule
           // 12: the player now enforces six per-field/zone properties it
           // used to ignore. Every one of them is an override the operator
           // set on purpose and already sees in the builder.
@@ -13807,7 +13807,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // attribute — never four sides — so this object can NEVER serialize
         // to `inset` at all. Zero behavior change: an unset side and an
         // explicit 'auto' side compute identically for a `position:fixed`
-        // box whose size comes from width/height. See CLAUDE.md rule #10.
+        // box whose size comes from width/height. See apps/web/CLAUDE.md rule #10.
         width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)',
         height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)',
         // Protocol 3 (2026-10-12): while a native slide is on glass the root
@@ -14547,7 +14547,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             // Chromium-83 (NovaStar Taurus) compatibility — min/max
             // are Chrome 79+, calc + var are universal, NO cqi/cqw
             // (container queries are Chrome 105+ and would crash
-            // the Taurus). CLAUDE.md rule #10 territory.
+            // the Taurus). apps/web/CLAUDE.md rule #10 territory.
             //
             // Padding: 8px min, 32px max, 2.5% of canvas width.
             //   320 panel → 8px (clamped to min)
@@ -16027,7 +16027,7 @@ function OtaProgressOverlay({
  * Without scaling, a 1080×1920 template renders at 1080×1920 inside a
  * 960×1080 LED canvas — the bottom-right gets clipped off-LED.
  *
- * Pattern matches CLAUDE.md "Template Design Workflow" section: wrap
+ * Pattern matches docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md "Template Design Workflow" section: wrap
  * the scene in a fixed-size design-resolution div, wrap that in a
  * container that measures its parent and applies transform: scale(N)
  * to fit. fit-contain (Math.min) preserves aspect ratio and never

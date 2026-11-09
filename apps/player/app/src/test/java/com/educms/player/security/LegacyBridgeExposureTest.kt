@@ -254,7 +254,7 @@ class LegacyBridgeExposureTest {
     /**
      * The compat shim is INLINE JAVASCRIPT shipped to a WebView, which is the
      * exact class of thing that broke every holiday board in Safari for two
-     * months (CLAUDE.md cross-browser rule #2: no inline JS you have not
+     * months (apps/web/CLAUDE.md cross-browser rule #2: no inline JS you have not
      * verified parses). It is hand-assembled in Kotlin, so a stray edit can
      * make it unparseable with no compiler anywhere to notice.
      *

@@ -1,7 +1,7 @@
 /**
  * E3 (CRUSH Wave E, 2026-07-03) — "Put on a screen" from inside the editor.
  *
- * Proof (per CLAUDE.md §21/§19 — a runnable proof, not a static trace) that
+ * Proof (per docs/governance/AUDIT-SURFACE.md §21/§19 — a runnable proof, not a static trace) that
  * the SaveStatusChip morphs into the express-lane CTA described in
  * docs/research/2026-07-01-launch-sprint/05-EDITOR-CRUSH-LENSES.md:353
  * ("Saved ✓ — Put on a screen →"), reusing the exact putOnScreen handler

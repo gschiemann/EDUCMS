@@ -47,7 +47,7 @@
  * ── TAURUS / CHROMIUM-83 ──────────────────────────────────────────────
  * Long-hand sides only, no flex `gap` (margins), no `backdrop-filter`, and a
  * positioned box never carries four non-uniform sides in one style object
- * (CLAUDE.md rule #10, all three variants).
+ * (apps/web/CLAUDE.md rule #10, all three variants).
  */
 import React, { useEffect, useState } from 'react';
 import { formatScore, formatSportClock, overtimeLabel, sportForGame } from '@cms/api-types';

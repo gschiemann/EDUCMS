@@ -63,7 +63,7 @@ import java.io.File
  * become a per-poll field on the Screen row: high-frequency Screen
  * telemetry columns invalidate the manifest hot-cache and silently
  * re-create the 25 GB/mo Supabase egress that cache was built to kill
- * (see CLAUDE.md → manifest content cache, rule 7).
+ * (see packages/database/CLAUDE.md → manifest content cache, rule 7).
  */
 object DisplayCapabilityProbe {
 

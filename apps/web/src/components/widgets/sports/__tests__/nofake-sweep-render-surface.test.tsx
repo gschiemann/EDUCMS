@@ -31,7 +31,7 @@
 import { render, screen } from '@testing-library/react';
 import { WidgetPreview } from '../../WidgetRenderer';
 // Side-effecting import registers every sb-*/scoreboard-cts-*/ribbon-main
-// variant into the variants.ts Map (CLAUDE.md rule #9) — without it,
+// variant into the variants.ts Map (apps/web/CLAUDE.md rule #9) — without it,
 // `config.variant` resolves to nothing and WidgetPreview silently falls
 // through to a generic widget, hiding the very regression this suite
 // guards against.

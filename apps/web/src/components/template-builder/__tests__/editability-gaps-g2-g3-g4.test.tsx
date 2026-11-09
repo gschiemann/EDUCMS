@@ -5,7 +5,7 @@
  * docs/research/2026-05-28-opus48-audit/ are closed. Each test mounts the REAL
  * `ContentFields` switch — the live editor surface (`BuilderShell` mounts it via
  * `<PropertiesPanel>` → it dispatches the same switch) — so a green run means an
- * operator can actually perform the edit, per CLAUDE.md rule #9 (anti-costume)
+ * operator can actually perform the edit, per apps/web/CLAUDE.md rule #9 (anti-costume)
  * and §19 ("the operator must actually be able to click the text and edit it").
  *
  *   G2  — universal font-SIZE control. The render path already injects

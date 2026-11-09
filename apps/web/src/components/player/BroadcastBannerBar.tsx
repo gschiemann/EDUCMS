@@ -15,7 +15,7 @@
  * that is also what an older player does with a message that carries the new
  * field.
  *
- * Chromium-83 safe (CLAUDE.md rule 10): no `inset`, no flex `gap` (margins
+ * Chromium-83 safe (apps/web/CLAUDE.md rule 10): no `inset`, no flex `gap` (margins
  * instead), transform animation only.
  */
 import { useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type Ref } from 'react';

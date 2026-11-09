@@ -1,6 +1,6 @@
 /**
  * K-12 launch audit F29 (2026-09-27) — the Main Scoreboard's source modes,
- * proven through the real `WidgetPreview` dispatcher (CLAUDE.md rule #9).
+ * proven through the real `WidgetPreview` dispatcher (apps/web/CLAUDE.md rule #9).
  *
  * Acceptance from the register: "Type a sample score, bind a game,
  * save/reopen and score from the console. Live mode updates correctly; an

@@ -384,7 +384,7 @@ class BootProgressTracker {
  * ⚠️ EVERY ONE OF THESE IS A REAL FIELD SCAR, NOT A HYPOTHETICAL.
  *  • An emergency hold means a lockdown/evacuate alert is on the wall. A
  *    diagnostic card over it would be the single worst thing this feature
- *    could do (CLAUDE.md: emergency logic first, always).
+ *    could do (CLAUDE.md §5: emergency logic first, always).
  *  • An install/upgrade confirmation is a SYSTEM dialog the operator is
  *    mid-way through; covering it strands the companion upgrade that the
  *    relaunch program exists to finish.

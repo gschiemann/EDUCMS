@@ -1,7 +1,7 @@
 /**
  * Templates Gallery — Calm v1 · the card contract (§4.2, §6, §7, §10.5).
  *
- * Mounts the REAL exported `GalleryCard` (CLAUDE.md rule #9 — the exact
+ * Mounts the REAL exported `GalleryCard` (apps/web/CLAUDE.md rule #9 — the exact
  * component the gallery grid renders, never a re-implementation that can
  * drift), and pins the rules a future "quick tidy-up" would otherwise
  * quietly undo:

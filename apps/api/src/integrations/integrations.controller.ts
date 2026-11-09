@@ -1,6 +1,6 @@
 /**
  * IntegrationsController — public surface of the AI Integration
- * Concierge (per CLAUDE.md vision section).
+ * Concierge (per docs/product/CONCIERGE.md vision section).
  *
  * Two endpoints:
  *   POST /api/v1/integrations/discover   — body { url: string }

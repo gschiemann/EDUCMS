@@ -30,7 +30,7 @@ import { RedisService } from './redis.service';
  *    in the log. It NEVER degrades to "do nothing": a missing Redis must not
  *    silently stop the offline scanner, the license reconcile or the proof-
  *    of-play sampler, which is exactly today's behaviour on every deploy
- *    that has no Redis plugin (CLAUDE.md: "Redis missing → API boots
+ *    that has no Redis plugin (docs/DEPLOY.md: "Redis missing → API boots
  *    anyway"). The cost of degraded mode is that two replicas may both act —
  *    i.e. precisely today's pre-lease behaviour, no worse.
  *
