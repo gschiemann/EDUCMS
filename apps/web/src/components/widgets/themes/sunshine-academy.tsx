@@ -281,7 +281,7 @@ export function SunshineAcademyCalendar({ config, compact }: { config: any; comp
           display: 'flex', alignItems: 'center'
         }}>
           {/* em, and a per-child margin rather than a flex `gap` — this is a
-              widget path and Chromium 83 has no flex gap (CLAUDE.md #10). */}
+              widget path and Chromium 83 has no flex gap (apps/web/CLAUDE.md rule 10). */}
           <span style={{ width: '0.32em', height: '0.32em', marginRight: '0.34em', borderRadius: '50%', background: SUNSHINE_DOT_COLORS[i % SUNSHINE_DOT_COLORS.length], flexShrink: 0 }} />
           {evt}
         </div>

@@ -5,7 +5,7 @@
  * it — that a screen with no report really renders NOTHING in the DOM, and
  * that "Open setup on this panel" posts the wire shape the API accepts.
  * That gap is exactly where "green CI, nothing changed in the operator's
- * UI" bugs live in this repo (CLAUDE.md §9), and the sibling panel's own
+ * UI" bugs live in this repo (apps/web/CLAUDE.md rule 9), and the sibling panel's own
  * history includes a control that posted `{action:'blank'}` at an API that
  * only takes SCREAMING_CASE and failed 100% of the time. Casing gets a
  * test here for the same reason.

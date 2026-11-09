@@ -346,7 +346,7 @@ const CSS = `
      middle of an otherwise black 4K board. Rows now take their natural height
      and stack from the top; the type sizing below is what fills the board.
      NOTE: no flex 'gap' here - this is a widget path, so Chromium-83 rules
-     apply (CLAUDE.md #10). Row spacing is a per-child margin instead. */
+     apply (apps/web/CLAUDE.md rule 10). Row spacing is a per-child margin instead. */
   justify-content: center;
   flex: 1 1 0; min-height: 0;
   padding: 8px clamp(10px, 2.5cqw, 24px);
@@ -359,7 +359,7 @@ const CSS = `
   display: flex; align-items: center;
   gap: clamp(8px, 2cqw, 18px);
   flex: 0 0 auto; min-height: 0;
-  margin-bottom: 0.34em;   /* em, not cqh — Chromium-83 has no container queries (CLAUDE.md #10), and em already tracks the cqh-driven font-size */
+  margin-bottom: 0.34em;   /* em, not cqh — Chromium-83 has no container queries (apps/web/CLAUDE.md rule 10), and em already tracks the cqh-driven font-size */
   padding: clamp(9px, 1.8cqh, 26px) clamp(8px, 1.5cqw, 14px);
   border-bottom: 1px solid rgba(255,255,255,0.055);
   border-radius: 6px;

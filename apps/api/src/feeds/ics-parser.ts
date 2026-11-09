@@ -7,8 +7,8 @@
  * simple line-oriented format, so a focused parser is a few hundred lines
  * and avoids a new lockfile entry for something this bounded.
  *
- * Scope (documented honestly, not silently dropped — CLAUDE.md Standard
- * Audit Surface §16 "swallowed-error sweep" applies to recurrence too):
+ * Scope (documented honestly, not silently dropped — docs/governance/AUDIT-SURFACE.md
+ * §16 "swallowed-error sweep" applies to recurrence too):
  *   - VEVENT DTSTART/DTEND/SUMMARY/LOCATION — full support, all-day (VALUE=DATE)
  *     and timed (VALUE=DATE-TIME, with or without TZID) forms.
  *   - RRULE — we expand FREQ=DAILY/WEEKLY/MONTHLY/YEARLY with a plain

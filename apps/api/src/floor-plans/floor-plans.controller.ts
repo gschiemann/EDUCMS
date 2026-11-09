@@ -26,7 +26,7 @@
  * Security:
  *   - All endpoints require an authed user with role SUPER_ADMIN /
  *     DISTRICT_ADMIN / SCHOOL_ADMIN. CONTRIBUTORs and viewers cannot
- *     place screens (operational security per CLAUDE.md Sprint 8b spec).
+ *     place screens (operational security per the Sprint 8b spec in docs/roadmap/ROADMAP.md).
  *   - tenantId is taken from req.user, never the request body. Every
  *     mutation re-checks the target's tenant matches the caller.
  *   - Image uploads go through SupabaseStorageService.upload (same

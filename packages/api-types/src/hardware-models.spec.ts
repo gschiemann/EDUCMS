@@ -68,7 +68,7 @@ describe('hardware-models catalog', () => {
     expect(ep6n.caps.fanless).toBe(true);
   });
 
-  it('NovaStar Taurus reports Chromium 83 — CLAUDE.md rule #10 trigger', () => {
+  it('NovaStar Taurus reports Chromium 83 — apps/web/CLAUDE.md rule 10 trigger', () => {
     expect(HARDWARE_CATALOG['novastar-taurus'].caps.chromiumMin).toBe(83);
   });
 

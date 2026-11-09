@@ -549,8 +549,8 @@ for (const t of REACHABILITY_TILES) {
 // Canva's Elements tray is shapes + icons + decorations; before this block
 // VenueOS had NO static shapes, NO icon library, and the 8 finished
 // Decoration animations were dead-registered (listed only in constants.ts
-// WIDGET_GROUPS, which no rendered surface imports — the exact CLAUDE.md
-// rule-#9 WidgetPalette class). Registered EARLY (right after the basic
+// WIDGET_GROUPS, which no rendered surface imports — the exact apps/web/CLAUDE.md
+// rule-9 WidgetPalette class). Registered EARLY (right after the basic
 // content tiles) so elements sit near the top of the "All widgets" stream.
 // All previewOnly: the tile render doubles as a live preview, the canvas
 // dispatches through WidgetRenderer's SHAPE/ICON/DECORATION cases.

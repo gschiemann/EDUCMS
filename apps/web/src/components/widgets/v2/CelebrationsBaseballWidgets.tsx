@@ -109,7 +109,7 @@ export function CelBaseballStrikeoutWidget({ config, live = true, height = 480 }
               Chromium-83 polyfill's attribute-substring selector for a
               leading-zero inset value, force-zeroing all sides. Fixed to
               3 sides + explicit width (100% - 20% - 38% = 42%) —
-              identical computed geometry. See CLAUDE.md rule #10
+              identical computed geometry. See apps/web/CLAUDE.md rule 10
               (2026-07-03 entry). */}
           <div style={{ position: 'absolute', left: '20%', top: 0, bottom: 0, width: '42%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {[0, 1, 2].map(i => (

@@ -1084,7 +1084,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                 at the bottom of the left column. `backdrop-blur`
                 also dropped — Chromium 83 (NovaStar Taurus) doesn't
                 honor it reliably and modern engines render this fine
-                with a solid bg. See CLAUDE.md rule #10. */}
+                with a solid bg. See apps/web/CLAUDE.md rule 10. */}
             <div className="bg-slate-50 rounded-md p-3 border border-slate-200 shadow-sm flex gap-2 items-center">
               <Button variant="outline" onClick={() => runScrape()} disabled={scraping}>
                 <RefreshCw className={cn('h-4 w-4 mr-1.5', scraping && 'animate-spin')} />

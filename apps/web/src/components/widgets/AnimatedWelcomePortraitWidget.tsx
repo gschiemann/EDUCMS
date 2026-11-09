@@ -24,7 +24,7 @@
  *  1080×1920 portrait canvas — header strip, weather+countdown row,
  *  big cloud announcement, teacher+birthdays row, wavy ticker.
  *
- *  DO NOT regress to flat rectangles — see CLAUDE.md Template Design
+ *  DO NOT regress to flat rectangles — see docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md Template Design
  *  Workflow "One template at a time, with a real iteration loop".
  * ════════════════════════════════════════════════════════════════
  */

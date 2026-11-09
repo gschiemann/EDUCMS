@@ -143,7 +143,7 @@ export class SessionController {
     }
     const actor = (req as any).user;
     const userId: string | undefined = actor?.userId || actor?.id;
-    // Machine identities have their own credential lifecycles (CLAUDE.md
+    // Machine identities have their own credential lifecycles (apps/web/src/app/player/CLAUDE.md
     // player rules 1-3). They never get a browser session cookie.
     if (!userId || actor?.kind === 'api-key' || actor?.kind === 'device') {
       throw new UnauthorizedException({

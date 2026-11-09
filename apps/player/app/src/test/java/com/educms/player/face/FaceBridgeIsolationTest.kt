@@ -91,7 +91,7 @@ class FaceBridgeIsolationTest {
             "NativeBridgeChannel.METHODS changed size. The double-sided work must not add a " +
                 "method NAME — a new name has to stay out of KNOWN_METHODS until the fleet floor " +
                 "includes the APK that implements it, or manifest-less channel devices lose the " +
-                "call silently (CLAUDE.md player rule 9).",
+                "call silently (apps/player/CLAUDE.md rule 9).",
             // 30 -> 32 (2026-09-28): Website Tabs added webTabsShow + webTabsHide through the
             // full three-file contract, both kept out of KNOWN_METHODS until the fleet floor
             // includes the APK that implements them.

@@ -152,7 +152,7 @@ function StarBar({
     >
       {row(mutedColor)}
       {/* top / left / width only — three sides can never serialise to the
-          `inset` shorthand (CLAUDE.md rule #10, the 2026-07-03 variant). */}
+          `inset` shorthand (apps/web/CLAUDE.md rule 10, the 2026-07-03 variant). */}
       <span
         style={{
           position: 'absolute',

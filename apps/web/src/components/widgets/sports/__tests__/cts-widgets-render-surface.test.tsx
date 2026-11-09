@@ -35,8 +35,8 @@ import { render, screen } from '@testing-library/react';
 import { WidgetPreview } from '../../WidgetRenderer';
 // Side-effecting import registers 'scoreboard-cts-ribbon' + the composable
 // CTS tile variants into the variants.ts Map — same convention
-// sports-render-surface.test.tsx uses for 'scoreboard-main' (CLAUDE.md
-// rule #9: without this, `config.variant` resolves to nothing and
+// sports-render-surface.test.tsx uses for 'scoreboard-main' (apps/web/CLAUDE.md
+// rule 9: without this, `config.variant` resolves to nothing and
 // WidgetPreview silently falls through to the generic non-sport
 // ScoreboardWidget, hiding the very regression this suite guards).
 import '../../variants-register';
@@ -186,7 +186,7 @@ function expectNoInsetOrGapShorthand(container: HTMLElement) {
   });
 }
 
-describe('task #290 — Chromium-83 / Taurus safety (CLAUDE.md rule #10)', () => {
+describe('task #290 — Chromium-83 / Taurus safety (apps/web/CLAUDE.md rule 10)', () => {
   it('the CtsScoreboard neutral render never uses inset/gap shorthand', () => {
     const { container } = renderCts('scoreboard-cts-ribbon', {}, { renderSurface: 'player', live: true });
     expectNoInsetOrGapShorthand(container);

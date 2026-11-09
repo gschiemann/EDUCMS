@@ -20,7 +20,7 @@
  *  - Birthdays    → confetti burst + cake
  *  - Ticker       → bright sunset strip
  *
- *  DO NOT regress to rectangles-with-shadows. See CLAUDE.md
+ *  DO NOT regress to rectangles-with-shadows. See docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md
  *  "Template Design Workflow" for the gold standard rules.
  * ════════════════════════════════════════════════════════════════
  */

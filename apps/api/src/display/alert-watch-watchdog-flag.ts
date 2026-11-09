@@ -15,7 +15,7 @@
  *
  * `on` wins over `observe` for the same screen; a typo enables nothing; a
  * screen the env does not name gets NO key, so no other screen's payload hash
- * moves (CLAUDE.md manifest-cache rule). Carried on the manifest's `display`
+ * moves (packages/database/CLAUDE.md manifest-cache rule 7). Carried on the manifest's `display`
  * block as `alertWatchWatchdog: "on" | "observe"`; the Player copies it into
  * the stamp it writes for the Manager, which does nothing without it.
  *

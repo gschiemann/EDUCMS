@@ -12,8 +12,8 @@ import { Toaster } from 'sonner';
  * hotkey, and a `@media (prefers-reduced-motion)` block that kills every
  * transition/animation on the toast (verified in its bundled stylesheet).
  * It injects its own <style> tag rather than mutating one React rendered,
- * so it can't trip the React-owned-<head>-node crash class (CLAUDE.md
- * cross-browser rule #6).
+ * so it can't trip the React-owned-<head>-node crash class (apps/web/CLAUDE.md
+ * cross-browser rule 6).
  *
  * ⚠️ LIFE-SAFETY LAYERING — `zIndex: 55`. The dashboard EmergencyOverlay
  * (components/layout/EmergencyOverlay.tsx) is `z-[60]`, and because its

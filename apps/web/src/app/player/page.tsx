@@ -13541,7 +13541,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             there'd be no "Back" destination and it isn't the dead-end bug.
 
             Taurus-safe: longhand top/right/bottom/left (no `inset`), no
-            flex `gap` (margins instead), per CLAUDE.md #10. */}
+            flex `gap` (margins instead), per apps/web/CLAUDE.md rule 10. */}
         {isInteractive && zones.length === 0 && activeSceneId && defaultScene?.id && activeSceneId !== defaultScene.id && (
           // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
           <div
@@ -13599,7 +13599,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             dashboard pushes CHECK_FOR_UPDATES. The operator clicks
             "Update now" and the rest runs itself (silent install +
             auto-relaunch under Device Owner). top/right/bottom/left
-            longhand, not `top-0 right-0 bottom-0 left-0` — Chromium-83 Taurus, CLAUDE.md #10. */}
+            longhand, not `top-0 right-0 bottom-0 left-0` — Chromium-83 Taurus, apps/web/CLAUDE.md rule 10. */}
         {updatePromptNode}
 
         {/* 2026-04-29 — operator: "pushed the update from the app to

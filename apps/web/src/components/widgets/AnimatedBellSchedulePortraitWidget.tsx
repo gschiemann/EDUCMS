@@ -516,7 +516,7 @@ const CSS_BSP = `
 
 /* Taurus-safe flex-gap shim — Chromium 83 ignores flex-gap. The
    adjacent-sibling selector + pseudo margin works on Chromium 83 and is
-   identical to native gap on modern engines. See CLAUDE.md rule #10. */
+   identical to native gap on modern engines. See apps/web/CLAUDE.md rule 10. */
 .bsp-currentCard > * + * { margin-left: 60px; }
 .bsp-badge::before { margin-right: 14px; }
 .bsp-badge > * + * { margin-left: 14px; }
