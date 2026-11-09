@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** The April 2026 ADB / `dpm set-device-owner` provisioning guide for the Manager APK. Device Owner provisioning is forbidden by owner rule, and the Manager now rides inside the Player APK.
+> The living truth now is `apps/player/CLAUDE.md` (Rule 13 "One release unit", the Manager's alert-watch watchdog), `docs/governance/OWNER-RULES.md` (no Device Owner, ever, 2026-10-17) and the code in `apps/player/manager/`. Do not follow the DEVICE_OWNER steps below.
+
 # EduCMS Manager APK — Provisioning Guide
 
 > **Status (2026-04-27):** Phase 1 scaffold built but not yet

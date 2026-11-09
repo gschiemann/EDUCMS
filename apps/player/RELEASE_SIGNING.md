@@ -59,7 +59,7 @@ Practical consequences to plan for:
 - The old `com.educms.player.debug` app must be uninstalled explicitly,
   or both copies sit on the device and can both try to be HOME.
 - Device Owner provisioning (`dpm set-device-owner`) is tied to the
-  Manager package; re-check `docs/MANAGER_PROVISIONING.md` before you
+  Manager package; re-check `docs/archive/MANAGER_PROVISIONING.md (archived; no Device Owner, see OWNER-RULES)` before you
   touch Manager's application id.
 
 **Schedule this deliberately** — ideally folded into a physical
@@ -278,7 +278,7 @@ node scripts/check-apk-debuggable.cjs <the-release>.apk   # must exit 0
 
 Plan the physical pass. For each screen: install the new APK, re-pair,
 uninstall `com.educms.player.debug`, and confirm Device Owner /
-HOME-alias behaviour still holds (`docs/MANAGER_PROVISIONING.md`).
+HOME-alias behaviour still holds (`docs/archive/MANAGER_PROVISIONING.md (archived; no Device Owner, see OWNER-RULES)`).
 
 Manager already tolerates both package ids — `OtaWorker`, `ManagerApp`,
 `OtaInstaller` and `RollbackInstaller` all probe

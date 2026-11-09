@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** A May 2026 marketing-style feature comparison against other signage vendors, built on the now-retired BRIDGE tier; its competitor claims were never source-linked and are not verifiable from this repository.
+> The living truth for what streaming sources VenueOS supports is `packages/api-types/src/streaming.ts`; competitive positioning is tracked in `docs/governance/AUDIT-SURFACE.md` (competitive scan), not here.
+
 # Streaming integrations — VenueOS vs. competitors
 
 Honest comparison of what every signage CMS can and can't do for live

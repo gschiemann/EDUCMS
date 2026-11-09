@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** The April 2026 state-ownership plan (TanStack Query, Zustand, React Hook Form). It was never kept in step with the code: for example, the `usePlaylistStore` it names does not exist in `apps/web/src`. It is history.
+> The living truth now is `apps/web/CLAUDE.md`, `docs/ORIENTATION.md` and the stores under `apps/web/src/store/`.
+
 # State Management Plan
 
 ## State Ownership Map

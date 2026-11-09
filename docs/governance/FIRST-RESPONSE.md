@@ -4,7 +4,7 @@ Article 10 asks for this before any code. VenueOS predates the standard (first c
 
 1. **Product mission** — `docs/ORIENTATION.md` → Project Mission; `APP-PROFILE.md`.
 2. **Unknowns** — the launch GUQ classes' on-glass qualification; whether the hardware gate covers field-candidate builds (it does not today); the error budget for alert delivery (SLO proposed, not contracted).
-3. **Architecture** — `docs/ORIENTATION.md` → Technology Stack, Monorepo Layout; `docs/MANAGER_ARCHITECTURE.md`.
+3. **Architecture** — `docs/ORIENTATION.md` → Technology Stack, Monorepo Layout; `apps/player/CLAUDE.md` (the Manager ships inside the Player APK; the 2026-05 Device Owner plan is archived at `docs/archive/MANAGER_ARCHITECTURE.md`).
 4. **Security model** — the 2026-09 security audits and remediation (private); `docs/SECRET-ROTATION.md`, `docs/SECURITY_HYGIENE.md`; the agent threat model is new (Article 11) — **open:** agent credentials are not yet per-vendor or scoped.
 5. **Data model** — `packages/database/prisma/schema.prisma`; classification in `APP-PROFILE.md`.
 6. **Critical workflows** — `APP-PROFILE.md`; life-safety paths in `AUTONOMY-REGISTER.md`.

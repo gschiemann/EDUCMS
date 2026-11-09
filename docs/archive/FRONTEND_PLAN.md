@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** The April 2026 route map and API-integration plan for the dashboard. The top-level routes it lists mostly exist under `apps/web/src/app/[schoolId]/`, but the real tree is much larger (analytics, sports, menu, floor-plans, audit and more) and the plan was never kept in step. It is history.
+> The living truth now is `docs/ORIENTATION.md` (layout), `apps/web/CLAUDE.md`, and the route tree under `apps/web/src/app/`.
+
 # Frontend Plan: SaaS Admin Dashboard
 
 ## Overview

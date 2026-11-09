@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** This was the first Taurus deployment walkthrough (April 2026); it was already marked superseded by `docs/TAURUS_DEPLOYMENT_GUIDE.md`, and its OTA section (6-hour poll, `PLAYER_APK_*` variables, installer-of-record) predates the field-window, tracked-push and canary rings.
+> The living truth now is `docs/TAURUS_DEPLOYMENT_GUIDE.md`, `apps/player/CLAUDE.md` (release and OTA rules) and `docs/ENVIRONMENT.md` (the `PLAYER_APK_*` variables). Do not follow this file.
+
 # Deploying the EDU CMS Player to NovaStar Taurus controllers
 
 ## Hardware compatibility

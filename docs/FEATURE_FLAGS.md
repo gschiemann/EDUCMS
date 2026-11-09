@@ -1,5 +1,7 @@
 # Feature Flags
 
+**Last verified against code:** 2026-11-09
+
 OpenFeature + self-hosted GrowthBook adapter. Flags default **off**.
 Graceful fallback to `FF_*` / `NEXT_PUBLIC_FF_*` env vars when GrowthBook is
 unreachable or keys are absent — a single `[FeatureFlags]` warning is logged on
@@ -7,11 +9,13 @@ the API side.
 
 ## Current flags
 
-| Key                    | Scope  | What it gates                                |
-| ---------------------- | ------ | -------------------------------------------- |
-| `emergency_new_ui`     | Web    | Next-gen panic / emergency overlay redesign. |
-| `template_builder_v2`  | Web    | New drag-drop template builder.              |
-| `sis_integration`      | Both   | OneRoster / Clever sync features.            |
+Declared in `FLAGS` in `apps/api/src/feature-flags/feature-flags.service.ts` and `apps/web/src/lib/feature-flags.ts`. The earlier `emergency_new_ui` and `sis_integration` flags were removed (they gated nothing); do not look for them.
+
+| Key                    | Scope | What it gates                                         | Env fallback (when GrowthBook is off) |
+| ---------------------- | ----- | ----------------------------------------------------- | ------------------------------------- |
+| `template_builder_v2`  | Web (declared on the API too, no API call site) | The template builder. On the web it is **always on** in the env fallback (the old `NEXT_PUBLIC_FF_TEMPLATE_BUILDER_V2` kill switch was removed); default-true if GrowthBook is ready but does not define it. | web: none (always on); API: `FF_TEMPLATE_BUILDER_V2=true` |
+| `auto_branding`        | Web   | Auto-branding in `BrandingSettingsCard`. Default on everywhere. | `NEXT_PUBLIC_FF_AUTO_BRANDING=false` turns it off |
+| `sports_player_stats`  | Both  | Player stats in the sports roster/game pages and `sports.service.ts`. Default off. | `FF_SPORTS_PLAYER_STATS=true` (API), `NEXT_PUBLIC_FF_SPORTS_PLAYER_STATS=true` (web) |
 
 ## Usage
 
@@ -22,16 +26,20 @@ import { FeatureFlagsService, FLAGS } from './feature-flags/feature-flags.servic
 
 constructor(private readonly ff: FeatureFlagsService) {}
 
-// Synchronous (uses env fallback; GrowthBook result reflected next evaluation):
-if (this.ff.isEnabled(FLAGS.SIS_INTEGRATION, { tenantId, userId })) {
+// Synchronous: ALWAYS reads the FF_<KEY> env variable. It never consults
+// GrowthBook, even when the provider is ready.
+if (this.ff.isEnabled(FLAGS.SPORTS_PLAYER_STATS, { tenantId, userId })) {
   // gated code
 }
 
-// Async (preferred where you can await — uses GrowthBook when available):
-if (await this.ff.isEnabledAsync(FLAGS.SIS_INTEGRATION, { tenantId, userId })) {
+// Async: uses GrowthBook when the provider is ready, else the env variable.
+// This is the only call that honours a GrowthBook toggle (the sports service uses it).
+if (await this.ff.isEnabledAsync(FLAGS.SPORTS_PLAYER_STATS, { tenantId, userId })) {
   // gated code
 }
 ```
+
+The env fallback reads `FF_` plus the upper-cased flag key and is true only for the exact string `true`.
 
 `FeatureFlagsModule` is `@Global()` — no per-module import needed.
 
@@ -40,24 +48,21 @@ if (await this.ff.isEnabledAsync(FLAGS.SIS_INTEGRATION, { tenantId, userId })) {
 ```ts
 import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 
-if (isFeatureEnabled(FLAGS.EMERGENCY_NEW_UI)) {
-  return <NewPanicPage />;
+if (isFeatureEnabled(FLAGS.SPORTS_PLAYER_STATS)) {
+  return <PlayerStats />;
 }
 ```
 
-The web client is synchronous. Once `initFeatureFlags()` has resolved (called
-in `layout.tsx`), evaluations flow through GrowthBook. Until then (first render,
-SSR) the env-var fallback is used.
+The web client is synchronous. `initFeatureFlags()` (in `apps/web/src/lib/feature-flags-init.ts`) would switch evaluation to GrowthBook, but **nothing in `apps/web/src` calls it today** (symbol search, 2026-11-09), so on the web the build-time `NEXT_PUBLIC_FF_*` fallback is what actually runs. The earlier text said `layout.tsx` calls it; it does not. Whether to wire it in is an open product decision, not a documentation fix.
 
 ## Running GrowthBook locally
 
 ```bash
 # Start GrowthBook + MongoDB alongside the rest of the stack
 docker compose up growthbook mongodb -d
-
-# Or bring up everything at once
-docker compose up -d
 ```
+
+(`docker-compose.yml` is dev-only; see `docs/SECURITY_HYGIENE.md`.)
 
 Open **http://localhost:3100** and complete the setup wizard:
 
@@ -88,14 +93,14 @@ Open **http://localhost:3100** and complete the setup wizard:
 | Condition | Behavior |
 | --- | --- |
 | `GROWTHBOOK_API_HOST` or `GROWTHBOOK_CLIENT_KEY` absent | Env-var fallback; `[FeatureFlags]` warning logged once on startup |
-| GrowthBook reachable but flag not defined | Returns `false` (GrowthBook default) |
+| GrowthBook reachable but flag not defined | API: `false`. Web: the per-flag intended default in `FLAG_DEFAULTS` (builder and auto-branding true, sports stats false) |
 | GrowthBook unreachable at startup | Provider init throws; env-var fallback; warning logged |
 | Provider ready but evaluation throws | Env-var fallback (caught internally) |
 
 ## Flipping a flag (env-var fallback mode)
 
-**API (Railway env):** set `FF_<KEY>=true`, redeploy.
-**Web (Vercel env):** set `NEXT_PUBLIC_FF_<KEY>=true`, redeploy. Both sides
+**API (Railway env):** set `FF_<KEY>=true`, redeploy. Variables are declared in `docs/ENVIRONMENT.md` (`FF_SPORTS_PLAYER_STATS`, `FF_TEMPLATE_BUILDER_V2`, `GROWTHBOOK_API_HOST`, `GROWTHBOOK_CLIENT_KEY`).
+**Web (Vercel env):** set `NEXT_PUBLIC_FF_<KEY>=true`, redeploy (build-time value). Both sides
 should stay in sync — if the web is showing the new UI but the API isn't
 accepting the new request shape, users will see errors.
 
@@ -104,10 +109,10 @@ accepting the new request shape, users will see errors.
 1. Add the key to `FLAGS` in both
    `apps/api/src/feature-flags/feature-flags.service.ts` and
    `apps/web/src/lib/feature-flags.ts`.
-2. Add `FF_<KEY>`, `NEXT_PUBLIC_FF_<KEY>`, and a GrowthBook feature with the
-   same key to `.env.example`.
+2. Add `FF_<KEY>` and `NEXT_PUBLIC_FF_<KEY>` to `.env.example`, declare them in
+   `docs/ENVIRONMENT.md`, and create a GrowthBook feature with the same key.
 3. Update this doc's table.
-4. Add a new `case` to the fallback `switch` in
+4. Add the flag's intended default to `FLAG_DEFAULTS` and a new `case` to the fallback `switch` in
    `apps/web/src/lib/feature-flags.ts` (Next.js requires literal
    `process.env.NEXT_PUBLIC_*` reads so dynamic lookup won't work in the
    browser bundle).

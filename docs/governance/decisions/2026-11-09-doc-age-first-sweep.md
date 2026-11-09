@@ -64,3 +64,30 @@ Revert the commit. Nothing depends on the script: the CI step is `continue-on-er
 ## Decision
 
 Lead's call under the owner's standing go; re-verification is follow-up work.
+
+## Update 2026-11-09 (first re-verification pass)
+
+Outcome for the 18 files that were over 180 days (re-verified = read against code and corrected; archived = moved to `docs/archive/` with a note; pending = a `Verification pending` header):
+
+| File | Outcome |
+|---|---|
+| `docs/SECURITY_HYGIENE.md` | re-verified and corrected |
+| `docs/FEATURE_FLAGS.md` | re-verified and corrected |
+| `docs/OBSERVABILITY.md` | re-verified and corrected |
+| `docs/UPTIME_MONITORING.md` | re-verified and corrected |
+| `docs/ANDROID_COMPATIBILITY.md` | re-verified and corrected |
+| `docs/TAURUS_DEPLOYMENT_GUIDE.md` | corrected; NovaStar-side steps left `Verification pending` (needs a Taurus on the bench) |
+| `docs/CANVA_INTEGRATION.md` | re-verified and corrected (kept: the integrations health card links to it) |
+| `docs/PLAYER_APK_NOVA_TAURUS.md` | archived (superseded by the Taurus guide) |
+| `docs/MANAGER_ARCHITECTURE.md` | archived (Device Owner plan forbidden by owner rule; Manager now bundled in the Player APK) |
+| `docs/MANAGER_PROVISIONING.md` | archived (same) |
+| `docs/HARDWARE_BRIDGE.md` | archived (BRIDGE tier retired in `packages/api-types/src/streaming.ts`) |
+| `docs/STREAMING_VS_COMPETITORS.md` | archived (unverifiable competitor claims) |
+| `docs/ACCESSIBILITY_TODO.md` | archived (finished sprint log) |
+| `docs/frontend/ACCESSIBILITY_NOTES.md` | archived (stale component claims) |
+| `docs/frontend/COMPONENT_ARCHITECTURE.md` | archived (April plan) |
+| `docs/frontend/FORM_VALIDATION_SPEC.md` | archived (S3 flow not what runs) |
+| `docs/frontend/FRONTEND_PLAN.md` | archived (April plan) |
+| `docs/frontend/STATE_MANAGEMENT_PLAN.md` | archived (names a store that does not exist) |
+
+Over-180 count after this pass: 0 (see the sweep). Not touched and next to cross: `docs/MOBILE_APP_ROADMAP.md` (178 days) and the 164-day set named above.

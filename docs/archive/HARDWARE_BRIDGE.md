@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** The May 2026 plan to re-stream a customer's HDMI-captured DIRECTV / DISH / Atmosphere signal through a VenueOS-run capture box (the "Hardware Bridge" tier). The code retired it: `packages/api-types/src/streaming.ts` marks BRIDGE a legacy tier kept for saved records, and new providers must not claim HDMI capture or re-streaming without a provider contract. The `venueos/hls-bridge` image and the BridgeSetupModal this describes were not found in the repository.
+> The living truth is `packages/api-types/src/streaming.ts` (integration tiers) and the streaming settings page under `apps/web/src/app/[schoolId]/settings/streaming/`.
+
 # Hardware Bridge — Customer-Owned Subscriptions
 
 > Sprint 8c (2026-05-03). Operator follow-up: "I don't mind having

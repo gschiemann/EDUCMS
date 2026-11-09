@@ -131,7 +131,7 @@ than the global list.
 
 ## Known open work
 
-`docs/ACCESSIBILITY_TODO.md` records the earlier per-file backlog as resolved.
+`docs/archive/ACCESSIBILITY_TODO.md` (archived) records the earlier per-file backlog as resolved.
 What is actually still open is the baseline itself — the 10 errors and 2
 warnings enumerated in `apps/web/scripts/a11y-warning-baseline.json`. Read that
 `note` field before starting a11y work; it names the file and the reason for

@@ -1,5 +1,7 @@
 # Canva integration — current state, the path forward
 
+**Last verified against code:** 2026-11-09 (Stage 1 import behaviour, the Stage 2 status, env variables). Competitor features and pricing in the comparison table, Canva API behaviour and partner-program lead times are third-party facts this repository cannot prove: unverified.
+
 Operator (2026-05-03): "we talked about adding a full canva
 integration, will that happen? import templates direct from canva and
 be able to update using our toolbar and editing"
@@ -8,36 +10,24 @@ Honest answer: **yes, in two stages.** Stage 1 ships now and works
 without Canva's involvement. Stage 2 needs Canva's partner program
 approval and ships when that lands.
 
-## Stage 1 — PDF / PPTX / Slides import (AVAILABLE NOW)
+## Stage 1 — PDF / PPTX / image import (AVAILABLE NOW)
 
-Every Canva design can be exported as a PDF or a set of PNGs. So can
-Google Slides, PowerPoint, Keynote, Figma, Adobe Express. We accept
-all of them through one import flow:
+Every Canva design can be exported as a PDF or PNGs, and so can Google Slides, PowerPoint, Keynote, Figma and Adobe Express. The import flow (`apps/api/src/imports/`, controller `api/v1/imports`: `POST prepare`, `POST jobs/:id/commit`) accepts these formats, detected by file signature (`file-signature.ts`): **PDF, PPTX, PNG, JPEG, WebP and VenueOS's own export**, up to **50 MB** per file (`MAX_BYTES` in `import-jobs.controller.ts`). Keynote, Slides, Figma and Canva are reached by exporting to PDF or PPTX first; there is no direct Keynote or Slides file path.
 
-1. Customer designs anywhere (Canva, Slides, Figma, etc.)
-2. Hits **Download → PDF** in the source tool
-3. Drags the PDF into VenueOS at `/[schoolId]/settings/imports`
-4. We split it into per-page PNG / JPG assets, auto-create a Playlist
-   named after the file, set per-page duration to 8s
-5. Customer drops the playlist on any screen — done
+1. Customer designs anywhere and exports a PDF (or PPTX / images).
+2. Opens **Import design** in the Templates section, `/[schoolId]/templates/imports`. (The old `/[schoolId]/settings/imports` is a client-side redirect stub kept for old links; the page `apps/web/src/app/[schoolId]/templates/imports/` is canonical, see also `docs/product/CONCIERGE.md`, "Design Imports".)
+3. Previews every page, then chooses **Create as Template** or **Create as Playlist**, and confirms. The parsers live in `apps/api/src/imports/parsers/` (`pdf-parser.ts`, `pptx-parser.ts`); PDF pages are rasterised by the PDF raster pipeline in `apps/api/src/proxy/pdf-raster-pipeline.ts`. The April text said PowerPoint goes through LibreOffice; that is not what the code does (PPTX has its own OOXML parser).
+4. Customer drops the result on any screen.
 
-What works in this stage:
+What works in this stage (as built, not as the April plan promised):
 
-- ✅ Multi-page PDFs become multi-asset playlists
-- ✅ Single-page PDFs become a single image asset, droppable as an
-  IMAGE widget
-- ✅ PowerPoint (.pptx) / Keynote / Slides routed through the same
-  pipeline (LibreOffice → PDF → PNG)
-- ✅ Editable in our editor: positioning, ad overlays, schedules,
-  emergency-content takeover all work because the output is a regular
-  Asset / Playlist
-- ✅ Re-upload to update — drop a new export over the old one and
-  every screen pulls the new pages in their next sync
+- Multi-page PDFs and decks are previewed page by page and committed as a template or a playlist.
+- The output is a regular Asset / Template / Playlist, so positioning, ad overlays, schedules and emergency takeover apply.
+- To update, re-import; there is no sync with the source file. Whether a re-import replaces the earlier result in place is not verified here.
 
 What stage 1 doesn't do:
 
-- ❌ Per-element editing of the imported design's text — once it's a
-  PNG we can't change the text without re-exporting from Canva
+- ❌ Faithful per-element editing is limited to what the PDF/PPTX parsers can recover; a rasterised page cannot have its text changed without re-exporting from Canva
 - ❌ Auto-sync when the customer edits the original in Canva — they
   re-export + re-upload manually
 - ❌ Animations / transitions / video / hyperlinks (PDF flattens those)
@@ -144,21 +134,9 @@ yourself"), which is faster end-to-end.
 ## How to verify Canva Connect status
 
 - Apply at [canva.dev/docs/connect](https://www.canva.dev/docs/connect/) — they have a "Become a partner" button on the developer portal
-- Track approval status by emailing partners@canva.com
-- Once approved, set `CANVA_CLIENT_ID` and `CANVA_CLIENT_SECRET` env
-  vars on Railway and the integration page lights up automatically
+- Track approval status with Canva (contact route unverified).
+- `CANVA_CLIENT_ID` and `CANVA_CLIENT_SECRET` (declared in `docs/ENVIRONMENT.md`) are read today **only** by the integrations health page (`apps/api/src/health/integrations-health.controller.ts`). Setting them does **not** light anything up: the OAuth picker and auto-resync are not built, and the health card reports `COMING_SOON` either way. The April text said the page "lights up automatically"; it does not.
 
-## The roadmap commitment
+## Status today
 
-Stage 1: shipping in this commit (page + upload endpoint scaffold).
-Multi-page PDF render to image is on a follow-up — we land the
-upload + asset creation now, the page-split worker behind a feature
-flag on the next commit so the import button is functional but
-multi-page PDFs warn "split into single-page exports for now" until
-the worker ships. **Single-page PDFs / PNGs / JPGs work end-to-end
-today.**
-
-Stage 2: blocked on Canva approval. We can apply this week. Realistic
-ship date is 30–45 days from approval. The schema + UI scaffold I'm
-shipping in this commit makes the cutover a one-file change once the
-client id + secret arrive.
+Stage 1 is built (above). Stage 2 (Canva Connect) is **not built**; the integrations health page lists it, Google Slides and PowerPoint Online as `COMING_SOON` (the code comments say "Sprint 11"). Partner-approval status is unknown to the repository: ask the owner. The April "schema + UI scaffold makes the cutover a one-file change" claim was not checked and should not be relied on.

@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** The April 2026 component-tree and emergency-override UX plan for the dashboard, written before the app was built. The shipped emergency flow is governed elsewhere and differs from this sketch. It is history.
+> The living truth now is `docs/ORIENTATION.md`, `apps/web/CLAUDE.md` and `apps/api/src/emergency/CLAUDE.md`.
+
 # Component Architecture
 
 ## Component Tree (High-Level)

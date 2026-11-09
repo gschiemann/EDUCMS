@@ -60,7 +60,7 @@ badges so operators see at a glance what they're looking at:
   on the venue side. UI walks the operator through the steps with
   a `BridgeSetupModal` checklist (concrete product recommendations
   + price points), then hands off to the Custom HLS connect modal.
-  Full guide in [`docs/HARDWARE_BRIDGE.md`](docs/HARDWARE_BRIDGE.md).
+  Full guide in [`docs/archive/HARDWARE_BRIDGE.md`](docs/archive/HARDWARE_BRIDGE.md) (archived).
   - Streaming: Atmosphere TV, DIRECTV for Business, DISH Business,
     Mood Media, iHeart for Business
   - POS: (none — HDMI capture doesn't apply to catalog sync)
@@ -232,7 +232,7 @@ card → ffmpeg → local HLS → our Custom HLS connector. Total parts
 ~$430 one-time per venue.
 - [x] BRIDGE tier in catalog with per-provider `bridgeSteps` (atmosphere, directv-business, dish-business, mood-media, iheart-business)
 - [x] `BridgeSetupModal` UI walks operator through the steps
-- [x] `docs/HARDWARE_BRIDGE.md` published — full setup guide + ffmpeg command
+- [x] `docs/archive/HARDWARE_BRIDGE.md` (since archived) published — full setup guide + ffmpeg command
 - [ ] Publish `venueos/hls-bridge` Docker image to Docker Hub (referenced in docs)
 - [ ] Build pre-configured bridge appliance ($430 BOM + $200 margin = $629 retail) — optional revenue stream
 - [ ] Optional: still pursue Atmosphere / DIRECTV / etc. partner programs for direct API access if they ever publish one — would let us deprecate the bridge for those providers
@@ -330,7 +330,7 @@ Counts as of last commit:
   `/settings/pos`, `/settings/monetize` + `/settings/test-integrations`
 - **HLS + DASH + iframe + RTMP playback** with capability-aware codec selection
 - **Android 7→14 single-bundle compatibility** with auto-fallback runtime
-- **2 new framework docs** in `docs/` covering the Android compat plan + HARDWARE_BRIDGE.md
+- **2 new framework docs** in `docs/` covering the Android compat plan + HARDWARE_BRIDGE.md (since archived)
 - **Channel + POS category pickers** wired into PropertiesPanel — no more JSON paste for live integrations
 - **BRIDGE tier** for closed-platform streaming (Atmosphere / DIRECTV / DISH / Mood / iHeart) with HDMI capture wizard
 

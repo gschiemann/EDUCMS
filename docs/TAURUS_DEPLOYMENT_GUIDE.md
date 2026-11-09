@@ -1,5 +1,7 @@
 # NovaStar Taurus Deployment Guide (Synthesized)
 
+**Verification pending:** the NovaStar-side procedure (ViPlex Express, the `novasoft` unlock, PlayService, firmware/WebView table, hardware identity matrix, network behaviour of TaurusOS) comes from vendor research and cannot be verified from this repository; it needs a Taurus controller on the bench. The VenueOS-side statements (package ids, APK variants, OTA, the work queue) were re-checked against code on 2026-11-09 and corrected below. The research files named here live in the gitignored `docs/research/` and exist on the lead's machine only.
+
 Single source of truth for deploying VenueOS Player to NovaStar Taurus
 TB30/TB40/TB50/TB60 controllers. Synthesizes 3 research reports:
 
@@ -17,8 +19,9 @@ ADB-only path. There is no USB-stick path. There is one path:
 3. Click anywhere in the home screen, then **type `novasoft`** blind
    (no input field, no Enter — just the 8 letters). A hidden "User
    Software" menu appears.
-4. Log in as **`admin` / `SN2008@+`** (V4.6.0+ ViPlex; older builds
-   used `123456`).
+4. Log in with the controller's vendor default credentials (they differ
+   by ViPlex version; take them from NovaStar's documentation, not from
+   this repository).
 5. **First**: System Update — make sure the Taurus is on the latest
    firmware. Outdated firmware = old WebView = TLS handshake failures
    that look like "white page won't load anything".
@@ -77,7 +80,7 @@ SoC, OS version, and architecture.
 
 ## Network requirements
 
-- Outbound HTTPS to your Vercel domain (default: `venue-os.app`)
+- Outbound HTTPS to your Vercel domain (the production web domain; this repository does not pin it, unverified)
 - Outbound HTTPS to your Railway API domain
 - Outbound to `connectivitycheck.gstatic.com` (captive portal detection)
 - Outbound DNS — many TaurusOS boxes lock DNS to NovaStar's CDN; if
@@ -93,53 +96,21 @@ with no way to authenticate. Either:
 
 ## OTA after first install
 
-After first sideload, Player + Manager OTA themselves on a 6h schedule.
-The first OTA tap-to-install is unavoidable on standard installs (Android
-security policy). Two paths to silent OTAs from there:
+The updater is the Player's own (`apps/player/app/src/main/java/com/educms/player/ota/`), fed by the API's `player-ota` controller (`apps/api/src/player-ota/player-ota.controller.ts`: `update-check`, `apk/latest`, `apk/v/:vc`, `field-apk/:sha`). The APK catalogue comes from `player-v*` GitHub Releases (`PLAYER_APK_GITHUB_REPO` in `docs/ENVIRONMENT.md`). Rules that bind a Taurus fleet:
 
-### Easy path: Manager as installer-of-record
-On first manual Player update via Manager, Android remembers Manager as
-the installer. Subsequent OTAs to that version chain are silent
-(`USER_ACTION_NOT_REQUIRED` honored).
+- **The Manager is no longer a separate OTA.** The companion Manager APK rides inside the Player APK and is installed by the Player when its versionCode is newer (`apps/player/CLAUDE.md`, Rule 13, "One release unit"); `manager-v*` tags are retired. The earlier text about "Player + Manager OTA themselves on a 6h schedule" and about Manager as installer-of-record is superseded.
+- **No Device Owner provisioning, ever** (owner rule 2026-10-17, `docs/governance/OWNER-RULES.md`). The `dpm set-device-owner` path and the "Provisioner CLI" idea this guide used to describe are withdrawn. On Android 11 and older an update is one Install tap per update; capability work targets Android 13 and newer.
+- Pushes go through the update rings (lab, field window on bench screens, canary, fleet), one hardware class at a time and off-hours; never mass-force during playback (`CLAUDE.md` section 7).
 
-### Hard path: Device Owner provisioning
-One-time per kiosk over ADB:
-```bash
-adb shell dpm set-device-owner com.educms.manager/.AdminReceiver
-```
-After this Manager has DEVICE_OWNER privileges. ALL future OTAs install
-silently with no prompts. Same model Esper/Yodeck/OnSign use for their
-"managed" tiers.
+## Status of the old "what we're going to add" queue (checked 2026-11-09)
 
-**Caveat**: must be done before any user account is provisioned on the
-device. Factory-fresh Taurus is fine. Already-paired-to-other-CMS Taurus
-needs a factory reset first (NovaLCT → Restore Default).
-
-## What we're going to add to the app (priority queue)
-
-1. **Provisioner CLI** — desktop tool that runs the DPM command for an
-   operator over `adb` (Esper-style). One click per kiosk = silent OTA
-   forever after. (Sprint candidate)
-2. **First-boot device beacon** — log Build.MODEL + ABIs + SDK + WebView
-   version on every cold start. Stops the guesswork on which Taurus
-   variant we're dealing with.
-3. **Captive portal probe** — hit `connectivitycheck.gstatic.com/generate_204`,
-   if it doesn't return 204 surface a 64pt on-screen diagnostic ("School
-   WiFi requires login — connect a phone, browse to ___ on this network")
-   plus the kiosk's MAC for IT.
-4. **`setRequestUpdateOwnership(true)`** on Player install (API 34+) —
-   locks Play Store out of silent-updating Player from under us.
-5. **HeartbeatService FGS migration** `dataSync` → `specialUse` — Android
-   15 enforces a 6-hour cap on `dataSync` foreground services, will brick
-   our always-on heartbeat when Taurus eventually upgrades.
-6. **Kronos-Android NTP** — TaurusOS strips GMS NTP, so JWT validation
-   fails when the device clock drifts. Pull time from Cloudflare/NTP pool
-   directly.
-7. **OkHttp DnsOverHttps** for the API host — bypasses vendor DNS lock-in
-   on locked AOSP boards.
-8. **Optional `kiosk` Gradle flavour** — re-enables `CATEGORY_HOME` for
-   greenfield (non-OEM-CMS) deployments. Stays off by default so we
-   don't displace ViPlex on Taurus.
+1. Provisioner CLI (Device Owner over ADB): **withdrawn**, see above.
+2. First-boot device beacon (model, ABIs, SDK, WebView version): not re-checked in this pass; `unverified`.
+3. Captive-portal probe: **partly present**: `NetworkRecoveryController.kt` probes `connectivitycheck.gstatic.com/generate_204` and reports a filtered or captive network. The 64pt on-screen diagnostic with the MAC for IT was not confirmed: unverified.
+4. `setRequestUpdateOwnership` on API 34+: **present** (`ota/Api34UpdateOwnership.kt` in the Player, and in the Manager).
+5. HeartbeatService foreground-service type `dataSync` to `specialUse`: **not done**; `AndroidManifest.xml` still declares `foregroundServiceType="dataSync"`.
+6. Kronos NTP and 7. DnsOverHttps: no occurrence in `apps/player` (symbol search): **not present**.
+8. Optional `kiosk` Gradle flavour: no product flavour found in `apps/player/app/build.gradle.kts`; instead the Player has a `kioskHomeOptIn` preference that keeps an alias enabled. The default APK still does not claim `CATEGORY_HOME` without the opt-in (see the comment near `kioskHomeOptIn` in that file); treat as `unverified` beyond that.
 
 ## What NOT to do
 
@@ -151,8 +122,8 @@ needs a factory reset first (NovaLCT → Restore Default).
 - **Don't bundle our own Chromium.** 1GB RAM A55 will choke and the
   APK doubles in size. Update the Taurus firmware so System WebView
   is current.
-- **Don't add `CATEGORY_HOME` to the default APK.** Already learned the
-  hard way on Goodview — it triggers the "pick your launcher" dialog
+- **Don't add `CATEGORY_HOME` to the default APK** (the Player ships an opt-in alias instead, see queue item 8). Already learned the
+  hard way on a vendor CMS panel — it triggers the "pick your launcher" dialog
   and risks displacing the OEM CMS.
 - **Don't skip firmware update.** It's the #1 root cause of "the app
   won't connect" complaints from the field.
@@ -168,7 +139,7 @@ When a customer reports a Taurus issue, walk through this in order:
    - In ViPlex User Software panel → Process List → PlayService should
      show "Disabled"
 3. **Does the kiosk reach the internet?**
-   - From ViPlex shell: `curl -I https://venue-os.app/`
+   - From ViPlex shell: `curl -I https://<your-web-domain>/`
    - Should return 200. If timeout, school network or captive portal.
 4. **Is the right ABI installed?**
    - `pm list packages | grep educms` then `dumpsys package com.educms.player`
@@ -185,6 +156,5 @@ When a customer reports a Taurus issue, walk through this in order:
 - `docs/research/NOVA_STAR_DEEP_DIVE.md`
 - `docs/research/COMPETITOR_NOVASTAR_PLAYBOOKS.md`
 - `docs/research/ANDROID_KIOSK_BEST_PRACTICES.md`
-- `docs/PLAYER_APK_NOVA_TAURUS.md` (legacy — superseded by this doc)
-
-Last updated: 2026-05-07
+- `docs/archive/PLAYER_APK_NOVA_TAURUS.md` (archived; superseded by this doc)
+- `apps/player/CLAUDE.md`, `docs/player/HARDWARE-QUAL-CHECKLIST.md` (release, OTA and hardware qualification)
