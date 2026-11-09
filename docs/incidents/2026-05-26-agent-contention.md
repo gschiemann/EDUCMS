@@ -22,7 +22,9 @@ The root cause states that the lead skipped pre-flight discipline: agents that w
 
 ## What pins it
 
-Nothing pins this yet — GAP.
+- `scripts/hygiene-check.sh` (axis 3, "Dirty / untracked main tree") is the detector for the damage: it reports an uncommitted or untracked main tree, which is the symptom rule 1c of `docs/governance/AGENT-DISPATCH.md` tells the lead to assert before and after every agent batch. `package.json` exposes it as `pnpm hygiene`.
+
+This is detective and manual: nothing runs it automatically, and nothing refuses a dispatch that omits `isolation: "worktree"`. The Agent call is made in the lead's session, outside the repository, so no repository check can see it. A hook in the harness that refuses an Agent call that writes code without a worktree would pin the rule itself.
 
 ## What worked
 

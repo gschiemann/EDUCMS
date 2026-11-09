@@ -18,7 +18,11 @@ The API Jest gate was made blocking on the strength of a local run, where native
 
 ## What pins it
 
-Nothing pins this yet — GAP.
+- `.github/workflows/scheduled-failure-issue.yml` lists "Deploy Reliability" among the workflows whose failure opens (or updates) an issue and fires the on-call routine, so a red run is now surfaced by the system rather than only by the operator.
+- `.github/workflows/deploy-reliability.yml`, step "Run API tests (Jest)": `continue-on-error` was restored with the reason and the condition for removing it written beside it (add a native-binding rebuild, verify CI green, then drop the flag).
+- `scripts/venueos.cjs` (`status`) prints the runs for the current commit and treats "still running" and "no runs at all" as not a pass.
+
+None of these stops someone flipping a gate to blocking on a local-green run; they shorten the time to notice. The flip itself is a pull request, and a pull request's own checks are the first run on a fresh runner, so the remaining discipline is the standing rule in `docs/DEPLOY.md` to watch them to green.
 
 ## What worked
 

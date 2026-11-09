@@ -16,7 +16,9 @@ A fix was reported as done six times without anyone loading the rendered page, f
 
 ## What pins it
 
-Nothing pins this yet — GAP.
+- `.github/workflows/pr-provenance.yml`, step "Check the PR body states Evidence and Validation (report-only)": on every pull request it warns when the body has no `Evidence` line, no `Validation` line, or still carries the template's hint text for Validation (`.github/PULL_REQUEST_TEMPLATE.md`). A reader of the PR sees at once that no one said what was tested.
+
+This pins that a pull request must SAY what was verified; it cannot prove the verification happened, and it does not see a "fixed" said in chat. It is report-only (`continue-on-error`) and does not block a merge. The deployed-commit half of the rule is read by `scripts/venueos.cjs` (`status`: local HEAD against the deployed health endpoint commit and CI), which is a manual command.
 
 ## What worked
 
