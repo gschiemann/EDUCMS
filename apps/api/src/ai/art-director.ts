@@ -16,7 +16,7 @@
  * second-guess the engine's geometry/sizes — we only translate its tokens into
  * the renderer's `defaultConfig` vocabulary (absolute px, hex, scrim CSS).
  *
- * TAURUS NOTE (CLAUDE.md rule #10): geometry stays as %; the RENDERER
+ * TAURUS NOTE (apps/web/CLAUDE.md rule #10): geometry stays as %; the RENDERER
  * (WidgetRenderer SignageText / IMAGE block) translates to longhand
  * top/right/bottom/left — never `inset`/`gap`. This module emits no CSS.
  */

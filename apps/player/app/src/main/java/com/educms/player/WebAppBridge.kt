@@ -394,7 +394,7 @@ class WebAppBridge(
 
     /**
      * ⚠️ DELIBERATELY NOT NONCE-GATED. A REFRESH_WEB recovery command rides
-     * this method (CLAUDE.md player rule 6), and the web side's `nativeFire`
+     * this method (apps/web/src/app/player/CLAUDE.md player rule 6), and the web side's `nativeFire`
      * reports a native refusal as a successful delivery — so a gated
      * `reload` would silently kill that recovery path on every web bundle
      * that predates the nonce, on exactly the pre-channel panels that have
@@ -673,7 +673,7 @@ class WebAppBridge(
      * PULL-ONLY, BY DESIGN. This must not be folded into `deviceInfo()`
      * or the heartbeat payload: those feed Screen telemetry, and a new
      * high-frequency Screen field invalidates the manifest hot-cache
-     * fleet-wide (CLAUDE.md → manifest content cache, rule 7). The
+     * fleet-wide (packages/database/CLAUDE.md → manifest content cache, rule 7). The
      * dashboard calls this on demand, per screen.
      *
      * TRUST BOUNDARY (per the file header): like every method here, this

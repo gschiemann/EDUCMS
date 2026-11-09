@@ -15,7 +15,7 @@
  *   • a parking board said "Updated 30s ago" as a string constant.
  *
  * This is the same defect the emergency system already has a rule against
- * (CLAUDE.md, player rule 10: copy states what the evidence proves). A
+ * (apps/web/src/app/player/CLAUDE.md, player rule 10: copy states what the evidence proves). A
  * lobby screen that says nothing is honest; one that says "NOW" beside the
  * wrong period is not.
  *

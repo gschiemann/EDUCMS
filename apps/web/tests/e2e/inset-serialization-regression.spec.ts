@@ -3,7 +3,7 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 /**
  * INSET-SERIALIZATION REGRESSION — Rule #10, variant 3 (2026-07-03).
  *
- * See CLAUDE.md rule #10 (2026-07-03 entry) and
+ * See apps/web/CLAUDE.md rule #10 (2026-07-03 entry) and
  * apps/web/tools/check-inset-serialization.cjs for the full background.
  * Short version: a React inline `style={{ position:'absolute', top:0,
  * right:0, bottom:0, left:X }}` object (all 4 physical sides, non-uniform,

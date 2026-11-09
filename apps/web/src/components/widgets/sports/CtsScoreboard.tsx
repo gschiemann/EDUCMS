@@ -55,7 +55,7 @@
  * bridge feed yet renders NEUTRAL.
  *
  * Chromium-safe — uses long-hand sides for position, per-child
- * margin instead of flex gap (Chromium 83 traps, see CLAUDE.md rule
+ * margin instead of flex gap (Chromium 83 traps, see apps/web/CLAUDE.md rule
  * #10). NOT designed for Chromium-83 because the CTS bridge itself
  * requires Web Serial which is Chrome 89+ — but the styles stay
  * conservative just in case someone uses this widget on a non-CTS

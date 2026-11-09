@@ -34,7 +34,7 @@ import java.util.Locale
  *
  * The APK reports what it resolved on every `sharedVideoState` reply
  * (`device`), so the dashboard can show which class a screen is in and what
- * that class does — no new bridge method (CLAUDE.md player rule 9).
+ * that class does — no new bridge method (apps/player/CLAUDE.md player rule 9).
  *
  * Owner rule (2026-10-17): every screen runs the BEST engine for the viewer —
  * native on every class with a hardware AVC decoder (only a NovaStar Taurus

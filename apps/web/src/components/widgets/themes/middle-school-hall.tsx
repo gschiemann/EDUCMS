@@ -40,7 +40,7 @@ import { useElementSize } from '../v2/_shared/useElementSize';
  * from the widgets below, which is the right direction anyway: a NovaStar
  * Taurus LED controller runs Chromium 83, which has no container queries, so
  * every `cqw`/`cqh` size in this file was an invalid declaration there and the
- * text fell back to 16px on the wall (CLAUDE.md rule #10).
+ * text fell back to 16px on the wall (apps/web/CLAUDE.md rule #10).
  */
 function fitPx(w: number, h: number, kh: number, kw: number, min = 13): number {
   if (!w || !h) return 16;

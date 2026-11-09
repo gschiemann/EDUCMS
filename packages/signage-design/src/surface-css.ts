@@ -13,7 +13,7 @@
  * as the single source of truth shared by the API + any future web-side live
  * preview. The mapper stays a thin translator.
  *
- * TAURUS-SAFE INVARIANT (CLAUDE.md rule #10): we emit ONLY `linear-gradient` /
+ * TAURUS-SAFE INVARIANT (apps/web/CLAUDE.md rule #10): we emit ONLY `linear-gradient` /
  * `radial-gradient` / solid color strings and `1px solid <color>` borders.
  *   - NO `inset` shorthand, NO `gap`, NO `backdrop-filter` (the renderer paints
  *     these as `background:` on a longhand top/right/bottom/left overlay div).

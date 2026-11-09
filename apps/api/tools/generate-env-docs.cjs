@@ -12,11 +12,11 @@
  *                         lines are never removed or changed: the section is appended once, then
  *                         only the block between its own markers is ever rewritten.
  *
- * docs/ENVIRONMENT.md is HAND-KEPT text in this repo (the former CLAUDE.md env table moved there),
+ * docs/ENVIRONMENT.md is HAND-KEPT text in this repo (the former docs/ENVIRONMENT.md env table moved there),
  * so this tool never writes the file wholesale. It only owns the block between
  *     <!-- ENV-SCHEMA:BEGIN ... -->  and  <!-- ENV-SCHEMA:END -->
  * and everything outside it is left byte for byte. Whether a variable is "documented in
- * CLAUDE.md" is read from the hand-kept tables (CLAUDE.md's Environment Variables section, and
+ * CLAUDE.md" is read from the hand-kept tables (docs/ENVIRONMENT.md's Environment Variables section, and
  * docs/ENVIRONMENT.md OUTSIDE the generated block), so the column survives the table moving.
  *
  * MODES

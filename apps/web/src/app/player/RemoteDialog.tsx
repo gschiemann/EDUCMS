@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * The player's own question dialog — remote-first (CLAUDE.md player rule 15).
+ * The player's own question dialog — remote-first (apps/player/CLAUDE.md player rule 15).
  *
  * Replaces the dashboard's `appConfirm` / `appAlert` on the player glass
  * (2026-10-26 field find, see `remoteConfirm.ts` for the whole story). The
@@ -26,7 +26,7 @@
  *  - Tapping outside the card is Back.
  *
  * Inline styles only, Chromium-83 safe (NovaStar Taurus): no `inset`, two
- * physical sides plus a size (never four — CLAUDE.md #10), no flex `gap`, no
+ * physical sides plus a size (never four — apps/web/CLAUDE.md #10), no flex `gap`, no
  * `backdrop-filter`, no `aspect-ratio`. Lengths scale with `--splash-k` (the
  * operator-glass factor) and shrink on a narrow LED canvas through `--led-w`.
  */

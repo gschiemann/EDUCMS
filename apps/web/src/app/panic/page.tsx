@@ -60,7 +60,7 @@ import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPic
 import { PanicActiveAlertsSheet } from '@/components/emergency/PanicActiveAlertsSheet';
 
 // 2026-05-03 BUG FIX (cycle 1 emergency BUG-001) — was 1500ms, but
-// CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
+// apps/api/src/emergency/CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
 // 3 seconds to prevent accidental taps. Life-safety regression
 // restored. The animated progress ring matches this duration.
 const HOLD_DURATION_MS = 3000;

@@ -11650,7 +11650,7 @@ export function AssetLibraryModal({
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       // top/right/bottom/left longhand (NOT inset-0) — matches AssetPicker.tsx
-      // and the CLAUDE.md #10 convention. z-[10001] paints over the mobile
+      // and the apps/web/CLAUDE.md #10 convention. z-[10001] paints over the mobile
       // TopToolbar (z-20) and MobileTabBar (z-[60] — hidden via useOverlayLock
       // above anyway). Safe-area padding keeps the modal clear of the notch /
       // home indicator on short viewports.

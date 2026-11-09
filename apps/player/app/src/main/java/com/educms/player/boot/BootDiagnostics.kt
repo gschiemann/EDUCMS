@@ -401,7 +401,7 @@ object BootDiagnostics {
      * Report the diagnostic to the fleet, at most once per
      * [REPORT_COOLDOWN_MS] per process.
      *
-     * ⚠️ MANIFEST CACHE (CLAUDE.md "Manifest content cache"). The server
+     * ⚠️ MANIFEST CACHE (packages/database/CLAUDE.md "Manifest content cache"). The server
      * writes this into Screen columns that are listed in
      * `SCREEN_TELEMETRY_ONLY_FIELDS`, so the write does NOT bump the
      * process-wide manifest content rev. Adding a column here without that

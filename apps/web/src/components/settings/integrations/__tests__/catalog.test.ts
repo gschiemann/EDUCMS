@@ -287,7 +287,7 @@ describe('AI, brand voice and Clever', () => {
 
   it('no key is Not configured even when a platform fallback exists', () => {
     // The platform Tier-1 budget must never read as the tenant's own
-    // configured provider (CLAUDE.md — AI Integration Concierge tiers).
+    // configured provider (docs/product/CONCIERGE.md — AI Integration Concierge tiers).
     expect(aiKeyEntry({ configured: false, platformFallbackAvailable: true }).state).toBe('notConfigured');
   });
 

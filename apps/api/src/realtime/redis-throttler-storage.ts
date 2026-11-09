@@ -36,7 +36,7 @@ type ThrottlerStorageRecord = Awaited<
  * FAIL-OPEN: if Redis is unavailable, we DELEGATE to an in-memory
  * `ThrottlerStorageService` fallback instead of throwing. A Redis blip must
  * NEVER lock out logins — and the API is required to boot/serve with Redis
- * down (CLAUDE.md "Redis missing → API boots anyway"). This mirrors how the
+ * down (docs/DEPLOY.md "Redis missing → API boots anyway"). This mirrors how the
  * rest of the app treats Redis as optional (see `ai-hourly-cap.ts`,
  * `RedisService.sismember`). At our committed `numReplicas:1` the in-memory
  * fallback is still effectively global; with Redis present every replica

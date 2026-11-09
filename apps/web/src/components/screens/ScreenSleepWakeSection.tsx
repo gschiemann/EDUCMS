@@ -5,7 +5,7 @@
  * what its player last PROVED (2026-10-11). The rules live in
  * ./sleep-wake.ts (pure, tested); this only renders them.
  *
- * Copy discipline (CLAUDE.md player rule 10 — "copy states what the evidence
+ * Copy discipline (apps/web/src/app/player/CLAUDE.md player rule 10 — "copy states what the evidence
  * proves"): "asleep" only from Android's own report, "turned off" only when
  * the player saw it, and a black overlay is always called a black screen
  * with the backlight on — never "off".

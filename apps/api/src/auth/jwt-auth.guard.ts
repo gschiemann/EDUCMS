@@ -456,7 +456,7 @@ export class JwtAuthGuard implements CanActivate {
         // Everything fails closed except ONE named, bounded, instrumented
         // case: a DEVICE credential doing a GET/HEAD, for at most ten
         // minutes after the outage opened. That is the manifest backstop
-        // (CLAUDE.md emergency safeguard #4) — it is served from an
+        // (apps/api/src/emergency/CLAUDE.md emergency safeguard #4) — it is served from an
         // in-process hot cache, so it still works while Postgres is down,
         // and it is how a lockdown reaches the fleet when the push channel
         // is gone. Refusing it would trade a confidentiality bug for a

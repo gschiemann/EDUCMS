@@ -2,7 +2,7 @@
  * §19 CLICK-TO-EDIT — every widget whose job is to show the operator's WORDS
  * must let them click those words on the canvas.
  *
- * WHY THIS EXISTS. CLAUDE.md §19 is explicit: "Adding entries to a registry
+ * WHY THIS EXISTS. docs/governance/AUDIT-SURFACE.md §19 is explicit: "Adding entries to a registry
  * without wiring them into PropertiesPanel does not count — the operator must
  * actually be able to click the text and edit it." Nothing enforced the second
  * half. On 2026-09-11 the operator added the first widget of a customer demo,
@@ -13,7 +13,7 @@
  * WHY IT MOUNTS. Which component renders a variant is decided at runtime by
  * `config.variant` and `config.theme` through lazy family chunks. Static
  * analysis cannot follow that, and this repo has been burned before by a gate
- * that passed because it was looking at a file nobody renders (CLAUDE.md #9).
+ * that passed because it was looking at a file nobody renders (apps/web/CLAUDE.md #9).
  * So this goes through `WidgetPreview` — the exact path BuilderZone uses.
  *
  * WHAT COUNTS AS A HOTSPOT. Any of the three affordances BuilderZone honours:

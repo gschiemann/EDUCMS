@@ -10,7 +10,7 @@
  * (invented athletes/scores) on a real screen in front of a real crowd.
  *
  * These tests drive the SAME `WidgetPreview` dispatcher every real
- * render path uses (CLAUDE.md rule #9), so a regression here means the
+ * render path uses (apps/web/CLAUDE.md rule #9), so a regression here means the
  * operator sees fake data on a real screen for real, not just a type
  * error.
  *
@@ -38,7 +38,7 @@ import { WidgetPreview } from '../WidgetRenderer';
 // import for the SAME reason. Without it, `config.variant =
 // 'scoreboard-main'` resolves to nothing and WidgetPreview silently
 // falls through to the generic (non-sport) ScoreboardWidget — a real
-// "render tree" trap (CLAUDE.md rule #9) this test would otherwise hide.
+// "render tree" trap (apps/web/CLAUDE.md rule #9) this test would otherwise hide.
 import '../variants-register';
 import { warmAllWidgetFamilies } from '../widget-families';
 import { warmVariantRegistry } from '../WidgetRenderer';

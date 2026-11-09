@@ -12,7 +12,7 @@
  * All three now derive from `text-style-contract.ts`.
  *
  * A grep-shaped test is the wrong tool for "is this component mounted"
- * (CLAUDE.md #9) but the right one for "did someone re-introduce a second
+ * (apps/web/CLAUDE.md #9) but the right one for "did someone re-introduce a second
  * writer of this string": the declaration text IS the artifact, and the
  * contract module is the only file allowed to emit it.
  *

@@ -18,7 +18,7 @@ import { clog } from '@/lib/client-logger';
  * answer to "am I still signed in?" costs exactly ONE round trip on a cold
  * start — and only when the remember marker says a cookie might exist.
  *
- * Two jobs, both one-shot, neither on a timer (CLAUDE.md mobile-perf
+ * Two jobs, both one-shot, neither on a timer (apps/web/CLAUDE.md mobile-perf
  * standard — a backgrounded phone must not run pollers, and this component
  * sits in the always-mounted provider tree):
  *

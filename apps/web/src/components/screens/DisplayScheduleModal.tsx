@@ -361,7 +361,7 @@ export function DisplayScheduleModal({
    * Memoised because the resolver walks a week of minutes per pair: cheap
    * once, but this component re-renders on every keystroke in the timezone
    * field, and the house rule is that the phone pays for nothing it does not
-   * need (CLAUDE.md, mobile performance standard).
+   * need (apps/web/CLAUDE.md, mobile performance standard).
    */
   const overlapsActive = useMemo(
     () =>

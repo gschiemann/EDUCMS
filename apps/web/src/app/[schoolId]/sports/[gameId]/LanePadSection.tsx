@@ -20,7 +20,7 @@
  * already use (PATCH /sports/games/:id/stats, merged server-side, validated
  * by `sanitizeResults`). No new endpoint, no schema change.
  *
- * Mobile-first (CLAUDE.md mobile-perf standard): no new pollers (roster
+ * Mobile-first (apps/web/CLAUDE.md mobile-perf standard): no new pollers (roster
  * comes from the existing `useGameRoster` query, already shared with
  * <RosterPanel> via the React Query cache), no backdrop-blur, thumb-sized
  * (44px+) tap targets on every control.

@@ -43,12 +43,12 @@
 # bumps are GROUPED into a single PR per directory; routine MAJOR bumps are
 # IGNORED — they break builds (argon2 native compile, eslint 9->10 flat-config,
 # prisma 5->7, typescript 5->6, actions/checkout 4->6, helmet 7->8 ...; see
-# CLAUDE.md "Deploy Reliability") and must be done DELIBERATELY.
+# docs/DEPLOY.md "Deploy Reliability") and must be done DELIBERATELY.
 # apps/player is Android/Gradle, not npm: it has its own "gradle" entry below.
 # KEEP THIS LIST IN STEP WITH THE WORKSPACES (pnpm-workspace.yaml: apps/*, packages/*):
 # a listed directory that no longer exists is a standing Dependabot error, and a package
 # that is missing here is simply not watched for version updates.
-# (2026-11-01: auth-core and ws-events were deleted — see the CLAUDE.md monorepo-layout
+# (2026-11-01: auth-core and ws-events were deleted — see the docs/ORIENTATION.md monorepo-layout
 # note of 2026-09-08 — but were still listed; signage-design and renderer exist but were
 # not listed.)
 version: 2

@@ -51,4 +51,4 @@ This package is the engine; it is not yet wired into generation. Wave-2:
 3. Translate `ResolvedZone[]` into `TemplateZone` rows (already the same
    %-coord shape) and the theme into template-root CSS vars.
 4. Consumers MUST emit longhand `top/right/bottom/left` (never `inset`/`gap`)
-   from the % geometry — Taurus-safe (CLAUDE.md rule #10).
+   from the % geometry — Taurus-safe (apps/web/CLAUDE.md, rule 10).

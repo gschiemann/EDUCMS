@@ -12,7 +12,7 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  * `Element.replaceChildren` (86), the touch store `crypto.randomUUID` (92),
  * the router `URL.canParse` (120) — and Next 16 ships its polyfills in an
  * `async` chunk that races the runtime, or not at all for a modules-capable
- * engine. CLAUDE.md #10 guards CSS for this floor; nothing guarded JS.
+ * engine. apps/web/CLAUDE.md #10 guards CSS for this floor; nothing guarded JS.
  *
  * The player layout now carries an inline, feature-detected shim that runs
  * before any chunk. This test proves it covers what the bundle actually uses:

@@ -8,7 +8,7 @@ import java.io.File
 /**
  * THE CALL-SITE GUARD for the boot + registration proof (2026-09-02, P0-2).
  *
- * A bridge method is a THREE-FILE ATOMIC CONTRACT (CLAUDE.md player rule
+ * A bridge method is a THREE-FILE ATOMIC CONTRACT (apps/player/CLAUDE.md player rule
  * 9): the Kotlin `METHODS` allowlist, its dispatch arm, and the web's
  * method table. Missing one of the three fails ASYMMETRICALLY — it still
  * works over the legacy every-frame object and is silently dropped on the

@@ -5,7 +5,7 @@
  * popover on /[schoolId]/screens.
  *
  * It replaces the "More coming soon — restart, orientation, cache clear."
- * footer stub that sat here since Sprint 11. Per CLAUDE.md §20, a stub is
+ * footer stub that sat here since Sprint 11. Per docs/governance/AUDIT-SURFACE.md §20, a stub is
  * not allowed to become a button that lies; so every control below is
  * gated on what THIS screen's probe actually reported
  * (see ./display-capabilities.ts for the resolver + the reasoning).
@@ -430,7 +430,7 @@ export function ScreenDisplayControls({
       // DELIVERY HONESTY. `success:true` only means the API accepted and
       // audited the action; `delivered` is the field that says it provably
       // left the process toward the screen. When Redis is down (a supported
-      // deploy state — CLAUDE.md: "Redis missing → API boots anyway") the
+      // deploy state — docs/DEPLOY.md: "Redis missing → API boots anyway") the
       // fan-out reaches only screens socketed to THIS replica, and there is
       // no manifest backstop for immediate actions. Painting the emerald
       // "sent" row there tells an operator a dark screen was woken when it

@@ -58,7 +58,7 @@ export const BTS_FONT_DISPLAY = "var(--font-fredoka), ui-rounded, system-ui, san
 // proportional root font-size lets the existing em cascade do the work, so
 // every proportion in the artwork is preserved exactly and only the SCALE
 // changes. Done in JS rather than `cqh` on purpose: NovaStar Taurus runs
-// Chromium 83, which has no container queries at all (CLAUDE.md rule #10),
+// Chromium 83, which has no container queries at all (apps/web/CLAUDE.md rule #10),
 // and this file's taurus-safety budget for container-query units is zero.
 function useZoneFont(hFactor = 0.036, wFactor = 0.055, min = 11, max = 260) {
   const ref = useRef<HTMLDivElement | null>(null);

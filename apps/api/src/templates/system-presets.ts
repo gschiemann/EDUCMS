@@ -1454,7 +1454,7 @@ const RAW_SYSTEM_PRESETS: SystemPreset[] = [
   //
   // The user said "these need a ton of work" — these are the v1 import.
   // Real design polish per template lands as individual iteration loops
-  // post-launch (per CLAUDE.md "no batching" rule).
+  // post-launch (per docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md "no batching" rule).
   // ───────────────────────────────────────────────────────────────
 
   // ─── Halloween (October) ─────────────────────────────────────────

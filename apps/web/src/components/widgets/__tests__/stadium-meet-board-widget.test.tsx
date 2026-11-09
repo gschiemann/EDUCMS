@@ -2,7 +2,7 @@
  * StadiumMeetBoardWidget (S6 #288, 2026-07-03) — "Stadium Lane" flagship
  * swim-meet broadcast board render-tree proof.
  *
- * CLAUDE.md rule #9 ("VERIFY THE RENDER TREE"): drives the SAME
+ * apps/web/CLAUDE.md rule #9 ("VERIFY THE RENDER TREE"): drives the SAME
  * `WidgetPreview` dispatcher the template builder canvas and the live
  * player use, so a regression here means the operator sees a blank tile
  * for real, not just a type error.

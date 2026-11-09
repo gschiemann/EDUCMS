@@ -90,7 +90,7 @@
  * loudly. The one thing this module must never do is redirect a kiosk at
  * bytes the server has not matched against its own digest: that would not
  * install anything bad (the device verifies), but it WOULD stall OTA
- * silently, which is the exact failure class CLAUDE.md's player rules
+ * silently, which is the exact failure class apps/web/src/app/player/CLAUDE.md's player rules
  * exist to prevent.
  */
 

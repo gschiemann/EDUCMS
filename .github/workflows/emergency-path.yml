@@ -8,7 +8,7 @@ name: Emergency Path
 #
 # What it runs: apps/web/tests/e2e/emergency-path.spec.ts — 9 self-contained
 # Playwright assertions, fully mocked (no API/DB needed), against Chromium
-# AND WebKit. Per CLAUDE.md "Cross-browser support — non-negotiable" the
+# AND WebKit. Per apps/web/CLAUDE.md "Cross-browser support — non-negotiable" the
 # WebKit run is the canary for engine-specific regressions on the life-
 # safety surface (the holiday-bridge canary covers ONLY the holiday
 # templates, not the player).

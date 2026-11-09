@@ -20,7 +20,7 @@ import { useElementSize } from './_shared/useElementSize';
  * The base now tracks the zone the widget was actually handed, so the em scale
  * this pack is already written in finally means something. Measured in JS
  * rather than with `cqh`: these are player-shipped widgets and Chromium 83 on a
- * NovaStar Taurus has no container queries (CLAUDE.md rule #10).
+ * NovaStar Taurus has no container queries (apps/web/CLAUDE.md rule #10).
  *
  * Divisors are the zone's SHORT constraint in each axis, so a wide ribbon zone
  * is sized by its height and a tall narrow zone by its width. The 13px floor

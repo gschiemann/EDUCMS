@@ -234,7 +234,7 @@ jobs:
   # .removeChild)") from BrandStyleInjector detaching React-managed <head>
   # favicon links → "every menu click needs two clicks / it just reloads" in
   # Safari, invisible to Chrome-only CI + local dev (fixed in ddb64dab). This is
-  # the standing WebKit-INTERACTIVITY guard CLAUDE.md's cross-browser section
+  # the standing WebKit-INTERACTIVITY guard apps/web/CLAUDE.md's cross-browser section
   # calls for — the existing WebKit jobs only check static templates + the
   # /player render, never the authed dashboard's client-side navigation.
   webkit-nav:

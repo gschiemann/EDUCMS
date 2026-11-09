@@ -23,7 +23,7 @@ Where secrets live (never print a value — `gh secret list` prints names only):
 
 | secret | GitHub secret | Railway (API) | Vercel (web) | local `.env` | notes |
 |---|---|---|---|---|---|
-| Postgres password (`DATABASE_URL`, `DIRECT_URL`) | `SUPABASE_DB_URL` → **DB Backup** (`db-backup.yml`) | ✅ `DATABASE_URL`, `DIRECT_URL` | — | ✅ | also `.mcp.json`; pooler session mode, port 5432 (CLAUDE.md) |
+| Postgres password (`DATABASE_URL`, `DIRECT_URL`) | `SUPABASE_DB_URL` → **DB Backup** (`db-backup.yml`) | ✅ `DATABASE_URL`, `DIRECT_URL` | — | ✅ | also `.mcp.json`; pooler session mode, port 5432 (docs/ENVIRONMENT.md) |
 | `SUPABASE_SERVICE_ROLE_KEY` | `SUPABASE_SERVICE_ROLE_KEY` + `SUPABASE_URL` → **Android Player APK** release publish (non-blocking step) | ✅ | — | ✅ | storage uploads + APK bucket signed URLs |
 | `BACKUP_ENC_KEY` | `BACKUP_ENC_KEY` → **DB Backup** | — | — | — | rotating it makes OLDER artifacts undecryptable — keep the previous key until they expire (30 days) |
 | `JWT_SECRET`, `SESSION_SECRET` | — | ✅ | — | ✅ | a straight swap signs every operator out (sessions + user JWTs); no window exists for these two |
@@ -35,7 +35,7 @@ Where secrets live (never print a value — `gh secret list` prints names only):
 | On-call routine | `ROUTINE_FIRE_URL`, `ROUTINE_FIRE_TOKEN` → **Workflow failure → issue + on-call routine** | — | — | — | token minted once in the routine's UI; re-mint = re-set the secret |
 | Lighthouse | `LHCI_GITHUB_APP_TOKEN` → **Lighthouse CI** | — | — | — | |
 | Playwright CI tenant | `PLAYWRIGHT_ADMIN_TOKEN`, `PLAYWRIGHT_TENANT_ID` → **CI & Security** | — | — | — | not present in `gh secret list` today — the jobs that use them skip when unset |
-| Provider keys (`RESEND_API_KEY`, `ANTHROPIC_API_KEY`, `PEXELS_API_KEY`, `GOOGLE_MAPS_API_KEY`, POS `*_CLIENT_SECRET`, `CLEVER_*`, `CANVA_*`, `INSTAGRAM_*`, `META_*`, `STRIPE_*`) | — | ✅ | `NEXT_PUBLIC_*` only | ✅ | each provider's dashboard is the source; unset = the feature degrades, never crashes (CLAUDE.md env table) |
+| Provider keys (`RESEND_API_KEY`, `ANTHROPIC_API_KEY`, `PEXELS_API_KEY`, `GOOGLE_MAPS_API_KEY`, POS `*_CLIENT_SECRET`, `CLEVER_*`, `CANVA_*`, `INSTAGRAM_*`, `META_*`, `STRIPE_*`) | — | ✅ | `NEXT_PUBLIC_*` only | ✅ | each provider's dashboard is the source; unset = the feature degrades, never crashes (docs/ENVIRONMENT.md) |
 | Redis (`REDIS_URL`) | — | ✅ | — | ✅ | |
 
 ## The rotation procedure

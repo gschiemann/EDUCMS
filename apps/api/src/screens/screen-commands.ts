@@ -37,7 +37,7 @@ export function newCorrId(prefix: string): string {
 
 /**
  * REFRESH_WEB for ONE screen over the realtime path. The durable half (the
- * manifest's `refreshRequestedAt`, CLAUDE.md player rule 6) is stamped by
+ * manifest's `refreshRequestedAt`, apps/web/src/app/player/CLAUDE.md player rule 6) is stamped by
  * `recordPushDeployment` — once per push, so a bulk push is ONE deployment
  * acknowledged by value identity, not N.
  *

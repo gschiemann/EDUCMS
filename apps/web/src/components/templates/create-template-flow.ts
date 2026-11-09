@@ -7,7 +7,7 @@
  * until a demo. They are pure functions so they can be tested without
  * mounting a 5.9k-line page — and the component that consumes them is
  * mounted in its own test, because a green predicate test is not proof of
- * a wiring (CLAUDE.md rule #9).
+ * a wiring (apps/web/CLAUDE.md rule #9).
  *
  * THE ONE QUESTION. Research across Canva / Yodeck / ScreenCloud /
  * OptiSigns / Rise Vision / Figma / Adobe Express / Google Slides / Wix

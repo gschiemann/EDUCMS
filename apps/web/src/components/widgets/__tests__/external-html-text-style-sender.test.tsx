@@ -10,7 +10,7 @@
  *
  * WHY IT MOUNTS. The payload is built inside a `useMemo` in a component
  * chosen at runtime by widget type; a source-level check would prove nothing
- * (CLAUDE.md #9). So this renders through `WidgetPreview` — the exact path
+ * (apps/web/CLAUDE.md #9). So this renders through `WidgetPreview` — the exact path
  * BuilderZone and the player use — and decodes the real iframe `src`, which
  * is the byte-for-byte thing a board receives.
  */

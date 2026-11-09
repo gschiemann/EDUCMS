@@ -6,7 +6,7 @@
  * fifty-one scoreboards and celebrations would bury the school catalogue.
  * A SPORTS venue's gallery is unchanged.
  *
- * Mounts the REAL default-exported page (CLAUDE.md rule #9).
+ * Mounts the REAL default-exported page (apps/web/CLAUDE.md rule #9).
  */
 import { render, screen, fireEvent } from '@testing-library/react';
 import { inertDesignerJobHooks } from './designer-job-hooks.mock';

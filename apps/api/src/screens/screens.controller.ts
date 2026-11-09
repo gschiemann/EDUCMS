@@ -333,7 +333,7 @@ export function parseReportedResolution(
  * justify is the bug this whole area keeps producing.
  *
  * Manifest-cache safe: derived purely from two stable Screen columns, with no
- * per-request or clock-derived input (CLAUDE.md manifest content cache rule 7).
+ * per-request or clock-derived input (packages/database/CLAUDE.md manifest content cache rule 7).
  */
 export function resolveManifestOrientation(
   orientation: string | null | undefined,
@@ -5315,7 +5315,7 @@ export class ScreensController {
     // closed for its OWN pushes on 2026-08-30 (AUTO_RECOVERY_PUSH_DEAD).
     // This extends that proven durable ride to operator pushes: the flag
     // lands in the screen's manifest as `refreshRequestedAt` and the screen
-    // picks it up on its next poll (CLAUDE.md player rule 6).
+    // picks it up on its next poll (apps/web/src/app/player/CLAUDE.md player rule 6).
     //
     // Rule 12 applies — this DOES change what operators observe (a push now
     // reaches a push-dead screen), so it ships named and tested, never
@@ -5944,7 +5944,7 @@ export class ScreensController {
     // Deleting a paired screen frees a seat — re-sync Stripe quantity.
     this.stripe.syncSubscriptionQuantity(req.user.tenantId).catch(() => {});
     // 2026-10-24 — removing a screen is a privileged change the audit trail
-    // never recorded (CLAUDE.md §16), and the dashboard's Recent activity now
+    // never recorded (docs/governance/AUDIT-SURFACE.md §16), and the dashboard's Recent activity now
     // says "Greg removed the screen “Lobby TV”". After the delete committed,
     // best-effort: an audit failure never turns a finished delete into a 500.
     try {
@@ -6218,7 +6218,7 @@ export class ScreensController {
     // RAISE ONLY. There is no "clear" descriptor; `resolveEmergencyRev`
     // withholds this whenever the screen's own last manifest build already
     // recorded an alert, and its ABSENCE never means all-clear — only the
-    // manifest releases (CLAUDE.md player rule 11). Nothing here changes what
+    // manifest releases (apps/api/src/emergency/CLAUDE.md player rule 11). Nothing here changes what
     // the manifest says; the player still reconciles on the same tick.
     let alertEnvelope: unknown = undefined;
     if (finalAnswer.alert) {
@@ -6478,7 +6478,7 @@ export class ScreensController {
   //
   // SEC-001 (2026-09-04) — THE ONE DEVICE READ AN UNPROVEN CREDENTIAL KEEPS,
   // and it is a decision, not an oversight. This route is the documented
-  // HTTP-polling backstop for the emergency system (CLAUDE.md safeguard #4):
+  // HTTP-polling backstop for the emergency system (apps/api/src/emergency/CLAUDE.md Key Safeguards #4):
   // it carries the live `emergency` block, so it is how a lockdown reaches a
   // screen whose credential has gone unproven — a state legitimate screens
   // reach routinely (APK re-sideload, cleared WebView storage, a token expired

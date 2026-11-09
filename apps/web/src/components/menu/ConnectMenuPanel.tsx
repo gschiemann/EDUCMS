@@ -5,7 +5,7 @@
  * onboarding affordance (Integration-Concierge-aligned).
  * ──────────────────────────────────────────────────────────────────
  *
- * The 30-second on-ramp (CLAUDE.md §20 + AI Integration Concierge
+ * The 30-second on-ramp (docs/governance/AUDIT-SURFACE.md §20 + AI Integration Concierge
  * vision): an operator with no menu yet gets two one-click paths —
  *
  *   1. Connect your POS  → /settings/pos (Square OAuth / custom webhook)

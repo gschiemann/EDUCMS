@@ -110,7 +110,7 @@ const collisions: VariantIdCollision[] = [];
  * WHY IT DOES NOT FLIP TO FIRST-WINS. Which registration wins decides what is
  * on glass. Today `retail-loyalty-qr` resolves to the static
  * `RETAIL_LOYALTY_QR` registration; first-wins would silently swap every live
- * zone using it to the v2-loop component. Per CLAUDE.md player rule #12, new
+ * zone using it to the v2-loop component. Per apps/web/src/app/player/CLAUDE.md player rule #12, new
  * enforcement semantics never ride in silently on a fix wave — the collision
  * gets *named*, not quietly re-resolved.
  */

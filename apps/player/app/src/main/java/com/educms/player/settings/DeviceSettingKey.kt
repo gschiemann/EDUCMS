@@ -16,7 +16,7 @@ package com.educms.player.settings
  *
  * An operator stores a DESIRED value per setting on the screen's row
  * (`PUT /screens/:id/device-settings`). The native heartbeat carries the
- * desired set down and this unit's report back up (CLAUDE.md player rule 6:
+ * desired set down and this unit's report back up (apps/web/src/app/player/CLAUDE.md player rule 6:
  * a command that must survive a dead push channel rides the heartbeat). No
  * bridge method is involved (rule 9).
  *

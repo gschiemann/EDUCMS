@@ -152,7 +152,7 @@ function ctsRibbonZone(
 //   • IMAGE / IMAGE_CAROUSEL / TEXT / TICKER / COUNTDOWN — vertical-
 //     agnostic base widgets.
 // No new widgetType is invented. Coords are 0-100 canvas percentages.
-// No `inset` shorthand anywhere (CLAUDE.md rule #10 — these run on the
+// No `inset` shorthand anywhere (apps/web/CLAUDE.md rule #10 — these run on the
 // NovaStar Taurus Chromium-83 LED controller in source-mode installs).
 
 /** One SCOREBOARD-element zone (e.g. a clock pod, a down/distance pill). */

@@ -23,7 +23,7 @@
  * `data-edu-emergency-root`, which the layout keeps visible through the mark.
  * An unpaired / first-run screen gets no mark and keeps its splash.
  *
- * ES5 on purpose (Chromium 83 WebViews, CLAUDE.md #10).
+ * ES5 on purpose (Chromium 83 WebViews, apps/web/CLAUDE.md #10).
  */
 
 import { GLASS_SHOWN_PREFIX, LEGACY_MANIFEST_KEY, MANIFEST_CACHE_PREFIX, MANIFEST_PAIRING_PREFIX } from './offlineBoot';

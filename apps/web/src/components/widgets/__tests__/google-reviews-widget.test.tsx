@@ -9,7 +9,7 @@
  *   that filtering must be visible. A board that drops any of these is not
  *   allowed to display Google reviews at all, so each one is pinned.
  *
- *   HONESTY. Every empty/failed state must say what is true (CLAUDE.md §19 +
+ *   HONESTY. Every empty/failed state must say what is true (docs/governance/AUDIT-SURFACE.md §19 +
  *   player rule 10): no business picked, no API key, and nothing loaded yet
  *   are three DIFFERENT sentences, and none of them is a fabricated review.
  *

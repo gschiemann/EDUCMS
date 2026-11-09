@@ -19,7 +19,7 @@ class by class, and switching it off restores today's behaviour.
 
 | Rule | Source | What it forces here |
 |---|---|---|
-| A big file downloads **whole**, in short verified resumable steps, and only then plays; never streamed from origin, never a lower-resolution stand-in | CLAUDE.md player rule 17; owner 2026-09-26 | The store keeps the ≥ 8 MiB threshold and the readiness gate. The WebView interceptor refuses an unverified large content file instead of letting it reach the network (§5.8). |
+| A big file downloads **whole**, in short verified resumable steps, and only then plays; never streamed from origin, never a lower-resolution stand-in | apps/web/src/app/player/CLAUDE.md, player rule 17; owner 2026-09-26 | The store keeps the ≥ 8 MiB threshold and the readiness gate. The WebView interceptor refuses an unverified large content file instead of letting it reach the network (§5.8). |
 | Emergency logic runs first; protective caches never clear on absence; a cached manifest may raise an alert but never release one | Rule 11 | §7 (ship gate) |
 | At most one seamless takeover per content, never web ↔ native flip-flop | Owner 2026-10-12 | The target is **zero** takeovers (§3) |
 | Native-first: the best engine on every class; web is the safety net | Owner 2026-10-17 | The decision defaults to native wherever the class can compose it (§3.1) |
@@ -741,7 +741,7 @@ production check: 23 emergency assets, largest 661 KB, none ≥ 8 MiB).
 | **Two decoders for a 4K pre-roll** | Medium on 2 GB boxes | The decoder budget refuses early. Fallback: hold the last frame, then cut (§3.3). Measure on t982 and rk3288. |
 | **The app process does more work: downloads, hashing, serving** | Low / CPU and IO on rk3288 (the WebView renderer is in-process on Android 7) | Background priority, a rate-limited verify, no whole-file buffers, one download at a time. Bench: frame-interval histogram during a download plus a verify. |
 | **Two code paths to maintain** (worker for browser players, store for the app) | Certain / maintenance | Shared constants and tests for thresholds and reason codes. The worker protocol stays frozen for browser players. Delete the v2/v3 handoff two releases after phase 3. |
-| **Emergency-path changes** (the watch runs while the lease is absent; D3 if chosen) | — | Explicit sign-off per CLAUDE.md. The watch stays raise-only. §7 ship gate. |
+| **Emergency-path changes** (the watch runs while the lease is absent; D3 if chosen) | — | Explicit sign-off per CLAUDE.md §5. The watch stays raise-only. §7 ship gate. |
 
 ---
 

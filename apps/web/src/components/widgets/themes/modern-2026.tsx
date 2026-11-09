@@ -590,7 +590,7 @@ export function StaffHero({ config }: { config: any }) {
      * The watermark keeps THREE sides + an explicit height, never four: four
      * physical sides in one inline object re-serialize to the `inset` shorthand
      * in the style attribute, which the Chromium-83 polyfill force-zeroes
-     * (CLAUDE.md rule 10, the 2026-07-03 variant).
+     * (apps/web/CLAUDE.md rule 10, the 2026-07-03 variant).
      */
     <div className="absolute top-0 right-0 bottom-0 left-0 overflow-hidden flex flex-col justify-end" style={{
       background: photoUrl ? `url(${photoUrl}) center/cover` : `linear-gradient(135deg, ${C.violet}, ${C.indigo}, ${C.teal})`,

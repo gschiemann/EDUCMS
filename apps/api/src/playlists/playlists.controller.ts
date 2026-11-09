@@ -435,7 +435,7 @@ export class PlaylistsController {
    * One playlist's push history + live per-target acknowledgement
    * (Playlists Operations v1). Truth ceiling per the design correction:
    * acknowledged = the screen's refreshAckMs echoes THIS deployment's exact
-   * value (VALUE identity, CLAUDE.md player rule 6) — never "confirmed":
+   * value (VALUE identity, apps/web/src/app/player/CLAUDE.md player rule 6) — never "confirmed":
    * no expected-content-signature comparison exists yet, and this endpoint
    * refuses to imply one.
    */

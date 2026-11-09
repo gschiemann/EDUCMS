@@ -33,7 +33,7 @@
  *
  * ── Emergency content is never evaluated here ─────────────────────────────
  * No emergency code path may import this module; an alert is never refused,
- * delayed or rewritten on a telemetry inference (CLAUDE.md, Emergency WARNING;
+ * delayed or rewritten on a telemetry inference (apps/api/src/emergency/CLAUDE.md, Emergency WARNING;
  * Player Reliability rules 11 and 16). An API spec enforces the import rule.
  *
  * ── Copy states what the evidence proves (Player Reliability rule 10) ─────

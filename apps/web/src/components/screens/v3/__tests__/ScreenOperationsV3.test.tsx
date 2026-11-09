@@ -5,7 +5,7 @@
  * operator actually SEES it — worst-first grouping with healthy groups
  * collapsed, single-select chips with a path back to All, the drawer's tabs
  * and focus behaviour, and the `?screen=` deep link. "Verify the render tree"
- * (CLAUDE.md #9 / #21): a green derivation that nothing mounts is not a
+ * (apps/web/CLAUDE.md rule 9 / docs/governance/AUDIT-SURFACE.md §21): a green derivation that nothing mounts is not a
  * feature.
  */
 import * as React from 'react';

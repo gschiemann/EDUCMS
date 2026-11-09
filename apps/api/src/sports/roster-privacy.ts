@@ -21,7 +21,7 @@
  *
  * Defaults preserve today's behaviour (everything shown). Changing a default
  * for existing games is Greg's decision, not a silent side effect of this
- * change (CLAUDE.md, player rule 12's principle).
+ * change (apps/web/src/app/player/CLAUDE.md, player rule 12's principle).
  */
 
 export const ROSTER_PRIVACY_EVENT = 'ROSTER_PRIVACY';

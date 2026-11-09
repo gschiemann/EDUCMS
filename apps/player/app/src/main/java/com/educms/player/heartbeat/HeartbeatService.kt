@@ -305,7 +305,7 @@ class HeartbeatService : Service() {
      * 2026-10-11 — the two states in which THIS channel, not the page, is the
      * one that has to answer within a minute:
      *  • the panel is not interactive. An operator's "Turn panel on" reaches
-     *    a dark panel only through this heartbeat (CLAUDE.md player rule 6),
+     *    a dark panel only through this heartbeat (apps/web/src/app/player/CLAUDE.md player rule 6),
      *    and the server keeps it for five minutes — the same length as the
      *    reduced cadence, so a page that kept reporting behind a dark panel
      *    could let the command expire unseen;

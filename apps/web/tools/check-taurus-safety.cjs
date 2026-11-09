@@ -45,7 +45,7 @@ const BASELINE_FILE = path.join(__dirname, 'taurus-safety-baseline.json');
 // (309 declarations across 57 files), so the board baseline is ZERO — this
 // pass locks that in: any `inset:`/`inset-*` that re-enters a board fails CI.
 // Scoped to the inset patterns ONLY: boards legitimately use gap/backdrop/
-// aspect-ratio/color-mix for standard LCD signage (CLAUDE.md rule #10 SCOPE),
+// aspect-ratio/color-mix for standard LCD signage (apps/web/CLAUDE.md rule #10 SCOPE),
 // and inset is the one with a zero-regression spec-identical longhand fix.
 const HTML_SCAN_DIRS = [
   path.join('apps', 'web', 'public', 'templates'),
@@ -97,7 +97,7 @@ const PATTERNS = {
   // Chromium 83 the whole declaration is dropped → a `position: absolute`
   // box with no top/right/bottom/left collapses to 0×0 top-left and the
   // widget (measured by useScaleToFit) renders at scale(0) — invisible.
-  // CLAUDE.md rule #10. This CSS-property pattern catches `inset: …` in
+  // apps/web/CLAUDE.md rule #10. This CSS-property pattern catches `inset: …` in
   // <style> blocks and inline objects.
   insetCss: /\binset:\s*[^,;{}\n]+/g,
   // Companion to insetCss: the Tailwind utilities `inset-0` / `inset-x-*`

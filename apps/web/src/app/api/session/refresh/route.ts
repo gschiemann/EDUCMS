@@ -12,7 +12,7 @@ import {
  * SEC-010 — POST /api/session/refresh
  *
  * The only way a remembered session comes back to life. Called in exactly
- * two situations, both ON DEMAND — never on a timer (CLAUDE.md mobile
+ * two situations, both ON DEMAND — never on a timer (apps/web/CLAUDE.md mobile
  * performance standard: a backgrounded phone must not run pollers):
  *
  *   1. cold start with the remember marker set and no in-tab access token

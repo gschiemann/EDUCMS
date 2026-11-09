@@ -17,7 +17,7 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  * the page origin, and (c) completes registration AND the manifest fetch
  * there — the whole plane, not registration alone.
  *
- * Harness rules obeyed (CLAUDE.md player rule 14): the WS stub delegates
+ * Harness rules obeyed (apps/web/src/app/player/CLAUDE.md player rule 14): the WS stub delegates
  * every non-`/realtime` URL to the real WebSocket (a wholesale replacement
  * stalls Next dev HMR and the entire page boot); mocks key on STATE, never
  * call counts (StrictMode double-fires mount effects in dev).

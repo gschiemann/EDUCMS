@@ -405,7 +405,7 @@ function titleOnTop(title: string): AppStarterLayout {
 // INSTANT apps — Phase 1 batch. Every one of these `build()`s a config for
 // a widgetType that WidgetRenderer.tsx already has a `case` for (verified
 // against the switch in apps/web/src/components/widgets/WidgetRenderer.tsx
-// before writing this file — see CLAUDE.md rule #9, same discipline applies
+// before writing this file — see apps/web/CLAUDE.md rule #9, same discipline applies
 // to widget TYPES as to component mount sites).
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -716,7 +716,7 @@ export const APP_REGISTRY: AppDefinition[] = [
     // Rides the EXISTING TOUCH_POINT 'qr' variant (WidgetRenderer.tsx
     // QrCodeVariant) which already generates a real client-side SVG/canvas
     // QR via the bundled `qrcode` package — no new widget code needed for
-    // this app. See CLAUDE.md rule #9: verified this variant is actually
+    // this app. See apps/web/CLAUDE.md rule #9: verified this variant is actually
     // reachable (TOUCH_POINT case in WidgetRenderer's switch, dispatched by
     // config.variant) before wiring the app to it.
     build: (v) => ({

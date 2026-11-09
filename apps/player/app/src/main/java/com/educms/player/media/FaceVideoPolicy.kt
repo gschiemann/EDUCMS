@@ -19,7 +19,7 @@ import org.json.JSONObject
  * It rides the SAME four bridge methods as protocol 1 (sharedVideoPrepare /
  * Commit / Stop / State) — a `version: 2` request selects it, and the state
  * reply carries `protocol: 2` so the page can tell an APK that has it from
- * one that does not. No bridge method was added (CLAUDE.md player rule 9).
+ * one that does not. No bridge method was added (apps/player/CLAUDE.md player rule 9).
  *
  * Everything in this file is pure and unit-tested (FaceVideoPolicyTest).
  */

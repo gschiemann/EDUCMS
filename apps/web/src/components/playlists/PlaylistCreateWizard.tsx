@@ -39,7 +39,7 @@ import { TabRow } from '@/components/ui/tab-row';
  *     before nuking.
  *   - Fade + scale animation on mount (~150ms). Subtle, not flashy.
  *   - No `inset-0` Tailwind / no flex `gap-*` — Chromium 83 safe
- *     (NovaStar Taurus rule, CLAUDE.md #10). Uses explicit margins
+ *     (NovaStar Taurus rule, apps/web/CLAUDE.md #10). Uses explicit margins
  *     and longhand top/right/bottom/left.
  *
  * Wiring:

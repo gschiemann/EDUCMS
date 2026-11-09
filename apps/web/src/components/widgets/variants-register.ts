@@ -479,7 +479,7 @@ registerVariant({
 //
 // SOCIAL_FEED was deliberately NOT registered until 2026-09-12: it was the
 // one type in the gap that rendered "Coming soon", and a tile for it would
-// have put a widget on the palette that cannot do its job (CLAUDE.md §19).
+// have put a widget on the palette that cannot do its job (docs/governance/AUDIT-SURFACE.md §19).
 // It now has a real connector (apps/api/src/integrations/social/ — OAuth per
 // tenant, an hourly post cache the screens read) and a real renderer, so it
 // is registered below with the rest. If that connector is ever removed, take

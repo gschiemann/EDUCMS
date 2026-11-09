@@ -212,7 +212,7 @@ class SetupCardLifetimeTest {
     // buttons leave `SetupChecklistView` nothing to park focus on, so focus
     // stays on the focusable root: no highlight anywhere, and OK swallowed.
     // A card with no reachable control is a trap on a wall-mounted panel
-    // whose only input is a D-pad (CLAUDE.md, player rule 15).
+    // whose only input is a D-pad (apps/player/CLAUDE.md, player rule 15).
 
     @Test
     fun `every mode offers a primary button`() {

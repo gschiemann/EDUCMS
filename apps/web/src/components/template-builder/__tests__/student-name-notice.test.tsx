@@ -5,7 +5,7 @@
  * student the school's policy hides (apps/api/src/sports/typed-student-names
  * .ts; the field list is @cms/api-types student-name-fields.ts). The builder
  * says so ON those fields while the school's names are hidden — rendered here
- * through the real Properties panel (`ContentFields`, CLAUDE.md rule #9).
+ * through the real Properties panel (`ContentFields`, apps/web/CLAUDE.md rule #9).
  */
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

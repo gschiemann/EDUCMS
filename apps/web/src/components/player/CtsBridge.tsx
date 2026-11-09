@@ -1779,7 +1779,7 @@ export function CtsBridge({
   // Cross-browser-safe panel — fixed corner, low z-index so emergency
   // overlay still wins. Inline styles to dodge any global CSS that
   // might collide. No CSS shorthand position / flex gap (Chromium 83
-  // traps — see CLAUDE.md rule #10); not shipped to Taurus anyway,
+  // traps — see apps/web/CLAUDE.md rule #10); not shipped to Taurus anyway,
   // but be a good citizen.
   const dot = {
     connected: '#22c55e',

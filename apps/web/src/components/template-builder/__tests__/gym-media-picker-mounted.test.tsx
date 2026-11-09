@@ -1,5 +1,5 @@
 /**
- * Anti-costume proof for the gym media source picker (CLAUDE.md rule #9).
+ * Anti-costume proof for the gym media source picker (apps/web/CLAUDE.md rule #9).
  *
  * A component that works perfectly in isolation and is never rendered
  * ships nothing. This mounts the REAL `ContentFields` switch — the same

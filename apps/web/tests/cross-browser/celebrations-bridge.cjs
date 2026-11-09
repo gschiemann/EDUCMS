@@ -43,7 +43,7 @@
  * historical blind spot; the canvas animation paints trivially in
  * Chromium. Add chromium/firefox passes here only if a NEW engine-
  * specific celebration bug surfaces (don't add speculatively — keep CI
- * fast, under 2 min/browser per CLAUDE.md cross-browser rule #4).
+ * fast, under 2 min/browser per apps/web/CLAUDE.md cross-browser rule #4).
  */
 const { webkit } = require('@playwright/test');
 const { spawn } = require('node:child_process');
@@ -150,7 +150,7 @@ async function testOne(browser, template) {
     }
     if (canvas.clientW < 1 || canvas.clientH < 1) {
       // Laid-out size 0 = CSS collapse (e.g. the Chromium-83 absolute-
-      // positioning shorthand trap from CLAUDE.md rule #10 would manifest
+      // positioning shorthand trap from apps/web/CLAUDE.md rule #10 would manifest
       // here on a collapsed #stage). Distinct from backing-store size.
       fail(template, 'canvas-present', `laid-out size ${canvas.clientW}×${canvas.clientH} (collapsed)`);
       return;

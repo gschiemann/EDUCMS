@@ -3,7 +3,7 @@
  *
  * The derivation matrix is pinned in fleetCommand.test.ts; THIS suite proves
  * the operator SEES the five pills, the worst-first inbox, and the location
- * table — the "verify the render tree" discipline (CLAUDE.md #9 / #21) —
+ * table — the "verify the render tree" discipline (apps/web/CLAUDE.md rule 9 / docs/governance/AUDIT-SURFACE.md §21) —
  * and that "Classic view" actually fires the rollback callback.
  */
 import * as React from 'react';

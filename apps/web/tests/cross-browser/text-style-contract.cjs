@@ -224,7 +224,7 @@ async function runBrowser(browserType, browserName) {
   try {
     await waitForServer(PORT);
     console.log(`\nM0-3 text-style contract on real boards (${BOARD}, ${KIOSK})`);
-    // WebKit FIRST — the historical blind spot (CLAUDE.md cross-browser #1).
+    // WebKit FIRST — the historical blind spot (apps/web/CLAUDE.md cross-browser #1).
     await runBrowser(webkit, 'webkit');
     await runBrowser(chromium, 'chromium');
   } finally {

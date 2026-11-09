@@ -1,7 +1,7 @@
 /**
  * LanePadSection — component-level render + interaction test (task #271).
  *
- * CLAUDE.md rule #9 (verify the render tree): the pure-logic tests in
+ * apps/web/CLAUDE.md rule #9 (verify the render tree): the pure-logic tests in
  * lane-pad.test.ts prove the math; this suite proves the REACT component
  * actually mounts for lane sports, wires the roster join, computes place
  * live as the operator types, and writes through the SAME

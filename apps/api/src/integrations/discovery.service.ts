@@ -12,7 +12,7 @@
  * / email / fitness / identity / SIS / social / music — each with a
  * confidence score + a plain-English blurb the Concierge UI explains.
  *
- * From CLAUDE.md's "AI Integration Concierge — vision" section:
+ * From docs/product/CONCIERGE.md's "AI Integration Concierge — vision" section:
  *   "make shit not so overwhelming for people that they don't need
  *    to get an IT guy or consultants ... make the path so automated
  *    that they don't know how they worked without VenueOS in the past"

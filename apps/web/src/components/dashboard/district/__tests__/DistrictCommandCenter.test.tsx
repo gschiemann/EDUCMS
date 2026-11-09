@@ -4,7 +4,7 @@
  * The derivation is pinned in districtRollup.test.ts; THIS suite proves the
  * district admin actually SEES the right words and gets the right one-tap
  * destination — the "verify the render tree, don't trust green types"
- * discipline (CLAUDE.md #9 / #21).
+ * discipline (apps/web/CLAUDE.md rule 9 / docs/governance/AUDIT-SURFACE.md §21).
  *
  * The centrepiece is `THE MORNING WALKTHROUGH`: a real district with two
  * offline screens at School B and one school missing lockdown content, which

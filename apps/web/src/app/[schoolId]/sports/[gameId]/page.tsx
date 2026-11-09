@@ -7634,7 +7634,7 @@ function SponsorScheduleRow({
 //   <HoldChip label="Final" ariaLabel="Mark game Final — hold to confirm"
 //             onConfirm={() => ...} className="px-4 py-2 ..." />
 //
-// Constraints (CLAUDE.md rule #10): no `inset` shorthand or `inset-0`
+// Constraints (apps/web/CLAUDE.md rule #10): no `inset` shorthand or `inset-0`
 // Tailwind class. All absolute positioning uses top-0 right-0 bottom-0
 // left-0 long-hand.
 const HOLD_CHIP_MS = 800;

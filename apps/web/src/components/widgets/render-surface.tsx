@@ -40,7 +40,7 @@
  *       an authoring prompt — it holds its zone quietly and says nothing.
  *
  * See `WidgetEmptyState.tsx` for the component that implements both sides
- * of that contract, and CLAUDE.md §19 for why it is a launch blocker.
+ * of that contract, and docs/governance/AUDIT-SURFACE.md §19 for why it is a launch blocker.
  */
 
 import { createContext, useContext, type ReactNode } from 'react';

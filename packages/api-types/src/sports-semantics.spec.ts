@@ -11,7 +11,7 @@
  * someone adds a new stat key to a sport, this test goes red until a
  * matching semantic is added.
  *
- * 2026-06-15 — co-located with the source per CLAUDE.md "Testing"
+ * 2026-06-15 — co-located with the source per docs/ORIENTATION.md "Testing"
  * convention: `*.spec.ts` next to the file under test. The api-types
  * tsconfig excludes `*.spec.ts` from the published build (only the
  * compiled .d.ts / .js ship). Jest is opt-in at the package level.

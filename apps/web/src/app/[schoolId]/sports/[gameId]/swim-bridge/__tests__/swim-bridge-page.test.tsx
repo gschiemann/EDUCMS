@@ -1,7 +1,7 @@
 /**
  * Swim bridge page — render-branch smoke tests (Inputs-wave SWIM).
  *
- * CLAUDE.md cross-browser rule: Web Serial is Chromium-only, so this page
+ * apps/web/CLAUDE.md cross-browser rule: Web Serial is Chromium-only, so this page
  * MUST render a clear graceful fallback pointing at the manual Lane Pad.
  * jsdom has no `navigator.serial`, which makes it a perfect stand-in for
  * Safari/Firefox — the first test IS the WebKit-degrade check. The second
@@ -10,7 +10,7 @@
  *
  * The serial/POST machinery itself is covered by the pure-glue suite in
  * src/lib/__tests__/swim-bridge.test.ts — this file only proves the two
- * render branches actually mount (CLAUDE.md rule #9).
+ * render branches actually mount (apps/web/CLAUDE.md rule #9).
  */
 import { render, screen } from '@testing-library/react';
 

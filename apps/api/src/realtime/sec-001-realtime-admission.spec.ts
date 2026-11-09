@@ -34,7 +34,7 @@
  *
  * ── THE LINE THAT MUST NOT MOVE ────────────────────────────────────────────
  * `GET /screens/:id/manifest` STILL serves a bootstrap credential. That is
- * CLAUDE.md emergency safeguard #4 — the HTTP-polling backstop that delivers a
+ * apps/api/src/emergency/CLAUDE.md emergency safeguard #4 — the HTTP-polling backstop that delivers a
  * lockdown to a screen whose credential has gone unproven. The last suite in
  * this file drives the real interceptor and the real manifest handler to prove
  * an OVERRIDE still reaches such a screen, so a future tightening of the
@@ -628,7 +628,7 @@ describe('SEC-001 realtime — SSE', () => {
 // ─────────────────────────────────────────────────────────────────────────
 /**
  * The constraint this whole fix had to respect. `GET /screens/:id/manifest` is
- * the HTTP-polling backstop (CLAUDE.md emergency safeguard #4). A screen whose
+ * the HTTP-polling backstop (apps/api/src/emergency/CLAUDE.md emergency safeguard #4). A screen whose
  * credential has gone unproven — an APK re-sideload, cleared WebView storage,
  * a token expired over summer break — must STILL receive a lockdown. If a
  * future change to the realtime gate ever takes this with it, this suite is

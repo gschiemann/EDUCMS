@@ -19,7 +19,7 @@
  * invisible while the mark is present. Removing the mark reveals the new
  * content underneath in one paint.
  *
- * ES5 on purpose (Chromium 83 WebViews, CLAUDE.md #10) — no arrow functions,
+ * ES5 on purpose (Chromium 83 WebViews, apps/web/CLAUDE.md #10) — no arrow functions,
  * no template literals, no optional chaining. Lives in its own module so
  * the layout's inline-script parse test covers the interpolated result and
  * a jsdom test can run the body directly.

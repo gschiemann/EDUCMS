@@ -380,7 +380,7 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // bundle, is read ONLY by the fleet list (`GET /screens`) for the
     // "Page bundle out of date" chip, and appears in no manifest branch —
     // and it MUST NOT, since a manifest that varied per reporting device
-    // would kill 304s fleet-wide (CLAUDE.md manifest-cache rule).
+    // would kill 304s fleet-wide (packages/database/CLAUDE.md manifest-cache rule).
     'lastBundleSha',
     'lastBundleShaAt',
     // lastBundleId (2026-09-21) — the identity the player actually reloads

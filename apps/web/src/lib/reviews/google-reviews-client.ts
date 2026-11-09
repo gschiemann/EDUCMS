@@ -12,7 +12,7 @@
  * `resolveDeviceToken` is imported from device-menu rather than re-implemented,
  * because two copies of "where does the device token live" is precisely the
  * three-disagreeing-token-stores failure the player reliability program was
- * written to end (CLAUDE.md player rule 3).
+ * written to end (apps/web/src/app/player/CLAUDE.md player rule 3).
  *
  * ── WHY IT ADDRESSES `API_URL` DIRECTLY ──────────────────────────────────
  * CLAUDE.md's GATEWAY_SHARED_SECRET note is explicit: never add a NEW relative

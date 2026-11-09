@@ -161,7 +161,7 @@ export function NativeDualVideo({
     // While native is ready and taking over, the browser's one-stream engine
     // must not attach (it waits for the same loop point and would leave this
     // hand-off no playing frame to hold — continuousLoop.ts). An attribute in
-    // place on our own node, never a detached one (CLAUDE.md cross-browser 6).
+    // place on our own node, never a detached one (apps/web/CLAUDE.md cross-browser 6).
     const markHandoff = (on: boolean) => {
       try {
         if (on) container.current?.setAttribute("data-native-handoff", "pending");

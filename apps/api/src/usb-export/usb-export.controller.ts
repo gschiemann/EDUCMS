@@ -10,7 +10,7 @@
  * durations, countdown dates, menu items — all carried in
  * template.zones[*].defaultConfig.
  *
- * ZIP layout (matches CLAUDE.md Sprint 7 spec):
+ * ZIP layout (matches docs/roadmap/ROADMAP.md Sprint 7 spec):
  *   edu-cms-content/   (or venueos-content/ with USB_EXPORT_FOLDER_NAME=venueos —
  *                       usb-export-folder.ts; players up to 1.1.65 read only the old name)
  *     manifest.json      ← JSON, includes template + zones + config

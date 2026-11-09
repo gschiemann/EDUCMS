@@ -16,7 +16,7 @@
  *
  * Carried on the manifest's `display` block as `vendorBacklight: false`, and
  * ONLY for a screen the env names, so no other screen's payload hash moves
- * (CLAUDE.md manifest-cache rule 7). Deterministic per (screen, env).
+ * (packages/database/CLAUDE.md manifest-cache rule 7). Deterministic per (screen, env).
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

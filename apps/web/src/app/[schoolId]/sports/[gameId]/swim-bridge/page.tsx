@@ -22,7 +22,7 @@
  *     cross-check filter + a 2-consecutive-consistent-snapshots gate
  *     before the FIRST POST (see swim-bridge.ts header for the traps).
  *
- * CROSS-BROWSER (CLAUDE.md rule): Web Serial is Chromium-only. Same
+ * CROSS-BROWSER (apps/web/CLAUDE.md, cross-browser section): Web Serial is Chromium-only. Same
  * pattern as CtsBridge's supported===false degrade — except this is a
  * destination page, so instead of rendering nothing it renders an
  * explicit fallback panel pointing at the manual Lane Pad, which keeps

@@ -4,7 +4,7 @@
  * Audit P1-12 (gallery bind dead-end): every scoreboard/ribbon/scorebug/
  * gameday preset's OWN description says "Bind a game/meet," but nothing
  * on the /templates gallery ever routed there. This suite mounts the
- * REAL, exported `GalleryCard` (CLAUDE.md rule #9 — the exact component
+ * REAL, exported `GalleryCard` (apps/web/CLAUDE.md rule #9 — the exact component
  * the gallery grid renders, not a re-implementation) and proves:
  *  - the action renders ONLY for SCOREBOARD/RIBBON/SCOREBUG/GAMEDAY
  *    categories, never for an ordinary signage board,

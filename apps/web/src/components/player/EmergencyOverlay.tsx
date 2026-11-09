@@ -400,7 +400,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
 
   // 2026-05-26 P0-5 — Chromium-83 sweep on a life-safety surface.
   // NovaStar Taurus LED controllers ship Chromium 83 and several K-12
-  // pilots play on Taurus walls. CLAUDE.md rule #10 bans flex GAP
+  // pilots play on Taurus walls. apps/web/CLAUDE.md rule #10 bans flex GAP
   // utilities (Chrome 84+; on 83 they collapse and icon+text stick
   // together → unreadable lockdown banner), Tailwind BLUR utilities
   // (Chromium 76+ but flaky on older Android WebView; renders as
@@ -488,7 +488,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
         // screen. Explicit width/height from the canonical canvas (same var
         // the media branch and the splash use); only two sides are set so
         // this object can never serialize to the four-side shorthand
-        // (CLAUDE.md rule #10, third variant).
+        // (apps/web/CLAUDE.md rule #10, third variant).
         width: faceStage?.width ?? 'var(--led-w, 100vw)',
         height: faceStage?.height ?? 'var(--led-h, 100vh)',
         backgroundColor: style.solidBg,

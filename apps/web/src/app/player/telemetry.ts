@@ -183,7 +183,7 @@ export interface TelemetryLoopReport {
 /**
  * The large file this screen is downloading RIGHT NOW (2026-09-27, download
  * visibility). A file ≥ 8 MiB plays only once it is completely on disk
- * (readiness-gated playback, CLAUDE.md player rule 17). Until it is, the glass
+ * (readiness-gated playback, apps/web/src/app/player/CLAUDE.md player rule 17). Until it is, the glass
  * shows either the "Downloading content" splash (nothing else to show) or the
  * PREVIOUS content, with the new playlist held back — and the dashboard could
  * tell neither from "nothing scheduled". It rides inside the cache report on

@@ -19,7 +19,7 @@ layer") is part of that bundle, not the wrapper.
   contract (Kotlin `METHODS` + dispatch arm, web `NATIVE_VOID`/`VALUE_METHODS`,
   canary count in `nativeBridge.test.ts`), and a new method must stay out of
   `KNOWN_METHODS` until the fleet floor includes the APK that implements it —
-  see CLAUDE.md "Player Reliability", rule 9.
+  see apps/player/CLAUDE.md, rule 9.
 - The splash screen, app icon, package signature, or manifest changes.
 - A security fix lands in the wrapper.
 
@@ -132,7 +132,7 @@ Green CI is a unit-test claim, never a fleet claim. Do not hand-tag a release.
 
 ```bash
 scripts/release-apk.sh player 1.1.18
-git push origin master player-v1.1.18   # ONE atomic push — see CLAUDE.md rule 13
+git push origin master player-v1.1.18   # ONE atomic push — see apps/player/CLAUDE.md rule 13
 ```
 
 `scripts/release-apk.sh` bumps `versionCode`/`versionName` in

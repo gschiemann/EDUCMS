@@ -46,7 +46,7 @@ function sceneText(width: number, height: number, hFactor: number, widthChars = 
 }
 
 /** Absolute, centered, column flow used by every scene branch. `margin`
- *  (never `gap`) separates the stacked lines — see CLAUDE.md rule #10. */
+ *  (never `gap`) separates the stacked lines — see apps/web/CLAUDE.md rule #10. */
 const sceneWrap: React.CSSProperties = {
   position: 'absolute', top: 0, right: 0, bottom: 0, left: 0,
   display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -2251,7 +2251,7 @@ export function CelHornWidget({ config }: WidgetProps<CelHornCfg>) {
  *   │  ────────────────── team color accent bar ────────────────────  │
  *   └─────────────────────────────────────────────────────────────────┘
  *
- * Design rules (CLAUDE.md rule #10 + Chromium-83 safety):
+ * Design rules (apps/web/CLAUDE.md rule #10 + Chromium-83 safety):
  *   - No `inset`, no `gap` on flex — use `margin` between stacked items.
  *   - Fixed-pixel design canvas (1920×1080) wrapped in transform:scale.
  *   - position:absolute with top/right/bottom/left longhand only.

@@ -18,7 +18,7 @@
  *
  * HOW THESE MOUNT. Through `WidgetPreview` — the path BuilderZone and the
  * player's rendererBundle both use — because a test that calls the widget
- * function directly proves nothing about what reaches a screen (CLAUDE.md #9,
+ * function directly proves nothing about what reaches a screen (apps/web/CLAUDE.md #9,
  * and the sibling `widget-truth` / `widget-hotspots` suites).
  *
  * HOW TIME IS PINNED. `jest.useFakeTimers().setSystemTime(...)`, and every

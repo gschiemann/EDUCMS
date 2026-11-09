@@ -57,7 +57,7 @@ describe('the boot latch', () => {
   });
 
   it('treats "no Redis configured" as ready, not as something to wait for', async () => {
-    // CLAUDE.md: Redis missing → the API boots anyway, HTTP polling covers
+    // docs/DEPLOY.md: Redis missing → the API boots anyway, HTTP polling covers
     // realtime. Waiting for a client that does not exist would burn the whole
     // ceiling on every single-service deploy.
     const { svc } = makeService({ redisStatus: null });

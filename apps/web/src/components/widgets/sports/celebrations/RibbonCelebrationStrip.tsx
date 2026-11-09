@@ -223,7 +223,7 @@ export function RibbonCelebrationStrip({
           // the 4-value CSS inset shorthand (its top value is a leading zero),
           // which collides with the player/layout.tsx Chromium-83 inset-
           // substring polyfill and force-zeroes every side. left:22% + width:56%
-          // == the old symmetric column, identical layout. CLAUDE.md rule #10.
+          // == the old symmetric column, identical layout. apps/web/CLAUDE.md rule #10.
           left: '22%',
           width: '56%',
           top: 0,

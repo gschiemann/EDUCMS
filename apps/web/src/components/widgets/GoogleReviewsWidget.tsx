@@ -49,7 +49,7 @@
  * box: no `inset` shorthand, no Tailwind `inset-*`, no flex `gap` (margins
  * instead), no `backdrop-filter`, no container-query units, and no `clamp()`
  * ceiling that could pin type small on a 4K wall. The one four-sided style
- * object is the deliberate uniform-zero full-bleed case (CLAUDE.md rule #10),
+ * object is the deliberate uniform-zero full-bleed case (apps/web/CLAUDE.md rule #10),
  * which the polyfill handles correctly.
  */
 

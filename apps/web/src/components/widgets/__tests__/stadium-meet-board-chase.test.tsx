@@ -10,7 +10,7 @@
  * (e.g. its own inset sweep, since it's an entirely separate JSX tree).
  *
  * Drives the SAME `WidgetPreview` dispatcher the template builder canvas
- * and the live player use (CLAUDE.md rule #9 — verify the render tree).
+ * and the live player use (apps/web/CLAUDE.md rule #9 — verify the render tree).
  *
  * Covers:
  *  - Builder-sample render: the mockup-faithful sample chase (race clock
