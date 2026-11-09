@@ -14,6 +14,8 @@ The lead never wrote the returned reports to disk before the context compacted (
 
 Nothing in the dispatch process required a returned agent report to be written to disk before the next step, so the lead's memory was the only copy. The rule it produced makes persisting the report to a tracked path the first action on return.
 
+**Why the gap stays open (checked 2026-11-08):** the failure is a lead session not writing a returned report to a file before its context compacted. The returning agent and the lead's context live in the harness, outside the repository, so no repository script, test or workflow can observe whether a report was persisted; a check on `docs/handoffs/` could only see that some file exists, not that a given report is in it. What would make a mechanism possible: a harness hook on agent completion that writes the returned report to `docs/handoffs/` itself (or refuses the next user-facing message until it is there).
+
 ## What pins it
 
 Nothing pins this yet — GAP.

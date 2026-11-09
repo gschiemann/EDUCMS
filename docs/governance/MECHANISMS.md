@@ -86,6 +86,8 @@ Two facts shape everything below: only four build checks are required to merge (
 13. **#22** — a request/correlation id and a log drain.
 14. **#21 #26** — gate the "fix shipping / fix shipped" customer emails on a deployed sha.
 15. **#27 #47 #48 #25** — tracked incident records with both investigations, a bug→test link, "what worked" captured.
+
+   Update 2026-11-09: of the five records that said "Nothing pins this yet — GAP", three now cite what pins them (worktree-damage detection in `scripts/hygiene-check.sh`; a report-only PR-body check for Evidence and Validation in `.github/workflows/pr-provenance.yml`; failure-to-issue routing for Deploy Reliability) and two stay GAP with the reason written in each record (lost agent reports, deploy-overlap pool sizing: both live outside the repository).
 16. **#45 #36 #53** — a governance check in a workflow with no `paths-ignore`; the entry-file conformance tests; a doc-size baseline.
 17. **#38 #49 #44** — a monthly factory-cost ledger, weekly engineering metrics, the ops sweep scheduled and the weekly review as a skill.
 18. **#8 #46** — delete or generate the fossil OpenAPI spec; a doc-age sweep.
