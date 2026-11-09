@@ -53,6 +53,40 @@ jobs:
             echo "::warning::Could not read the PR body from the API; using the event payload (stale if the body was edited after this run started)."
           fi
 
+      # ── Verification before claim (docs/governance/AUDIT-SURFACE.md §21; incident 2026-05-26 logo bug, round 7) ──
+      # Report-only, always exits 0: warns when the PR body (decision format) has no Evidence or no Validation line,
+      # or leaves the pull request template's hint text in place. It proves the PR SAYS what was tested and how; it
+      # cannot prove the test happened. Static reading of the body only: no PR code runs, no secret is used.
+      - name: Check the PR body states Evidence and Validation (report-only)
+        continue-on-error: true
+        shell: bash
+        env:
+          PR_BODY_FILE: ${{ runner.temp }}/pr-body.txt
+        run: |
+          set +e
+          set -f
+          body="${PR_BODY_FILE}"
+          missing=""
+          for label in evidence validation; do
+            # `**Validation** — text`, `Validation: text`, or a heading (`## Validation`) with any text under it.
+            line_re="^[[:space:]>|*_-]*${label}[[:space:]*_]*(:|—|–|-|[|])[[:space:]*_]*[^[:space:]*_|]"
+            head_re="^#+[[:space:]]*${label}"
+            if [ -s "$body" ] && { grep -a -i -q -E "$line_re" "$body" || grep -a -i -q -E "$head_re" "$body"; }; then
+              :
+            else
+              missing="${missing} ${label}"
+            fi
+          done
+          if [ -s "$body" ] && grep -a -i -E '^[[:space:]>|*_-]*validation' "$body" | grep -a -q -F 'what was tested, how'; then
+            missing="${missing} validation(template-hint-unchanged)"
+          fi
+          if [ -n "$missing" ]; then
+            echo "::warning title=PR body lacks verification::Missing or unfilled:${missing}. Write what was tested and how ('unverified' where true) before claiming it works. Report-only."
+          else
+            echo "PR body states Evidence and Validation."
+          fi
+          exit 0
+
       # ── MODE ────────────────────────────────────────────────────────────────────────────────────────────────
       # Report-only: the step below may fail without failing the job, and every finding is a WARNING.
       # To enforce, change BOTH lines together: delete `continue-on-error: true` and set PROVENANCE_MODE to

@@ -16,6 +16,8 @@ From the reasoning that stays in `packages/database/CLAUDE.md`:
 
 Every deploy runs the old and the new API container together for about 7 to 19 seconds, each allowed `connection_limit` connections, and the Supavisor pool at its Nano default of 15 was smaller than that peak. The record gives no gate or alarm that compared pool size to the overlap; it was found by measuring the API's 5xx over six days.
 
+**Why the gap stays open (checked 2026-11-08):** the rule is about the Supavisor pool size (a Supabase project setting) against the overlap peak of 2 x replicas x `connection_limit`. The boot guard in `apps/api/src/main.ts` does not cover it: it refuses a production `DATABASE_URL` only when the URL says `pgbouncer=true` without `connection_limit>=10` and `pool_timeout>=20`, which is the single-connection-pool failure and not this one (the URL is session mode and carries no `pgbouncer`); the logic is inline in `bootstrap` and not exported, so it has no unit test to extend. The pool size is not readable from the URL or from the API's environment. What would make a mechanism possible: a scheduled check that reads the pool size and `max_connections` through the Supabase management API (a credential this repository deliberately does not hold) and compares them to the documented formula, or a boot-time probe that counts `EMAXCONNSESSION` refusals and reports them.
+
 ## What pins it
 
 Nothing pins this yet — GAP.
