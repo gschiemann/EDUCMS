@@ -33,8 +33,19 @@ object LegacyEngineCompat {
     /**
      * @param view a short name for the log line (`player`, `overlay`, `face-1`).
      * @param skipOrigins origins whose documents must be left untouched.
+     * @param allowLate this view shows a third-party site as its own top-level
+     *   document (the URL overlay), so on an engine without document-start
+     *   scripts it may take the late path ([LegacyEnginePolicy.Decision.INSTALL_LATE]).
+     * @return the injector the view's WebViewClient must feed every main-frame
+     *   document to — only on the late path; null otherwise (nothing to do).
      */
-    fun install(context: Context, webView: WebView, view: String, skipOrigins: List<String> = emptyList()) {
+    fun install(
+        context: Context,
+        webView: WebView,
+        view: String,
+        skipOrigins: List<String> = emptyList(),
+        allowLate: Boolean = false,
+    ): LegacyEngineLateInjector? {
         try {
             val versionName = try {
                 WebViewCompat.getCurrentWebViewPackage(context)?.versionName
@@ -47,18 +58,23 @@ object LegacyEngineCompat {
             } catch (t: Throwable) {
                 false
             }
-            val decision = LegacyEnginePolicy.decide(major, documentStart)
-            if (decision != LegacyEnginePolicy.Decision.INSTALL || major == null) {
+            val decision = LegacyEnginePolicy.decide(major, documentStart, allowLate)
+            val late = decision == LegacyEnginePolicy.Decision.INSTALL_LATE
+            if ((decision != LegacyEnginePolicy.Decision.INSTALL && !late) || major == null) {
                 if (decision != LegacyEnginePolicy.Decision.SKIP_MODERN) {
                     PlayerLogger.i(TAG, "PLAYER_LEGACY_POLYFILL skipped view=$view reason=$decision webview=${versionName ?: "unknown"}")
                 }
-                return
+                return null
             }
-            val source = loadAsset(context) ?: return
+            val source = loadAsset(context) ?: return null
             val script = LegacyEnginePolicy.scriptFor(source, skipOrigins)
             if (script == null) {
                 PlayerLogger.w(TAG, "PLAYER_LEGACY_POLYFILL skipped view=$view reason=MALFORMED_ASSET")
-                return
+                return null
+            }
+            if (late) {
+                PlayerLogger.i(TAG, "PLAYER_LEGACY_POLYFILL armed-late view=$view webview=$versionName (no DOCUMENT_START_SCRIPT)")
+                return LegacyEngineLateInjector(script, major, LegacyEnginePolicy.featureCount(source), view)
             }
             WebViewCompat.addDocumentStartJavaScript(webView, script, LegacyEnginePolicy.ALLOWED_ORIGINS)
             PlayerLogger.durable(
@@ -68,6 +84,7 @@ object LegacyEngineCompat {
         } catch (t: Throwable) {
             PlayerLogger.w(TAG, "PLAYER_LEGACY_POLYFILL failed view=$view: ${t.message}")
         }
+        return null
     }
 
     private fun loadAsset(context: Context): String? {

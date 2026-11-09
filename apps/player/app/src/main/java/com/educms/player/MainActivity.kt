@@ -3796,7 +3796,10 @@ class MainActivity : ComponentActivity() {
         // LegacyEnginePolicy.MODERN_WEBVIEW_MAJOR). It defines missing JS
         // builtins in page context and nothing else — no native surface, so
         // the boundary above holds (`WebTabsWiringTest`).
-        com.educms.player.webcompat.LegacyEngineCompat.install(applicationContext, wv, "overlay")
+        // On an engine without document-start scripts (the GUQ's AOSP
+        // WebView 95) it takes the LATE path instead: the client below feeds
+        // every main-frame document to `legacyLate` (null = nothing to do).
+        val legacyLate = com.educms.player.webcompat.LegacyEngineCompat.install(applicationContext, wv, "overlay", allowLate = true)
         // (A touch inside the site is relayed to the player page from the
         // Activity's dispatchTouchEvent — observed, never consumed — so the
         // Website Tabs idle clock resets. Not a View.OnTouchListener: that
@@ -3926,6 +3929,7 @@ class MainActivity : ComponentActivity() {
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 PlayerLogger.i("MainActivity", "URL overlay page started: ${url ?: "(unknown)"}")
+                legacyLate?.inject(view, url)
                 overlayLastStartedUrl = url
                 // Remember every origin the site view reaches, for the sign-out's
                 // per-origin storage wipe (WebTabsPolicy.wipeOriginsFor).
@@ -3933,8 +3937,15 @@ class MainActivity : ComponentActivity() {
                 super.onPageStarted(view, url, favicon)
             }
 
+            // Legacy-engine late path: the first moment the new document provably exists.
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                legacyLate?.inject(view, url)
+                super.onPageCommitVisible(view, url)
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 PlayerLogger.i("MainActivity", "URL overlay page finished: ${url ?: "(unknown)"}")
+                legacyLate?.inject(view, url)
                 super.onPageFinished(view, url)
                 if (view === urlOverlayView && !webTabsActive && urlOverlayRecoveryInFlight &&
                     !urlOverlayRecoveryFailed && url != null && url == overlayLastStartedUrl &&
