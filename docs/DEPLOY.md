@@ -32,10 +32,15 @@ Railway applied it to every service building from the repo root (the new `render
 the API image three times). The API's dashboard settings mirror the file exactly, and a second
 service points at its own Dockerfile through **Settings → Build → Dockerfile path** plus the
 variable `RAILWAY_DOCKERFILE_PATH` — never a per-service `railway.json`, never a Root Directory
-(`apps/renderer/README.md`, "Deploying on Railway"). Before 2026-12-01 the API must move to
-Infrastructure as Code (`.railway/railway.ts`, `railway config migrate` — needs `railway login`);
-as of 2026-11-01 no `.railway/` directory exists yet, and this is a dated Phase 1 item
-(`docs/governance/MECHANISMS.md`).
+(`apps/renderer/README.md`, "Deploying on Railway"). The platform configuration is versioned as
+Infrastructure as Code in `.railway/railway.ts` (generated from the live dashboard on 2026-11-01, the
+renderer healthcheck corrected by hand). `railway config plan` — Railway CLI logged in, Node 22, the
+`railway` dev dependency installed — reported "already up to date" on 2026-11-08: the file equals
+production. Run the plan before and after any dashboard change; a diff is drift, to be fixed in one
+direction or the other. `railway config migrate status` confirms no service reads `railway.json` or
+`railway.toml` any more, so the 2026-12-01 config-as-code cutoff is a non-event here. The first
+`railway config apply` (a no-op today; it only makes the file authoritative) is the owner's own run:
+the agent-side guard refuses it (L2).
 
 **Multi-replica (2026-09-03).** Every cluster-singleton background worker now takes a Redis leader lease before its tick (`LEASE` in `apps/api/src/realtime/leader-lease.service.ts`; 25 leased, 12 deliberately not — each un-leased one carries a `NO LEADER LEASE, DELIBERATELY` comment at the site that gives the reason). Two rules: a replica that cannot reach Redis **assumes leadership and logs it** (degraded == today's single-replica behaviour, never worse), and a health/liveness probe is never leased — a replica that has lost Postgres cannot take a lease, so leasing its probe would silence the page exactly when it should fire. Express sessions are in Redis for the same reason; they fail SOFT (a store error must never 500 the dashboard).
 
