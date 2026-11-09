@@ -7,7 +7,9 @@
 # repo owner, and that email is the only trace. This turns a scheduled
 # failure into an artifact both the operator and the next engineering session
 # see first thing: one issue per workflow, updated (not duplicated) while it
-# keeps failing, closed by hand when it is fixed.
+# keeps failing. It closes itself: the next time that workflow completes green
+# on the default branch, the `close-on-green` job below comments with the green
+# run and closes the issue (2026-11-09). Closing by hand still works.
 #
 # Two failure shapes are told apart, because they have different fixes:
 #   · a job that ran and failed  → read the log, fix the code/secret;
@@ -16,14 +18,16 @@
 #                                  in any log). Only the account owner can lift
 #                                  that, and every push's CI is refused too.
 #
-# Needs only the built-in GITHUB_TOKEN with issues:write. No secrets.
+# Needs only the built-in GITHUB_TOKEN with issues:write. No secrets
+# (the on-call routine step uses two optional ones; see docs/SLO_AND_ONCALL.md).
 # NOTE: this workflow itself cannot run while billing is refusing jobs — the
 # morning `node scripts/ops-sweep.mjs` is the backstop for that case.
 name: Workflow failure → issue + on-call routine
 
 on:
   workflow_run:
-    # Every active workflow except Dependabot's own and this file. A wildcard
+    # Every active workflow except Dependabot's own and this file (CodeQL's
+    # default-setup workflow is included). A wildcard
     # is not supported here, so a NEW workflow must be added to this list or
     # its failures are invisible to the responder. `gh workflow list` is the
     # source of truth.
@@ -32,22 +36,29 @@ on:
       - Android Player APK
       - Capability Registry
       - CI & Security
+      - CodeQL
       - Cross-Browser
       - DB Backup
       - DB Restore Drill
       - Deploy Reliability
+      - E2E (full Playwright)
+      - E2E DPR experiment (temporary)
       - Emergency Path
       - Field Scripts
       - Integration Truth
       - Keep API warm
       - Lighthouse CI
       - Mobile Perf
+      - Ops sweep (morning)
       - OTA Wiring Integrity
       - Player Kotlin Check
       - Poster Freshness
+      - PR Provenance
       - Prod Smoke
+      - Rulebook
       - Security Watch
       - Signing Secrets
+      - Supply Chain Scan
       - Taurus Safety
       - Tenant Isolation
     types: [completed]
@@ -148,3 +159,36 @@ jobs:
           else
             echo "::warning::on-call routine fire returned HTTP $code: $(head -c 300 /tmp/fire.json)"
           fi
+
+  # ── Close on green (2026-11-09) ─────────────────────────────────────
+  # Issues used to sit open for weeks after the workflow was fixed. When a
+  # listed workflow finishes green on the default branch, close its open
+  # "ops: <name> failed (...)" issue(s) with a comment naming the green run.
+  # Matches on the exact title prefix the opener above writes, label `ops`.
+  # No issue = nothing to do; several = all closed. A green run on a pull
+  # request branch does not count (it says nothing about the default branch).
+  close-on-green:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      WF_NAME: ${{ github.event.workflow_run.name }}
+      WF_URL: ${{ github.event.workflow_run.html_url }}
+      WF_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Comment on and close the open failure issue(s) for this workflow
+        run: |
+          set -euo pipefail
+          prefix="ops: ${WF_NAME} failed ("
+          nums=$(gh issue list --state open --label ops --limit 200 --json number,title \
+            | jq -r --arg p "$prefix" '.[] | select(.title | startswith($p)) | .number')
+          if [ -z "$nums" ]; then
+            echo "no open failure issue for ${WF_NAME} - nothing to close"
+            exit 0
+          fi
+          for n in $nums; do
+            gh issue close "$n" --comment "${WF_NAME} is green again, so this issue is closed automatically. Green run: ${WF_URL} (commit ${WF_SHA:0:9}). If it fails again a new issue will open."
+            echo "closed issue #$n"
+          done

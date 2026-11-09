@@ -150,6 +150,24 @@ lightweight rotation + response-time expectation even if it is one person; (3)
 add PagerDuty/OpsGenie (V2 responder-escalation surface in docs/roadmap/ROADMAP.md) when
 contracts justify it.
 
+**Setting up the on-call routine (owner step).** As of 2026-11-09 the repository
+secrets `ROUTINE_FIRE_URL` and `ROUTINE_FIRE_TOKEN` are **absent** and no on-call
+routine exists, so a failed workflow only opens a GitHub issue (and the daily
+`ops-sweep.yml` run is the backstop). To turn the pager on:
+
+1. Open claude.ai/code/routines and create a routine for this repository. Its
+   prompt is the one described in the header of
+   `.github/workflows/scheduled-failure-issue.yml`: read the failure that arrives
+   in the trigger text, find the matching `ops:` issue, read the failed log, fix
+   what is a code or secret problem, and only report when the classification is
+   BILLING.
+2. On the routine's edit page, add an API trigger. The trigger URL and its token
+   are shown once; copy both before leaving the page.
+3. In GitHub, Settings, Secrets and variables, Actions, add them as the repository
+   secrets `ROUTINE_FIRE_URL` and `ROUTINE_FIRE_TOKEN`.
+4. Check it: re-run a failed workflow and confirm the "Fire the on-call routine"
+   step runs instead of the "On-call routine not configured" notice.
+
 ---
 
 ## 6. Cross-references
