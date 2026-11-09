@@ -1205,3 +1205,9 @@ export * from './customer-activity';
 // what counts as a valid IANA id, shared by the API (manifest, list, PUT) and
 // the dashboard (the picker and the "device disagrees" note).
 export * from './time-zone';
+
+// Emergency paint identity (2026-11-01, the synthetic emergency drill) — a
+// COPY of the player's rule (apps/web/src/app/player/emergencyPaintProof.ts)
+// so the API can grade the `em:<identity>` a drill must paint. The player keeps
+// its own; a web parity test holds the two identical.
+export * from './emergency-paint-identity';

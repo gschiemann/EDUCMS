@@ -390,6 +390,20 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
     purpose: 'Lets the rev endpoint attach an alert descriptor so a screen raises an alert faster; off reverts to revision-move then manifest fetch.',
     note: 'SUBTRACTIVE: any other value, including a typo, leaves it ON. Off only makes raises slower, never wrong or missing.' },
 
+  // ─── Synthetic emergency drill (emergency/drill/; design 2026-10-31) ───────────────────────
+  { name: 'EMERGENCY_DRILL_CRON_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,
+    purpose: 'Turns the synthetic emergency drill off entirely: no tick, no orphan sweep, no dead-man check, nothing dispatched.',
+    note: 'Beats every other EMERGENCY_DRILL_* setting. SUBTRACTIVE: unset leaves the drill governed by EMERGENCY_DRILL_SCREENS (unset = nothing runs). Off under NODE_ENV=test regardless.' },
+  { name: 'EMERGENCY_DRILL_SCREENS', type: 'csv', default: null, failureDirection: 'closed',
+    purpose: 'Bench screen ids the synthetic drill may drill (comma or space separated UUIDs, at most 12, no wildcard); each must also sit under an internal organisation root.',
+    note: 'Unset or empty: the drill does nothing. A token that is not a UUID is ignored and logged, past 12 the rest are ignored - a bad value only ever narrows the list, never widens it.' },
+  { name: 'EMERGENCY_DRILL_MODE', type: 'enum', values: ['shadow', 'alert', 'on', 'off'], default: 'shadow', failureDirection: 'closed', killSwitch: true,
+    purpose: 'Synthetic drill rollout stage: shadow records verdicts only; alert also emails the owner (per pass + daily dead-man); on also lets a FAIL hold canary auto-promotion; off stops it.',
+    note: 'Any other value reads as shadow (no email) and logs an error. Owner alerts go through PlatformAlertMailer only; no mode ever emails a customer.' },
+  { name: 'EMERGENCY_DRILL_SCHEDULE', type: 'csv', default: '10:30', failureDirection: 'closed',
+    purpose: 'Up to 4 HH:MM drill slots, read in EACH SCREEN\'s own time zone (mid-morning local by default, inside a panel\'s ON window).',
+    note: 'Invalid (not HH:MM, or more than 4 slots): no drill is dispatched and an error is logged; the orphan sweep still runs and the dead-man check reports the gap.' },
+
   // ─── Player OTA, release policy and field builds ───────────────────────────────────────────
   { name: 'CANARY_AUTO_PROMOTE_DISABLED', type: 'boolean', default: false, accepts: '1', failureDirection: 'closed', killSwitch: true,
     purpose: 'Stops the cron that promotes a canary player build to the fleet once its cohort looks healthy; builds then stay in canary.',

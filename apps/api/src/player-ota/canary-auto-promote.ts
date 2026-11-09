@@ -2,6 +2,10 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@ne
 import { PrismaService } from '../prisma/prisma.service';
 import { isInCanaryCohort } from './canary-cohort';
 import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-lease.service';
+// 2026-11-01 — a synthetic emergency drill FAIL holds promotion for that
+// hardware class (Article 34; emergency/drill/, mode `on` only).
+import { readDrillConfig } from '../emergency/drill/synthetic-drill.config';
+import { drillHardwareClass, loadCanaryDrillHolds } from '../emergency/drill/synthetic-drill.policy';
 
 /**
  * ─── OTA-02 (2026-08-03): the promotion gate, rebuilt ──────────────────
@@ -185,6 +189,8 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CanaryAutoPromote.name);
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  /** Seam for tests: the synthetic drill's config (its kill switch and mode decide the hold). */
+  drillConfig = () => readDrillConfig(process.env);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -241,6 +247,16 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
       });
       scanned = tenants.length;
 
+      // A hardware class whose latest synthetic emergency drill FAILED is held
+      // until a PASS (read once per tick; a read that fails holds nothing).
+      const drillHolds =
+        tenants.length > 0
+          ? await loadCanaryDrillHolds(this.prisma.client as any, this.drillConfig(), Date.now()).catch((e) => {
+              this.logger.warn(`[canary] synthetic-drill hold read failed: ${e?.message ?? e}`);
+              return new Map();
+            })
+          : new Map();
+
       for (const t of tenants as any[]) {
         const setAt: Date | null = t.canarySetAt;
         const soakHours: number = t.canarySoakHours ?? 24;
@@ -267,8 +283,23 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
             lastOtaErrorAt: true,
             lastOtaErrorAuthenticated: true,
             playerVersionAt: true,
+            hardwareModel: true,
+            displayCapabilities: true,
           } as any,
         });
+        const heldClass =
+          drillHolds.size > 0
+            ? (screens as any[]).map((s) => drillHardwareClass(s)).find((c) => !!c && drillHolds.has(c))
+            : undefined;
+        if (heldClass) {
+          const hold = drillHolds.get(heldClass);
+          this.logger.warn(
+            `[canary] tenant=${t.id} (${t.name}) auto-promote HELD — synthetic emergency drill FAIL on hardware class ` +
+              `${heldClass} (run ${hold?.runId}, ${hold?.reason}); a PASS on that class releases it`,
+          );
+          blocked++;
+          continue;
+        }
         const canaryScreens = (screens as any[]).filter((s) =>
           isInCanaryCohort(s.id, t.canaryFleetPercent),
         );
