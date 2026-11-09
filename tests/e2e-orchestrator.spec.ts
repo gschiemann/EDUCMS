@@ -6,7 +6,7 @@ import { validateManifest } from '../src/sync-protocol';
  * 
  * Verifies that the implementation boundaries created by @BackendDev, 
  * @DataModeler, and @SecOps all communicate properly across the API boundary.
- * Maps directly to the established `OPENAPI_SPEC.yaml` and `RBAC_MATRIX.md`.
+ * Originally mapped to the (since deleted) `OPENAPI_SPEC.yaml` and `RBAC_MATRIX.md`.
  */
 
 test.describe('Holistic Workflow: Admin Schedule to Device Offline Sync', () => {
