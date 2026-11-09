@@ -16,6 +16,19 @@ Confirmed live in `ScorebugTicker`'s "scrolling reel" (`apps/web/src/components/
 
 The browser's CSSOM re-serializes a React inline `style` object that supplies all four physical sides into the `inset` shorthand in the element's `style` attribute; the Chromium-83 polyfill selector then force-zeroes all four sides for any non-uniform case whose `top` serializes starting with `0`. The full mechanism stays in the rule (`apps/web/CLAUDE.md` → rule 10, the 2026-07-03 paragraph), together with the decision not to harden the polyfill.
 
+## Why our system let it reach a customer
+
+This variant is invisible to grep because no file contains the word "inset", so the text searches used in the 2026-05-13 and 2026-05-19 sweeps could not find it. Only an AST-based check that reads the style objects can see it.
+
+## What pins it
+
+- `apps/web/tools/check-inset-serialization.cjs`
+- `.github/workflows/taurus-safety.yml`
+
+## What worked
+
+Not recorded.
+
 ## The rule it produced
 
 `apps/web/CLAUDE.md` → rule 10: drop to three physical sides plus an explicit `width`/`height`; omit `right`/`bottom` instead of setting them to `'auto'`.

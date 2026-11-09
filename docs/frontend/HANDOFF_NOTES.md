@@ -28,6 +28,6 @@
 * Added UI assertions verifying `<RoleGate>` properly renders or masks children based on roles and fallbacks (`RoleGate.test.tsx`).
 
 ## Open Blockers / Next Steps for Integration
-1. **Mock Endpoints Required**: Real network callbacks within actions like `EmergencyTriggerModal`, `EmergencyOverlay`, and Form Submissions are currently simulated via `setTimeout` and `setInterval`. Wire these up to the backend websocket layer and REST APIs defined in `OPENAPI_SPEC.yaml`.
+1. **Mock Endpoints Required**: Real network callbacks within actions like `EmergencyTriggerModal`, `EmergencyOverlay`, and Form Submissions are currently simulated via `setTimeout` and `setInterval`. Wire these up to the backend websocket layer and REST APIs (the controllers under `apps/api/src` are the contract; the old `OPENAPI_SPEC.yaml` was deleted as stale).
 2. **S3 Pre-signed Flow**: `assets/page.tsx` needs the actual Axios logic mapped to fetch S3 pre-signed POST URLs based on the initial file metadata.
 3. **Drag and Drop Canvas**: The `templates/page.tsx` layout needs a free-form `dnd-kit` grid collision logic pass.

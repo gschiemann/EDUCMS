@@ -60,6 +60,7 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 | Setup email verification | auto | `SETUP_EMAIL_VERIFICATION=off` | required only when mail is deliverable | `setup-email-code` specs | — |
 | Enforced CSP `script-src` | on | `CSP_SCRIPT_SRC_ENFORCE=off` | no header at all (never half-applied) | `check-csp-prerender.cjs` | — |
 | Wedge detector → durable per-screen `REFRESH_WEB` | on | **confirm** | render-proof guard (cache report omitted ≠ wedge) | `screen-wedge-detector.spec.ts` | — |
+| Synthetic emergency drill on bench glass (`apps/api/src/emergency/drill/`; design `decisions/2026-10-31-synthetic-emergency-drill-design.md`) | dark (no screens listed); `shadow` when armed | `EMERGENCY_DRILL_CRON_DISABLED=1` (beats all); unset `EMERGENCY_DRILL_SCREENS`; `EMERGENCY_DRILL_MODE=off` | cannot run → nothing dispatched, `SKIPPED` row if the DB is writable; cannot verify → `INCONCLUSIVE`, all-clear still sent; in doubt never trigger, always clear; a live alert aborts it; no Redis → no drill | `synthetic-drill.{config,policy,runner,integration}.spec.ts` | owner, `alert` / `on` only (`PlatformAlertMailer`); never a customer |
 
 ## Standing approvals (written waivers)
 

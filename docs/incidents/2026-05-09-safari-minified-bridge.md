@@ -10,6 +10,19 @@ On 2026-05-09 we shipped a 2-month-old "works in Chrome, crashes in Safari" bug 
 
 A regex literal in every holiday template's inline minified bridge held a real line feed. V8/Chromium tolerated it; WebKit threw `SyntaxError: Unterminated regular expression literal` and the entire bridge script died (all of this is in the record above).
 
+## Why our system let it reach a customer
+
+Local development was Chrome-only, so nothing in the loop executed the bridge script in WebKit and the bug shipped and stayed for about two months. The rule it produced adds a WebKit check before anything is called done.
+
+## What pins it
+
+- `apps/web/tests/cross-browser/holiday-bridge.cjs`
+- `.github/workflows/cross-browser.yml`
+
+## What worked
+
+Not recorded.
+
 ## The rule it produced
 
 `apps/web/CLAUDE.md` → "Cross-browser support — non-negotiable": test in WebKit before anything is `done`; no minified inline JS unless verified to parse in WebKit; avoid Chrome-specific APIs without a fallback; port the WebKit check pattern to every new DOM/postMessage surface.

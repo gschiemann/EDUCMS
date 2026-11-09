@@ -74,3 +74,18 @@ jobs:
         if: always()
         continue-on-error: true
         run: node .github/scripts/check-action-pins.cjs
+
+      # REPORT-ONLY (2026-11-09, Foundry Standard Phase 1 item 7). THREAT_MODEL.md,
+      # SECURITY_BASELINE.md and SECURITY_GAPS.md went five months without being
+      # re-verified against the code. This reports any of them whose "Last verified
+      # against code" date is older than 120 days, or unreadable.
+      #
+      # Why report-only: the limit is crossed by the calendar, not by a change, so a
+      # failing step here must not page anyone as an outage or ever block a merge — it
+      # is a reminder that re-verification is due. Deliberately not in ci.yml's
+      # required jobs. Delete `continue-on-error` to make staleness fail this run (and
+      # open an `ops:` issue via scheduled-failure-issue.yml).
+      - name: Security documents re-verified within 120 days (report-only)
+        if: always()
+        continue-on-error: true
+        run: node scripts/check-threat-model-age.cjs --max-days 120

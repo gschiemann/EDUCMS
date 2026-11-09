@@ -12,6 +12,20 @@ Four separate facts were being treated as one. The rule that came out of it stat
 
 > A reliable player continuously proves FOUR SEPARATE FACTS — never let one stand in for another: (1) the Android process is alive; (2) the device credential is valid or proactively renewing; (3) the latest assigned manifest was fetched and applied; (4) that content is visibly loaded.
 
+## Why our system let it reach a customer
+
+Screens read "ONLINE" while content-dead because the watchdogs were satisfied by any live JS event loop, a 401 loop's failure counter never grew, and three token stores disagreed, so no signal separated process-alive from content-applied from content-visible. The failure was found by a Codex audit rather than by a monitor.
+
+## What pins it
+
+- `apps/web/src/app/player/__tests__/deviceCredential.test.ts`
+- `apps/web/src/app/player/__tests__/manifestGate.test.ts`
+- `apps/web/src/components/screens/__tests__/renderTrust.test.ts`
+
+## What worked
+
+A Codex audit of 2026-08-28 found the failure; it was verified and fixed by 2026-08-30.
+
 ## The rule it produced
 
 `apps/web/src/app/player/CLAUDE.md` → "Player Reliability — non-negotiable", rules 1–17.

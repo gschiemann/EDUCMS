@@ -159,3 +159,72 @@ The owner approved the design as modified in §9 ("today we wrap up"; he does no
 - **Bench screens (≤ 12, one per hardware class, from the internal tenant):** GUQ55 `1cff5eb0-…`, GUQ65 `69b7bf43-…` (Goodview GUQ class), DH43 `40864836-…` + DH43 — Back `80bf9b8d-…` (rk3288 double-sided, both faces), M43 `c4945182-…`, M86 `8c83e356-…`, L55VEC `882706a8-…` (MAXHUB), LED Poster 3 `430ec97c-…` and Foldable LED `cf213ae7-…` (NovaStar Taurus — web-only player, RUNTIME class differs), G75 `ba3fc3b3-…`, Mobile A-Frame `81bdb7e5-…`. Full ids in the Register B row at implementation.
 - **Schedule:** mid-morning in each screen's own zone (default 10:30 local), per §9.3.
 - **Reviewer:** Codex, per §9.6.
+
+## 11. Build record (2026-11-09)
+
+Owner's go: "Go ahead on the drill" (2026-11-09). Built by Claude Opus 5.5 (Anthropic, Claude Code) in an isolated worktree on `claude/synthetic-emergency-drill`: the parked commit (2026-11-01) brought current with `origin/master` by a merge, then the gaps below closed. Not pushed; the lead opens the PR and requests the different-vendor (Codex) review (§9.6).
+
+**What was built, file by file**
+
+| File | What it does |
+|---|---|
+| `apps/api/src/emergency/drill/synthetic-drill.config.ts` | Parses the four `EMERGENCY_DRILL_*` variables; every bad value only subtracts; off under `NODE_ENV=test`. |
+| `apps/api/src/emergency/drill/synthetic-drill.policy.ts` | Pure rules: the five guards, type rotation, frozen schema-parsed payloads, the three links and the verdict, dead-man gaps, canary hold, customer-alert defer window, local slots, the service-identity shape, orphan detection, audit-row schemas. |
+| `apps/api/src/emergency/drill/synthetic-drill.runner.ts` | The leased tick: plan, Redis slot claim, orphan sweep, serial runs (OVERRIDE, pushed message, district copy), all-clear in `finally`, RESULT rows, one owner email per pass, the dead-man check; calls the controller's own methods through `ModuleRef`. |
+| `apps/api/src/emergency/drill/synthetic-drill.registry.ts` | Process state: runner-minted `ovr_drill_<uuid>` ids (15 min), runs in flight. |
+| `apps/api/src/emergency/drill/synthetic-drill.copy.ts` | Owner email text (per pass, dead-man, not-internal, identity problem). |
+| `apps/api/src/emergency/drill/synthetic-drill.{config,policy,runner,integration}.spec.ts` | The §7 unit, runner (fake clock) and integration tests; the policy spec also pins that the drill's own audit actions are not on the customer activity allowlist. |
+| `apps/api/src/realtime/leader-lease.service.ts` | `LEASE.EMERGENCY_DRILL`. |
+| `apps/api/src/app.module.ts` | Registers `SyntheticDrillRunner`. |
+| `apps/api/src/notifications/customer-alerts/customer-alert-emails.service.ts` | `recordEmergency` skips only runner-minted ids with `isDrill`; `loadFacts` reads drill rows (tenant-scoped) for the defer. |
+| `apps/api/src/notifications/customer-alerts/customer-alert-policy.ts` | Defer reason `synthetic-drill` (run + 10 min), so a drill never counts toward a platform incident. |
+| `apps/api/src/player-ota/canary-auto-promote.ts` | A hardware class whose latest judged drill FAILED is held (mode `on` only; a failed read holds nothing). |
+| `packages/api-types/src/emergency-paint-identity.ts`, `index.ts` | A copy of the player's paint-identity rule, exported. |
+| `apps/web/src/lib/__tests__/paint-identity-parity.test.ts` | Holds the copy identical to the player's rule. |
+| `apps/api/src/config/env-schema.ts` → `docs/ENVIRONMENT.md` | The four variables declared with default, kill switch and failure direction (§4); the document regenerated. |
+| `docs/governance/AUTONOMY-REGISTER.md` | The Register B row. |
+| `apps/web/src/app/[schoolId]/audit/page.tsx` | `EMERGENCY_DRILL_STARTED` / `EMERGENCY_DRILL_RESULT` added to the owner's raw-view action picker (SUPER_ADMIN only). |
+| `apps/api/src/emergency/CLAUDE.md` | The "Synthetic drill" entry. |
+
+**Gap analysis (design section → state after this build)**
+
+| Section | State | Note |
+|---|---|---|
+| §1 Guards and threat model | Implemented | Guard 1 inside `runOnce`; root `isInternal` read fresh and re-checked after STARTED; guard-2 failure alerts the owner once per boot; no controller or route in `drill/` (textual and metadata spec). |
+| §1 "no `id`" principal | Changed (§9.1) | A real login-disabled `drill-runner` user per bench location; a login-capable (tampered) identity is never used. |
+| §2 One run | Implemented | Lease gates the tick only; no Redis (or a degraded lease) = no drill; serial, ≤ 12 screens; links 1–3; all-clear in `finally` plus a second clear if a slow trigger lands late; orphan sweep at boot + 2 min and each tick; a live alert gives `ABORTED`, no email. |
+| §2 Coverage | Changed (§9.2) | Pushed TEXT_BROADCAST drill per display and a district-copy drill where a bench district exists, beside the OVERRIDE. |
+| §3 Data model | Implemented | Append-only `audit_logs` rows, `v: 1`, Zod-checked; plus `EMERGENCY_DRILL_SWEPT` and `EMERGENCY_DRILL_RUNNER_CREATED`. No table, no migration. Rows are not on the customer allowlist. |
+| §3 "no customer feed shows them" | Changed (§9.1) | The trigger path's own `TRIGGER_EMERGENCY_DRILL` / `CLEAR_EMERGENCY_DRILL` rows now name a person actor (the runner), so they appear in the **bench** organisation's own activity feed; only internal organisations ever have them. |
+| §4 Configuration | Implemented, then declared | The four variables were parsed in the parked commit; this build added their `env-schema.ts` rows (the typed gate did not exist at parking). |
+| §4 Schedule | Changed (§9.3) | `10:30` in each screen's own zone, not `10:00` UTC; a screen with no known zone is never drilled (the dead-man reports it). |
+| §5 Rollout | Implemented as code paths | Dark by default; `shadow` / `alert` / `on` behave as designed. Stage exits are the owner's. |
+| §6 Files | Implemented / changed | The parity test sits in `apps/web/src/lib/__tests__/` so `apps/web/src/app/player/**` stays untouched; env rows go to `env-schema.ts` → `docs/ENVIRONMENT.md` instead of `CLAUDE.md` (the core rulebook now points there); `.env.example` already carries the four commented lines. |
+| §7 Tests | Implemented except on-glass | Unit, runner, integration and parity tests pass; the camera-witnessed drill and the negative control are owed. |
+| §9.4 Canary hold | Implemented | Mode `on` only. |
+| §9.5 Standby variant | Deferred | Not in v1, per §9.5 — the first thing after. |
+| §10 Bench list | Not in code | Screen ids are configuration, set by the owner when arming; no id is written in code, tests or this record. |
+
+**Commands run and results (worktree, `EMERGENCY_DRILL_SCREENS` unset throughout)**
+
+| Command | Result |
+|---|---|
+| `git fetch origin && git merge origin/master` | one conflict (`leader-lease.service.ts`, two adjacent lease entries) — both kept |
+| `pnpm install --frozen-lockfile --prefer-offline`; `pnpm db:generate`; package builds | ok |
+| `pnpm --filter api build` | ok |
+| `pnpm --filter api exec jest src/emergency/drill` | 4 suites, 98 tests, all pass |
+| `pnpm --filter api exec jest src/emergency src/notifications src/player-ota src/realtime src/config` | 75 suites, 1316 tests, all pass |
+| `pnpm --filter api exec jest` (whole API suite) | 630 suites pass, 3 skipped; 11982 tests pass, 30 skipped; 0 failures |
+| `pnpm --filter @cms/api-types exec jest` | 29 suites, 487 tests, all pass |
+| `pnpm --filter web exec jest src/lib/__tests__/paint-identity-parity.test.ts src/lib/__tests__/drill-log.test.ts` | 2 suites, 8 tests, pass |
+| `node apps/api/tools/check-env-declared.cjs` | 0 errors, 0 warnings (failed with 4 errors before the rows were added) |
+| `node apps/api/tools/generate-env-docs.cjs --write` then `--check` | `docs/ENVIRONMENT.md` regenerated; both outputs match |
+| `node apps/api/tools/check-tenant-isolation.cjs` | 0 unscoped, 0/0 grandfathered, 136 reviewed-safe — no `ten-ok` added by the drill |
+| `node scripts/check-rulebook.cjs` | PASS |
+
+**Unverified**
+
+- Everything on glass: paint within 5 s per class, persistence through +135 s, release after the all-clear, the APK receipt timing, the pushed-message and district-copy drills, and the negative control (§7). Needs bench screens, the owner and a camera.
+- That every bench unit's organisation root is internal and that no paying customer sits under it — to be checked by the lead before `shadow` starts (§10).
+- A real Redis and a real leader lease: the specs use fakes and the in-memory path.
+- The owner email copy as it lands in an inbox (`alert` mode).

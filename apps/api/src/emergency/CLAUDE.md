@@ -32,6 +32,27 @@ This system triggers immediate lockdown/weather/evacuation alerts across screens
 ### WARNING: Emergency System Changes
 Any modification to emergency endpoints, payload validation, auth bypass logic, or audit logging requires explicit code review and sign-off. Never weaken the @AllowPanicBypass decorator or skip AuditLog creation. Test trigger/clear flows end-to-end before merging.
 
+### Synthetic drill (`drill/`)
+
+**What it is.** `drill/synthetic-drill.runner.ts` is an in-process, leader-leased (`LEASE.EMERGENCY_DRILL`) timer — no route, button, webhook, token or new privilege — that drills listed bench screens of **internal** organisations through this controller's own `triggerEmergency` / `clearEmergency` / `broadcastText` / `clearMessage`, resolved via `ModuleRef`. Per listed display and local slot, in series: a device-scoped OVERRIDE drill (`isDrill: true`, `expiresAt` ≤ +180 s), then a pushed TEXT_BROADCAST drill, then a district-copy drill where a bench district exists. It grades three links from the evidence the render-proof handler already records (paint by +5 s, a painted proof dated ≥ +60 s with no drop, release after the all-clear) and writes append-only `EMERGENCY_DRILL_STARTED` / `EMERGENCY_DRILL_RESULT` / `EMERGENCY_DRILL_SWEPT` rows, attributed to a login-disabled `drill-runner` service user per bench location (`EMERGENCY_DRILL_RUNNER_CREATED`). It changes nothing in the trigger, the manifest, the player, the APK or the HMAC gate. Design and build record: `docs/governance/decisions/2026-10-31-synthetic-emergency-drill-design.md`.
+
+**The variables** (rows in `apps/api/src/config/env-schema.ts`, rendered in `docs/ENVIRONMENT.md`; every one only subtracts):
+- `EMERGENCY_DRILL_CRON_DISABLED` — `1` / `true` / `yes` = off; beats everything. Fails closed: nothing dispatched.
+- `EMERGENCY_DRILL_SCREENS` — bench screen UUIDs, at most 12, no wildcard. Unset = nothing runs. A bad token is ignored and logged; it never widens the list.
+- `EMERGENCY_DRILL_MODE` — `shadow` (default: verdicts recorded, no email) · `alert` (owner emails: one per pass listing every FAIL / INCONCLUSIVE, plus a daily dead-man for a display with no PASS in 36 h) · `on` (also: a FAIL holds canary auto-promotion for that hardware class) · `off`. Unknown = `shadow` + an error log.
+- `EMERGENCY_DRILL_SCHEDULE` — up to 4 `HH:MM` slots in **each screen's own time zone** (default `10:30` local). Invalid = no drills + an error log; the dead-man check reports the gap. A screen with no known zone is never drilled.
+
+All of it is off under `NODE_ENV=test`; keep `EMERGENCY_DRILL_SCREENS` unset in every test and local run.
+
+**Arming it on bench screens** (the owner's decision; never an agent's): confirm every listed screen's organisation root has `isInternal = true` and that no paying customer sits under that root; set `EMERGENCY_DRILL_SCREENS` to those ids with `EMERGENCY_DRILL_MODE=shadow`; restart. The first run is camera-witnessed on the glass. Disarm: `EMERGENCY_DRILL_CRON_DISABLED=1` or unset `EMERGENCY_DRILL_SCREENS`, restart.
+
+**Reading a result.** Activity → All events (`?view=all`, SUPER_ADMIN), action `EMERGENCY_DRILL_RESULT`: `verdict` (PASS · FAIL · INCONCLUSIVE · SKIPPED · ABORTED), `reason`, `failedLink` (delivery · render · persistence · release), per-pane times and last hash. The trigger path's own `TRIGGER_EMERGENCY_DRILL`, `PLAYER_EMERGENCY_*` and `CLEAR_EMERGENCY_DRILL` rows sit beside it. The drill's own rows are not on the customer activity allowlist (`packages/api-types/src/customer-activity.ts`).
+
+**Invariants — never weaken:**
+1. **In doubt, never trigger.** Every guard (listed inside `runOnce`, organisation root internal read fresh, paired / checked in / not in intended downtime, nothing else on the glass with a fresh content proof, Redis up and no critical platform component) passes or the run is `SKIPPED` with nothing dispatched. No Redis = no drill.
+2. **Always clear.** The all-clear (`isDrill: true`, which can only end drill state) runs in `finally` on every exit that may have put anything on glass; the payload's own `expiresAt` and the orphan sweep (one all-clear for a STARTED run without a RESULT) back it up. A run that cannot verify is `INCONCLUSIVE`, still cleared, and alerts the owner.
+3. **A live alert aborts the drill.** A 409 from the live-alert refusal, or a live alert ending the drill mid-run, gives `ABORTED` and no email; a drill never hides or delays a live alert. Customer record copies are skipped only for ids this process minted with `isDrill`; nothing in `drill/` emails a customer — owner alerts go through `PlatformAlertMailer` only.
+
 ## Emergency rules that lived elsewhere in the old rulebook
 
 ### Player Reliability rule 11 — emergency logic runs first; protective caches never clear on absence

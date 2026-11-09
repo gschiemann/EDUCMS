@@ -10,6 +10,19 @@ On 2026-06-16 the mobile bottom-nav + "More" sheet had major tap lag — and sin
 
 The rule records two root-cause classes, "both now fixed and checked by CI" (`Mobile Perf` workflow).
 
+## Why our system let it reach a customer
+
+Not recorded at the time; the organisational cause was not investigated.
+
+## What pins it
+
+- `apps/web/tools/check-mobile-perf.cjs`
+- `.github/workflows/mobile-perf.yml`
+
+## What worked
+
+The "More" sheet is a pure local-`useState` toggle with no fetch or navigation, so its tap lag proved the main thread or GPU was busy at tap time and pointed at app-wide contention rather than the tab bar.
+
 ## The rule it produced
 
 `apps/web/CLAUDE.md` → "Mobile performance standard — non-negotiable": never poll a backgrounded tab; no global focus-refetch storm; no GPU-expensive blur on always-mounted mobile chrome; keep the global chrome cheap.

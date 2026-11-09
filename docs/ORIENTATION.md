@@ -19,6 +19,7 @@ Ambition: the default operating system for every screen a school, venue, or mult
 **Realtime:** Signed WebSocket messages via Redis pub/sub with HTTP polling fallback
 **File Storage:** Supabase (Postgres + object storage)
 **Testing:** Jest (backend), Playwright (E2E)
+**API surface:** documented by the controllers (`apps/api/src/**/*.controller.ts`, each carrying its own `api/v1/...` prefix) and their route tests, not by a spec. The hand-written `OPENAPI_SPEC.yaml` was deleted 2026-11 (1 of 10 sampled paths still existed); the API does not use `@nestjs/swagger`.
 
 ## Monorepo Layout
 

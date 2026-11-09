@@ -11,7 +11,8 @@
  *     cycle, erased a genuine ERROR before the soak expired.
  */
 
-import { evaluateCanaryPromotion } from './canary-auto-promote';
+import { CanaryAutoPromote, evaluateCanaryPromotion } from './canary-auto-promote';
+import { readDrillConfig } from '../emergency/drill/synthetic-drill.config';
 
 const SET_AT = new Date('2026-08-01T00:00:00Z');
 const DURING = new Date('2026-08-01T06:00:00Z');
@@ -127,5 +128,55 @@ describe('evaluateCanaryPromotion', () => {
     // A floor of 3+ would silently strand every tenant running one or two
     // screens — its own kind of outage.
     expect(evaluateCanaryPromotion({ cohort: [healthy('only')], canarySetAt: SET_AT }).promote).toBe(true);
+  });
+});
+
+// ─── 2026-11-01: a synthetic emergency drill FAIL holds promotion for that hardware class ───
+
+describe('CanaryAutoPromote.tick — the synthetic drill hold (emergency/drill/, mode `on`)', () => {
+  const BENCH = '1cff5eb0-0000-4000-8000-000000000001';
+  const NOW = Date.now();
+  const result = (verdict: string, at: number) => ({
+    createdAt: new Date(at),
+    details: JSON.stringify({
+      v: 1, runId: `run-${verdict}`, kind: 'override', verdict, reason: 'r', failedLink: verdict === 'FAIL' ? 'delivery' : null, mode: 'on', slot: 's', type: 'hold',
+      overrideId: null, messageId: null, expected: null, dispatchAtMs: null, clearAtMs: null, cleared: true, paneIds: [BENCH], panes: [], screenId: BENCH,
+      rootTenantId: 'bench', hardwareModel: null, deviceClass: 'goodview/m55guq/t982/sdk30', playerVersion: '1.1.58', alerted: false, runnerUserId: 'runner',
+    }),
+  });
+  function harness(results: Array<{ createdAt: Date; details: string }>, mode: string) {
+    const tenant = { id: 'customer', name: 'Customer', canaryFleetPercent: 50, canarySetAt: new Date(NOW - 48 * 3600_000), canaryAutoPromote: true, canarySoakHours: 24 };
+    // A customer screen of the SAME hardware class as the bench unit, installed during the soak.
+    const screens = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
+      id: `scr-${i}`, lastOtaState: 'INSTALLED', lastOtaAt: new Date(NOW - 3600_000), lastOtaErrorAt: null, lastOtaErrorAuthenticated: null, playerVersionAt: new Date(NOW - 3600_000),
+      hardwareModel: null, displayCapabilities: { build: { manufacturer: 'Goodview', model: 'M55GUQ', device: 't982', sdk: 30 } },
+    }));
+    const client = {
+      tenant: { findMany: jest.fn(async () => [tenant]), update: jest.fn(async () => ({})) },
+      screen: { findMany: jest.fn(async (args: any) => (args?.where?.id?.in ? [{ tenantId: 'bench' }] : screens)) },
+      auditLog: { findMany: jest.fn(async () => results), create: jest.fn(async () => ({})) },
+    };
+    const svc = new CanaryAutoPromote({ client } as any);
+    svc.drillConfig = () => readDrillConfig({ NODE_ENV: 'production', EMERGENCY_DRILL_SCREENS: BENCH, EMERGENCY_DRILL_MODE: mode } as NodeJS.ProcessEnv);
+    return { svc, client };
+  }
+
+  it('mode on: the latest drill on the class FAILED → promotion HELD (nothing written)', async () => {
+    const h = harness([result('PASS', NOW - 3 * 3600_000), result('FAIL', NOW - 3600_000)], 'on');
+    expect(await h.svc.tick()).toEqual({ scanned: 1, promoted: 0, blocked: 1 });
+    expect(h.client.tenant.update).not.toHaveBeenCalled();
+  });
+
+  it('a later PASS on the class releases it', async () => {
+    const h = harness([result('FAIL', NOW - 3 * 3600_000), result('PASS', NOW - 3600_000)], 'on');
+    expect(await h.svc.tick()).toEqual({ scanned: 1, promoted: 1, blocked: 0 });
+  });
+
+  it('shadow (the default) and the kill switch never hold anything', async () => {
+    const shadow = harness([result('FAIL', NOW - 3600_000)], 'shadow');
+    expect((await shadow.svc.tick()).promoted).toBe(1);
+    const off = harness([result('FAIL', NOW - 3600_000)], 'on');
+    off.svc.drillConfig = () => readDrillConfig({ NODE_ENV: 'production', EMERGENCY_DRILL_SCREENS: BENCH, EMERGENCY_DRILL_MODE: 'on', EMERGENCY_DRILL_CRON_DISABLED: '1' } as NodeJS.ProcessEnv);
+    expect((await off.svc.tick()).promoted).toBe(1);
   });
 });

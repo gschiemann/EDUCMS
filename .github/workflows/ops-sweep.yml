@@ -1,0 +1,93 @@
+# The morning ops sweep, run by a schedule instead of by whoever remembers.
+#
+# `scripts/ops-sweep.mjs` checks every workflow's latest run, the age of the
+# newest database backup, and production /health, /health/ready and
+# /health/emergency-path. Until 2026-11-09 nothing ran it unless a person did
+# at the start of a session. Now it runs daily at 13:30 UTC (05:30 Pacific).
+#
+# RED RULE: the script prints one line per finding and exits 1 when at least one
+# finding is red (a failed workflow, a stale or missing backup, a failing
+# production probe, or it could not read GitHub). Exit 0 = nothing red (amber
+# findings do not count). This workflow treats any non-zero exit as red: it opens
+# or updates ONE issue, "ops: morning sweep found red" (label ops), with the
+# sweep output in a collapsed block, and closes that issue on the next clean sweep.
+#
+# Report-only: not a required check, blocks no merge. The sweep step itself never
+# fails the job (a red sweep is reported through the issue, not a red run), so the
+# failure responder is not paged twice for the same thing.
+#
+# No `pnpm install`: the script imports only node:child_process, node:fs and
+# node:path, and uses the global fetch and the preinstalled `gh`.
+name: Ops sweep (morning)
+
+on:
+  schedule:
+    - cron: '30 13 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: ops-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      OPS_REPO: ${{ github.repository }}
+      ISSUE_TITLE: 'ops: morning sweep found red'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Run the sweep
+        id: sweep
+        run: |
+          set +e
+          node scripts/ops-sweep.mjs > sweep-output.txt 2>&1
+          code=$?
+          set -e
+          cat sweep-output.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Open, update or close the sweep issue
+        env:
+          SWEEP_CODE: ${{ steps.sweep.outputs.code }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          nums=$(gh issue list --state open --label ops --limit 200 --json number,title \
+            | jq -r --arg t "$ISSUE_TITLE" '.[] | select(.title == $t) | .number')
+          if [ "$SWEEP_CODE" = "0" ]; then
+            for n in $nums; do
+              gh issue close "$n" --comment "The morning sweep is clean again, so this issue is closed automatically. Run: ${RUN_URL}"
+              echo "closed issue #$n"
+            done
+            echo "sweep clean"
+            exit 0
+          fi
+          # Red (exit 1) or the script itself crashed (any other non-zero code).
+          out=$(head -c 55000 sweep-output.txt)
+          body=$(printf '%s\n\n%s\n\n<details><summary>Sweep output</summary>\n\n```\n%s\n```\n\n</details>\n\n%s\n' \
+            "The daily check found something red (exit code ${SWEEP_CODE}). The lines marked 🔴 below say what, and where to look." \
+            "Run: ${RUN_URL}" \
+            "$out" \
+            "_Opened automatically by \`ops-sweep.yml\`. It closes itself on the next clean sweep._")
+          gh label create ops --description "Operational failures surfaced automatically" --color B60205 2>/dev/null || true
+          if [ -n "$nums" ]; then
+            first=$(echo "$nums" | head -n 1)
+            gh issue comment "$first" --body "$body"
+            echo "updated issue #$first"
+          else
+            gh issue create --title "$ISSUE_TITLE" --label ops --body "$body"
+            echo "opened issue"
+          fi
