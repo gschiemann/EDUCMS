@@ -125,7 +125,7 @@ export const HARDWARE_PRESENTATIONS: Record<HardwareModel, HardwarePresentation>
       'No HDMI output cable / no separate processor',
       'Best for installs where the Taurus is already on-site',
     ],
-    orderHref: '/docs/PLAYER_APK_NOVA_TAURUS.md',
+    orderHref: '/docs/TAURUS_DEPLOYMENT_GUIDE.md',
     approxPriceUsd: null,
     hasWiringPanel: false,
     caveats: [

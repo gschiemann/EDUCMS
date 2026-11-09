@@ -1,5 +1,7 @@
 # Android 7 → 14 Compatibility — Design + Operating Manual
 
+**Last verified against code:** 2026-11-09 (the code references, helper functions and the transcode statement below). The Chromium/Android capability matrix and version-to-feature claims are vendor knowledge this repository does not prove: unverified.
+
 **Sprint 8d (2026-05-03).** Operator ask: "support Android 7 all the way to
 14 while giving the max out of each OS and not removing features from more
 current versions."
@@ -93,11 +95,16 @@ const url = pickBestVideo([
 ]);
 ```
 
-Returns the FIRST candidate the device can play. Production transcode
-pipeline (Sprint 10) generates AV1 + H.265 + H.264 from each upload;
-old WebViews fall through to H.264 automatically.
+Returns the FIRST candidate the device can play. In production the
+only server-side video pipeline is the signage-profile **H.264** transcode
+(`apps/api/src/storage/video-transcode/`, ffmpeg with libx264; it re-encodes
+HEVC, VP9, AV1 and other sources to H.264). It does **not** generate AV1 or
+H.265 variants (the April text promised a "Sprint 10" pipeline that does; it was
+not built that way). `pickBestVideo` is used only by
+`apps/web/src/components/widgets/StreamingWidget.tsx`, which receives
+`playbackUrlVariants` from the content; every other video is H.264.
 
-Same for images — AVIF / WebP / PNG.
+`pickBestImage` has the same shape for AVIF / WebP / JPEG / PNG and has no caller outside its own test (`apps/web/src/lib/__tests__/capabilities.test.ts`).
 
 ## Capability matrix by Android version
 
@@ -116,10 +123,7 @@ Approximate; verify per-device when targeting a specific kiosk model.
 
 ## Per-screen diagnostics
 
-The player reports its capability snapshot on every device-info push to
-the server (see `getDeviceInfo()` in `apps/web/src/app/player/page.tsx`).
-Operators can see per-screen capabilities in the dashboard once the UI
-piece lands. Use cases:
+The player reports its capability snapshot (the `capabilities` object: `modernChromium`, `containerQueries`, `backdropFilter`, `hasSelector`, `oklchColors`, `colorMix`, `subgrid`, the four video codecs and `imageWebp`/`imageAvif`, plus `chromiumVersion`) in `getDeviceInfo()` in `apps/web/src/app/player/page.tsx`. Whether a dashboard view filters by it is unverified (no `/super/screens?caps=` filter was found); the data is on the server. Use cases:
 
 - **"Why does this one TV look weird?"** — Filter screens by
   `capabilities.containerQueries=false` to find the Chromium <105
@@ -140,8 +144,7 @@ feature, follow this checklist:
    fallback = blank screen on Android 7. Forbidden.
 2. **Use CSS `@supports` whenever possible.** Pure CSS fallbacks are
    the lowest risk, smallest bytes, and zero hydration mismatch.
-3. **For JS-driven features, gate behind `useCapabilities()`.** Branch
-   before render; never throw on missing API.
+3. **For JS-driven features, branch on `detectCapabilities()`** (`apps/web/src/lib/capabilities.ts`). There is no `useCapabilities` hook (the file `apps/web/src/hooks/use-capabilities.ts` named in the April text does not exist). Branch before render; never throw on a missing API.
 4. **Add the capability to `Capabilities` interface** if it's not
    already there. Every new `if (caps.X)` should have a corresponding
    `X: boolean` flag detected at boot.
@@ -160,7 +163,9 @@ feature, follow this checklist:
   in many ways; feature-detect instead.
 - ❌ Ship an animated widget that runs `@keyframes` on properties
   Chromium 60 can't animate (e.g. `aspect-ratio`, `inset`). Use
-  `transform` + `opacity` for backwards-compat.
+  `transform` + `opacity` for backwards-compat. For player and widget
+  styles the `inset` shorthand and flex `gap` are banned outright (NovaStar
+  Taurus, Chromium 83): see `apps/web/CLAUDE.md`.
 - ❌ Drop the H.264 transcode in favor of "modern-only" codecs. The
   H.264 fallback is the load-bearing safety net.
 
@@ -169,16 +174,15 @@ feature, follow this checklist:
 - `apps/web/src/lib/capabilities.ts` — detection + polyfill loader +
   best-media pickers. **Single source of truth for what the device can
   do.**
-- `apps/web/src/hooks/use-capabilities.ts` — React hook wrapper.
 - `apps/web/src/app/player/page.tsx` (in `getDeviceInfo()`) — boot-time
   log + server-side reporting.
 
-## Future work
+## Related, newer mechanisms
 
-- Per-tenant capability dashboard at `/super/screens?caps=...` — show
-  which tenants have devices below a configurable Chromium floor.
-- Auto-flag widget templates that target capabilities >50% of the
-  fleet doesn't have, with a "fallback preview" toggle in the editor.
-- Server-side transcoding pipeline (Sprint 10) generates AV1 + H.265
-  + H.264 + WebP + AVIF + JPEG variants from each upload so the
-  best-media pickers always have something to pick from.
+- The Player APK's legacy-engine compatibility layer for frozen system WebViews (`webcompat/LegacyEngineCompat.kt`, WebView major below 120): `apps/player/CLAUDE.md`, "Legacy-engine compatibility layer". The APK's `minSdk` is 24 (Android 7) in `apps/player/app/build.gradle.kts`.
+- The native per-face video engine decodes on the glass instead of the WebView where it can: `apps/player/CLAUDE.md`, "Native video".
+
+## Future work (as of April 2026; neither item found in code on 2026-11-09)
+
+- Per-tenant capability dashboard at `/super/screens?caps=...`.
+- Auto-flagging widget templates that need capabilities most of the fleet lacks.

@@ -108,7 +108,7 @@ Bucket each by which sprint / capability gets cheaper or higher-confidence:
 - **Streaming overlay (NFHS Network / Hudl)** — HDMI IN can capture
   the broadcast feed; player composites the scorebug overlay; HDMI
   OUT feeds the venue display. The current architecture assumes a
-  separate USB capture card (~$180–400 from `docs/HARDWARE_BRIDGE.md`).
+  separate USB capture card (~$180–400 from `docs/archive/HARDWARE_BRIDGE.md` (archived; the HDMI-capture bridge tier is retired)).
   EP6N collapses that BOM line.
 
 ### Emergency / safety system
@@ -206,7 +206,7 @@ with these line-item differences:
 
 - **Not yet field-tested.** This eval is paper + spec-sheet only. Before
   recommending the EP6N to a paying customer, order one unit, walk it
-  through the standard provisioning flow in `docs/MANAGER_PROVISIONING.md`,
+  through the standard provisioning flow in `docs/archive/MANAGER_PROVISIONING.md (archived; no Device Owner, see OWNER-RULES)`,
   and run the Player APK against it.
 - **Compatible with existing APK assuming Android 14 + RK3576.** The
   EP6N is the same SoC family + OS as the ECBox3576, so the APK should
@@ -223,7 +223,7 @@ with these line-item differences:
 2. Verify the Phoenix plug shipped in the box matches the existing
    cable spec. If not, order 5 spare Phoenix Contact 1803578 plugs.
 3. Flash the current Player APK via the Manager OTA path
-   (`docs/MANAGER_PROVISIONING.md`).
+   (`docs/archive/MANAGER_PROVISIONING.md (archived; no Device Owner, see OWNER-RULES)`).
 4. Pair to a test tenant + screen via the dashboard pair-code flow.
 5. Plug the CTS-emulator output into RS232 #1; verify
    `apps/web/src/components/player/CtsBridge.tsx` parses and the

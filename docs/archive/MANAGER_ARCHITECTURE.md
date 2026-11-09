@@ -1,3 +1,6 @@
+> **Archived 2026-11-09.** The April 2026 planning decision for a companion Manager APK (watchdog, updater, DEVICE_OWNER). The Manager shipped, but without Device Owner, and since 2026-11-08 it is bundled inside the Player APK and no longer updates itself.
+> The living truth now is `apps/player/CLAUDE.md` (Rule 13 "One release unit", the Manager's alert-watch watchdog), `docs/governance/OWNER-RULES.md` (no Device Owner, ever, 2026-10-17) and the code in `apps/player/manager/`. Do not follow the DEVICE_OWNER steps below.
+
 # Manager APK — Architecture Decision
 
 > **Status:** Planning / not deployed. Branch + code scaffolded but

@@ -27,7 +27,7 @@
  *   device pulls it within 6h. No Railway env var to touch or to go
  *   stale. The `apk-version-tag-sync` CI check guards the tag.
  *
- * Nova Taurus deployment: covered in docs/PLAYER_APK_NOVA_TAURUS.md
+ * Nova Taurus deployment: covered in docs/TAURUS_DEPLOYMENT_GUIDE.md
  * — the short version is "sideload the arm64-v8a APK via ViPlex
  * Express with auto-launch enabled." Once installed, this OTA flow
  * keeps it current; operators never have to re-sideload.
