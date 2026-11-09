@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   BroadcastInputSchema,
+  CUSTOMER_ACTIVITY,
   TriggerEmergencyInputSchema,
   emergencyPaintIdentity,
   emergencyRenderHash,
@@ -23,6 +24,7 @@ import { intendedDowntime, syntheticDrillCovers, type ScreenFacts } from '../../
 import {
   DRILL_BROADCAST_TEXT,
   DRILL_RESULT_ACTION,
+  DRILL_RUNNER_CREATED_ACTION,
   DRILL_STARTED_ACTION,
   DRILL_SWEPT_ACTION,
   DRILL_TIMING,
@@ -466,6 +468,17 @@ describe('runner-minted ids', () => {
     expect(isRunnerMintedDrillId(id, T0 + DRILL_ID_TTL_MS + 1)).toBe(false);
     expect(isRunnerMintedDrillId('ovr_drill_00000000-0000-4000-8000-000000000000', T0)).toBe(false);
     expect(isRunnerMintedDrillId(`ovr_${id.slice('ovr_drill_'.length)}`, T0)).toBe(false);
+  });
+});
+
+// ─── the drill's own audit rows are machine rows: owner view only ──────────
+
+describe('the drill\'s audit actions never reach a customer feed', () => {
+  it('STARTED / RESULT / SWEPT / RUNNER_CREATED are not on the customer activity allowlist', () => {
+    for (const action of [DRILL_STARTED_ACTION, DRILL_RESULT_ACTION, DRILL_SWEPT_ACTION, DRILL_RUNNER_CREATED_ACTION]) {
+      expect(action.startsWith('EMERGENCY_DRILL_')).toBe(true);
+      expect(Object.prototype.hasOwnProperty.call(CUSTOMER_ACTIVITY, action)).toBe(false);
+    }
   });
 });
 

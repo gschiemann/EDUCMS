@@ -38,6 +38,9 @@ const ACTION_OPTIONS = [
   'TRIGGER_EMERGENCY_DRILL',
   'CLEAR_EMERGENCY_DRILL',
   'DRILL_ENDED_BY_LIVE_ALERT',
+  // The synthetic drill's own rows (emergency/drill/): machine rows, owner view only.
+  'EMERGENCY_DRILL_STARTED',
+  'EMERGENCY_DRILL_RESULT',
   'AUTH_LOGIN_SUCCESS',
   'AUTH_LOGIN_FAILED',
   'USER_INVITED',
