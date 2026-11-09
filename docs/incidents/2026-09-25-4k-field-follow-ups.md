@@ -12,6 +12,19 @@ From the rule that stays in `apps/web/src/app/player/CLAUDE.md` (rule 16, field 
 
 > The web player's playlist precache previously marked a URL set sent BEFORE the service worker confirmed any bytes, so one failed attempt could leave the screen streaming indefinitely.
 
+## Why our system let it reach a customer
+
+The web player's playlist precache marked a URL set as sent before the service worker confirmed any bytes, so one failed attempt could leave the screen streaming indefinitely, and a timed-out cache status was reported as "0 files" rather than unknown. The record names no test that exercised a failed precache.
+
+## What pins it
+
+- `apps/web/src/app/player/__tests__/sw-large-asset-cache.test.ts`
+- `apps/web/src/app/player/__tests__/offline-cache-large-assets.test.ts`
+
+## What worked
+
+The device's cache report (0 files) together with the field drop and buffering reports exposed it. The 4K manifest selecting the 4K primary correctly ruled out a repeat of the 2026-09-24 cause.
+
 ## The rule it produced
 
 `apps/web/src/app/player/CLAUDE.md` → rule 16 field follow-up: the precache waits for a worker acknowledgement, retries failures, keys the push by media URL and supplies the known size; a timed-out cache status is UNKNOWN, not "0 files"; do not claim the field device is fixed until its live cache report shows the file and a fresh video sample is smooth.

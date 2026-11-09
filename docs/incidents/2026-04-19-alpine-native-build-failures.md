@@ -14,6 +14,18 @@ The rulebook recorded it in one sentence and lists five build failure modes the 
 
 Native modules need a C/C++ toolchain that the Alpine builder image does not ship, and a failed `node-gyp` build surfaces only as a cryptic `ELIFECYCLE` while Railway reports "Application failed to respond." (the quoted failure mode). The other four failure modes in the rule are a schema that was not on disk at install time, workspace TypeScript packages that were not built, lockfile drift, and TypeScript errors in `apps/web`.
 
+## Why our system let it reach a customer
+
+No CI job built the image Railway runs, so the missing C/C++ toolchain surfaced only as a cryptic `ELIFECYCLE` and an "Application failed to respond." page during production debugging. The record names the `docker-build` job, which builds that same image, as the gate that now catches it.
+
+## What pins it
+
+- `.github/workflows/deploy-reliability.yml`
+
+## What worked
+
+Production debugging on 2026-04-19 found the failure modes. The `docker-build` job now catches the Alpine native-build failure by running the same image Railway will run.
+
 ## The rule it produced
 
 `docs/DEPLOY.md` → "Deploy Reliability — CI gates" → "Build failure modes we've seen, and how the CI catches them" (each mode names the job that catches it) and "What never to do".

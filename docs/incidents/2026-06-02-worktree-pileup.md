@@ -16,6 +16,19 @@ The pre-dispatch checklist and the merge cycle in `docs/governance/AGENT-DISPATC
 
 Root cause was always the same: *accumulating state with no monitor.*
 
+## Why our system let it reach a customer
+
+The root cause is accumulating state with no monitor: finished agent worktrees, loose objects in the repository, stale branches and tags, and unscanned dependency advisories had nothing watching them. The operator, not the lead, noticed that every repository command had become slow or erroring.
+
+## What pins it
+
+- `scripts/hygiene-check.sh`
+- `scripts/cleanup-worktrees.sh`
+
+## What worked
+
+The operator noticed the slow repository. The process audit that day found and cleaned the other accumulated state, and garbage collection took the repository from 408 MB to 22 MB.
+
 ## The rule it produced
 
 `docs/governance/AGENT-DISPATCH.md` → the STANDING RULE (2026-06-02) in the merge cycle, step 4 of the pre-dispatch checklist, and "Workspace hygiene — `pnpm hygiene`".

@@ -12,6 +12,22 @@ The `CHANGELOG.md` entry for the fix records it:
 
 > Earlier the same day — retired signing key: screens that had not re-registered inside a `DEVICE_JWT_SECRET` rotation window were refused (`401 SCREEN_TOKEN_MISMATCH`) on every re-register after it closed and stayed dark; a prior token naming the screen that no current key verifies is now graded `unverifiable` and gets the same 1-hour credential + `requiresRePair` as no token at all (`isUnverifiableDeviceTokenForScreen`, `screens.register-retired-key.spec.ts`); token-issue audit rows carry a non-secret `mintKeyId`, and `scripts/railway-rotation.mjs finish` refuses to close a window while a live screen has no token on the new key (`DEVICE_*_PREVIOUS` row, `docs/SECRET-ROTATION.md` A-4/A-5).
 
+## Why our system let it reach a customer
+
+Every refusal was logged but nothing alarmed on them, and the customer alert emails ignore screens silent for more than 6 hours and were deployed 12 hours into the outage, so `screen_alert_incidents` stayed empty. The rotation finish also did not check that every live screen had a token on the new key.
+
+## What pins it
+
+- `apps/api/src/screens/screens.register-retired-key.spec.ts`
+- `apps/api/src/screens/device-auth.spec.ts`
+- `apps/api/src/notifications/fleet-alarms/post-restart-fleet-check.service.spec.ts`
+- `apps/api/src/notifications/fleet-alarms/device-credential-refusal-alarm.service.spec.ts`
+- `scripts/railway-rotation.mjs`
+
+## What worked
+
+Every refusal was logged, which made the outage reconstructable. How it was finally noticed after 16 hours is not recorded.
+
 ## The rule it produced
 
 `docs/ENVIRONMENT.md` → `DEVICE_SECRET_KEY_PREVIOUS` / `DEVICE_JWT_SECRET_PREVIOUS` (rotation windows; a rotation is closed by Resync) and `POST_RESTART_FLEET_CHECK_DISABLED` / `DEVICE_CREDENTIAL_REFUSAL_ALARM_DISABLED` (the owner fleet alarms). Runbook: `docs/SECRET-ROTATION.md`.

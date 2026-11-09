@@ -16,6 +16,18 @@ Agents that wrote code or ran the app shared the lead's working tree. The rule r
 
 > The chaos that prompted this rule wasn't agents disobeying — it was the lead skipping pre-flight discipline.
 
+## Why our system let it reach a customer
+
+The root cause states that the lead skipped pre-flight discipline: agents that wrote code or ran the app were dispatched without worktree isolation. The rule it produced adds a pre-dispatch checklist and a clean-tree assertion before and after a batch, all of which are prose.
+
+## What pins it
+
+Nothing pins this yet — GAP.
+
+## What worked
+
+The agents' transcripts under `/private/tmp/claude-501/<project>/<session>/tasks/<agentId>.output` proved that the fix agent's edits were all worktree-scoped, which disproved the 2026-05-29 misattribution.
+
 ## The rule it produced
 
 `docs/governance/AGENT-DISPATCH.md` → rule 1 (worktree isolation is mandatory), rule 1b (any agent that runs the app gets a worktree), rule 1c (assert the main tree is clean before and after a batch), the pre-dispatch checklist and the anti-patterns.
