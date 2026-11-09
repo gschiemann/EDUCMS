@@ -383,4 +383,24 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
     size: 2776341,
     sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/42446385225',
   },
+  // Signed CI 42529040478, source master 636e77b3 (#272 Manager waves on #270's
+  // one release unit + #268 VenueOS names): companion health + signed reports,
+  // diagnostics (self-test, logs, storage), install-tap card, quarantine clear,
+  // Manager i18n, scheduled-restart support. First unified Manager (1.0.24 →
+  // 1.1.66-field.1), bundled byte-identical in assets/bundled. Production
+  // certificate e45adf50…3d1897 (v2) on both, non-debuggable. Private mirror NOT
+  // uploaded by the registering session. Hardware qualification pending (EP6N first).
+  '1.1.66-field.1': {
+    versionName: '1.1.66-field.1',
+    versionCode: 10166,
+    sha256: '30f0390ca6d3038b73b72cb22cc825e63a9d929ea4cf1c1a22f4a2f0b50b5a7d', // gitleaks:allow -- verified public APK integrity digest
+    size: 2799709,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/42529040478',
+    manager: {
+      versionName: '1.1.66-field.1',
+      versionCode: 10166,
+      sha256: '2fd069b338b318dba575d801907f6b9fcc6a8e148184bb7e79bf7a623788282a', // gitleaks:allow -- verified public APK integrity digest
+      size: 325473,
+    },
+  },
 };
