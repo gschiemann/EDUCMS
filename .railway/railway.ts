@@ -20,10 +20,12 @@
 //   - Variables are UNMANAGED: secrets stay in the Railway dashboard and are
 //     never written to this repository.
 //
-// This file is not yet applied: `railway config migrate cutover` (reversible with
-// `undo`) and any `apply` of this file are consequential (L2) — the owner's written
-// go, then the lead runs them. Until then the dashboard is authoritative and this
-// file is its versioned mirror; re-generate and diff it whenever a setting changes.
+// Applied? Not yet. `railway config plan` on 2026-11-08 (CLI 5.71, Node 22, the `railway`
+// dev dependency at the repo root) reported "already up to date": this file equals
+// production, so the first `apply` is a no-op that only makes the file authoritative. It
+// is consequential (L2) and the agent-side guard refuses it — the owner runs it. Until
+// then the dashboard is authoritative and this file is its versioned mirror: run the plan
+// before and after any dashboard change, and fix any diff in one direction or the other.
 import { defineRailway, github, project, redis, service, volume } from "railway/iac";
 
 export default defineRailway(() => {
