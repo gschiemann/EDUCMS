@@ -41,6 +41,9 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0 # the doc-age sweep dates files by their last commit
+          filter: blob:none # commits and trees only (the sweep needs dates, not old file contents); the packs are ~600 MB
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
@@ -52,3 +55,11 @@ jobs:
         run: node scripts/check-rulebook.cjs --self-test && node scripts/check-rulebook.cjs
       - name: Incident records keep the standard's shape (Articles 47, 48, 25)
         run: node scripts/check-incident-records.cjs
+
+      # Doc-age sweep (Foundry Standard Article 46). REPORT-ONLY on purpose: the first sweep found a
+      # backlog of stale documents, so a blocking step would fail every PR. First the backlog
+      # shrinks (docs/governance/decisions/2026-11-09-doc-age-first-sweep.md), then the lead flips
+      # this by deleting continue-on-error.
+      - name: Doc-age sweep (report-only)
+        continue-on-error: true
+        run: node scripts/check-doc-age.cjs --max-days 180
