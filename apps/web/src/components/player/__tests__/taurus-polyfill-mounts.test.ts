@@ -69,7 +69,7 @@ describe('Taurus polyfills reach every surface that renders the widget tree', ()
     expect(s).toMatch(/try \{ applyCqUnitPolyfill\(\); \} catch/);
   });
 
-  it('introduces no `inset` shorthand or Tailwind inset-* (CLAUDE.md rule #10)', () => {
+  it('introduces no `inset` shorthand or Tailwind inset-* (apps/web/CLAUDE.md rule 10)', () => {
     // The pattern is ASSEMBLED, not written as a literal: check-taurus-safety
     // scans components/player, so a literal would make this very test a
     // "regression" in the gate that shares its purpose.

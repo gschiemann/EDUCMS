@@ -24,7 +24,7 @@
  *    (multiple widget instances on a page would fight over a
  *    shared DOM id otherwise).
  *
- *  DO NOT regress any of the above. See CLAUDE.md "Template Design
+ *  DO NOT regress any of the above. See docs/design/TEMPLATE-DESIGN-WORKFLOW-LEGACY.md "Template Design
  *  Workflow" for the full reasoning.
  * ════════════════════════════════════════════════════════════════
  */

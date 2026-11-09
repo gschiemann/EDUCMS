@@ -486,7 +486,7 @@ export function DisplayScheduleModal({
 
                         Hidden rather than disabled when read-only: a
                         prominent Delete a CONTRIBUTOR can never use is the
-                        "real-button costume" this repo bans (CLAUDE.md
+                        "real-button costume" this repo bans (docs/governance/AUDIT-SURFACE.md
                         §20). Their Save is disabled in the footer for the
                         same reason, and reading a schedule is all their
                         role is granted. */}

@@ -37,7 +37,7 @@
  *   It still OCCUPIES its zone, so the rest of the board's layout is
  *   untouched; only this one zone goes quiet. (The screen as a whole is
  *   never blanked by this: that is the player's own failure mode, guarded
- *   elsewhere — see the Player Reliability rules in CLAUDE.md.)
+ *   elsewhere — see the Player Reliability rules in apps/web/src/app/player/CLAUDE.md.)
  *
  * Both halves must be TRUE. Neither may fabricate.
  *

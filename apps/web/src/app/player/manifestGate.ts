@@ -16,7 +16,7 @@
  * which subsumes every trigger that requested it). With requests serialized,
  * arrival-order inversion is impossible in-page, for normal AND emergency
  * payloads, without adding a wire revision that would interact with the
- * manifest ETag/304 contract (CLAUDE.md manifest-cache rule #4).
+ * manifest ETag/304 contract (apps/web/src/app/player/CLAUDE.md frame-locked sync rule 4).
  *
  * The disk-cache fallback path (`readCachedManifest` → `applyManifest(m,
  * fromCache=true)`) keeps its existing, separately-audited emergency

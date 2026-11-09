@@ -1376,8 +1376,7 @@ const CSS = `
 }
 .kiosk-qr-icon { width: 18px; height: 18px; color: var(--splash-accent); }
 
-/* Orientation picker (pairing splash, 2026-05-25). Per CLAUDE.md
-   rule #10 + the Taurus Safety CI gate, no flex spacing-shorthand
+/* Orientation picker (pairing splash, 2026-05-25). Per apps/web/CLAUDE.md rule 10 + the Taurus Safety CI gate, no flex spacing-shorthand
    on player-shipped CSS — Chromium 83 (NovaStar Taurus / some
    Goodview ROMs) silently drops it. Spacing comes from per-child
    margin on adjacent siblings instead. Modern engines compute

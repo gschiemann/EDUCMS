@@ -140,7 +140,7 @@ export function warnRetiredEnvVars(
     warn(
       `[boot] RETIRED env var ${v.name} is still set. It was removed on ${v.retiredOn} (${v.why}) ` +
         `and NOTHING in this codebase reads it — the value is inert. Delete it from the deploy ` +
-        `environment. CLAUDE.md: an OTA env var may only ever be SUBTRACTIVE; it must never pin ` +
+        `environment. CLAUDE.md §3: an OTA env var may only ever be SUBTRACTIVE; it must never pin ` +
         `or name a version.`,
     );
   }

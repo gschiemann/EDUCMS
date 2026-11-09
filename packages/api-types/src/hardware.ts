@@ -129,7 +129,7 @@ export const HARDWARE_PRESENTATIONS: Record<HardwareModel, HardwarePresentation>
     approxPriceUsd: null,
     hasWiringPanel: false,
     caveats: [
-      'Chromium 83 (June 2020) — code MUST follow CLAUDE.md rule #10 (no `inset` shorthand, no flex `gap`, no backdrop-filter)',
+      'Chromium 83 (June 2020) — code MUST follow apps/web/CLAUDE.md rule 10 (no `inset` shorthand, no flex `gap`, no backdrop-filter)',
       'No serial, no GPIO, no HDMI IN',
     ],
     chromium83: true,

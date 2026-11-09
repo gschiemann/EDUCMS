@@ -3238,7 +3238,7 @@ export class ScreensController {
         // signal. Columns are already fetched by this findMany; mapping
         // them costs bytes, not queries. Ack semantics are VALUE-identity
         // (refreshAckMs echoes pendingRefreshAt's epoch-ms — never clock
-        // comparison; see the durable-refresh design in CLAUDE.md rule 6).
+        // comparison; see the durable-refresh design in apps/web/src/app/player/CLAUDE.md rule 6).
         lastBundleSha: (s as any).lastBundleSha ?? null,
         // 2026-09-21 — the identity the player actually reloads on. Must be
         // returned everywhere lastBundleSha is, or the dashboard silently

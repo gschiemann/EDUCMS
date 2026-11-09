@@ -784,7 +784,7 @@ export default function MobilePanicPage() {
         </h1>
         {/* 2026-05-03 BUG FIX (cycle 4 emergency-BUG-013) — copy used to
             say "1.5 seconds" but HOLD_DURATION_MS is 3000 (cycle-1 fix
-            restoring the CLAUDE.md "Key Safeguards #5" 3-second hold).
+            restoring the apps/api/src/emergency/CLAUDE.md "Key Safeguards #5" 3-second hold).
             Updated to match actual timer so operators see truthful UX. */}
         <p className={`text-[11px] mt-1 ${isDrill ? 'text-indigo-200 font-semibold' : 'text-white/60'}`} data-testid="panic-hold-hint">
           {isDrill ? t('emergency.drill.panicHint') : t('emergency.panic.holdHint')}

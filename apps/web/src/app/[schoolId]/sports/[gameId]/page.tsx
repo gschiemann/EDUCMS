@@ -1287,7 +1287,7 @@ function RunMode({
   // ScoreTile (which calls ctl.score.mutate directly) or any render
   // path. The authoritative undo is now the server-backed per-row Undo
   // in <RecentEventsBar> (POST /events/:id/undo), which survives reloads
-  // and multi-operator sessions. Per CLAUDE.md §9, no dead code that
+  // and multi-operator sessions. Per apps/web/CLAUDE.md rule 9, no dead code that
   // looks like a feature.
 
   // ── View-role switcher pill row ──────────────────────────────
@@ -6578,7 +6578,7 @@ export function DivingJudgePadSection({
                   {score.toFixed(1)}
                 </div>
                 {/* Two-tap: whole-number row, then a .0/.5 toggle — both
-                    rows are 44px+ thumb targets (CLAUDE.md mobile-perf /
+                    rows are 44px+ thumb targets (apps/web/CLAUDE.md mobile-perf /
                     touch-target standard). */}
                 <div className="mb-1 flex gap-1">
                   {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((whole) => (
@@ -7723,7 +7723,7 @@ function HoldChip({
             to the button shape by overflow-hidden above. Hidden at rest — no
             confusing always-on ring (2026-06-26, operator: "what is the ui on
             that final button and what does it even do?"). Long-hand sides per
-            CLAUDE.md rule #10. */}
+            apps/web/CLAUDE.md rule 10. */}
         {holding && (
           <span
             aria-hidden

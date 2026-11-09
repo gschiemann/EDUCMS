@@ -97,7 +97,7 @@ import { DesignerJobsModule } from './templates/designer-jobs/designer-jobs.modu
 import { MusicModule } from './music/music.module';
 // 2026-05-26 — AI Integration Concierge: scrape an operator's URL or
 // take a free-text description, classify, return ranked provider
-// candidates (POS, music, streaming, calendar, etc.). See CLAUDE.md
+// candidates (POS, music, streaming, calendar, etc.). See docs/product/CONCIERGE.md
 // "AI Integration Concierge — vision" section.
 import { IntegrationsModule } from './integrations/integrations.module';
 // Clever roster sync — defined since Sprint 2, never registered here until

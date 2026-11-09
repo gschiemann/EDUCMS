@@ -7,7 +7,7 @@
  * credentials. These tests render the real `SchoolLayout` — the actual mount
  * point, not a stand-in — so a future refactor that moves the gate out of the
  * render tree fails here rather than silently shipping an ungated dashboard
- * (CLAUDE.md "verify the render tree").
+ * (apps/web/CLAUDE.md rule 9, "verify the render tree").
  *
  * `DashboardLayout` is mocked to a marker. That is deliberate: the whole point
  * of the gate is that the chrome and its dozen data hooks NEVER MOUNT, and

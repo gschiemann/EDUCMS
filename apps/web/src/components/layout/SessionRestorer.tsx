@@ -36,7 +36,7 @@ export function SessionRestorer() {
     let cancelled = false;
 
     // The PLAYER is explicitly out of scope for SEC-010 — device credentials
-    // have their own lifecycle and their own single token store (CLAUDE.md
+    // have their own lifecycle and their own single token store (apps/web/src/app/player/CLAUDE.md
     // player rules 1-3). This component is inert there anyway (no remember
     // marker on a kiosk), but bail explicitly so it can never become a new
     // writer on that surface.

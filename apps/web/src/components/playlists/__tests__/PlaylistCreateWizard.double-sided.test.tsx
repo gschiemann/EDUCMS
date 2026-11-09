@@ -19,7 +19,7 @@
  *   E. An ordinary fleet is untouched — normal screens still render as
  *      normal screens.
  *
- * CLAUDE.md §9: a registry entry that never renders is not a feature. These
+ * apps/web/CLAUDE.md rule 9: a registry entry that never renders is not a feature. These
  * assert against the DOM the operator gets.
  */
 

@@ -2,8 +2,8 @@
 #
 # NovaStar Taurus LED controllers run Chromium 83. Modern flex `gap` and
 # CSS container queries (cqh/cqw/cqi/cqmin/cqb) are silently broken there
-# and have repeatedly slipped into player-shipped widgets (see CLAUDE.md
-# rule #10 + the 2026-05-23 Lane-5 audit). This workflow fails on any NEW
+# and have repeatedly slipped into player-shipped widgets (see apps/web/CLAUDE.md
+# rule 10 + the 2026-05-23 Lane-5 audit). This workflow fails on any NEW
 # instance in player/widget paths — existing instances are tracked in
 # `apps/web/tools/taurus-safety-baseline.json` and the baseline only
 # ratchets DOWN.

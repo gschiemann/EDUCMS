@@ -15,7 +15,7 @@
  *
  * The rule now: an item this screen failed to load or decode — or whose type
  * it cannot show at all — is NOT PLAYABLE, and the slide choice treats it
- * exactly like a file still downloading (mediaReadiness.ts, CLAUDE.md player
+ * exactly like a file still downloading (mediaReadiness.ts, apps/web/src/app/player/CLAUDE.md player
  * rule 17(d)): free-run steps over it, a frame-locked sync group HOLDS its
  * slot (the timeline is never moved), and when nothing is playable the screen
  * shows its "Content unavailable" card — never black.
