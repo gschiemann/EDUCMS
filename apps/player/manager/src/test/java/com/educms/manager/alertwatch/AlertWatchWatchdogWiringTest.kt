@@ -91,8 +91,17 @@ class AlertWatchWatchdogWiringTest {
         assertTrue(body.contains("AlertWatchStore.writeStamp"))
         assertTrue(body.contains("AlertWatchStore.recordCursor"))
         val manifest = source("AndroidManifest.xml")!!
-        // One provider, one permission: nothing new is exported.
-        assertEquals(1, Regex("<provider").findAll(manifest).count())
-        assertTrue(manifest.contains("android:permission=\"com.educms.manager.HEALTH_PERMISSION\"\n            android:grantUriPermissions=\"false\""))
+        // The watchdog adds no provider: it rides PlayerHealthProvider. Every
+        // provider the Manager exports (the health provider, and since wave 2
+        // the diagnostics log provider) sits behind the same signature
+        // permission, with no URI grants — nothing is exported unguarded.
+        val providers = Regex("<provider[^>]*/>", RegexOption.DOT_MATCHES_ALL).findAll(manifest).map { it.value }.toList()
+        assertTrue(providers.isNotEmpty())
+        assertEquals(1, providers.count { it.contains("android:name=\".PlayerHealthProvider\"") })
+        assertTrue(providers.none { it.contains("alertwatch", ignoreCase = true) })
+        providers.forEach { p ->
+            assertTrue(p, p.contains("android:permission=\"com.educms.manager.HEALTH_PERMISSION\""))
+            assertTrue(p, p.contains("android:grantUriPermissions=\"false\""))
+        }
     }
 }
