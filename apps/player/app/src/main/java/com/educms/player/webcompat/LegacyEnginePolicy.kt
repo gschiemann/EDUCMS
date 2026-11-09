@@ -22,6 +22,21 @@ import org.json.JSONArray
  *   2. the WebView supports `DOCUMENT_START_SCRIPT` (Chromium 83/87 Taurus
  *      class does not — it is skipped, never half-installed).
  *
+ * THE LATE PATH (2026-11-09, field failure). The GUQ's WebView is the
+ * platform-signed AOSP `com.android.webview` 95, and it does NOT offer
+ * `DOCUMENT_START_SCRIPT` — so on the one panel the layer was built for it
+ * logged `skipped reason=SKIP_NO_DOCUMENT_START` and the customer's Metabase
+ * login still failed (`i?.throwIfAborted is not a function`). A view that
+ * opts in (`lateAllowed`: the URL overlay, which shows the site as its own
+ * top-level document) now gets [Decision.INSTALL_LATE] instead: the same
+ * asset, evaluated into each main-frame document at page start, commit and
+ * finish by [LegacyEngineLateInjector]. The asset feature-detects, so a
+ * repeat is a no-op. It is late — page scripts may run first — which is
+ * enough for builtins a site looks up when it calls them (the login's
+ * `throwIfAborted`), not for ones it needs while its bundle first runs; on
+ * Chrome 95 those already exist natively. Only for majors at or above
+ * [LATE_INJECTION_MIN_MAJOR], so the Chromium 83/87 Taurus class is untouched.
+ *
  * Failure direction: any doubt → not installed → today's behaviour.
  * Kill switch: none at runtime (auto-detected per device, no setting); it is
  * withdrawn by a build without it (revert, or the previous APK).
@@ -40,7 +55,10 @@ object LegacyEnginePolicy {
     /** Allowed-origin rule for `addDocumentStartJavaScript`: every frame, every origin. */
     val ALLOWED_ORIGINS: Set<String> = setOf("*")
 
-    enum class Decision { INSTALL, SKIP_MODERN, SKIP_UNKNOWN_VERSION, SKIP_NO_DOCUMENT_START }
+    /** The oldest engine the late path runs on (the asset is proven on 91; Taurus 83/87 stays untouched). */
+    const val LATE_INJECTION_MIN_MAJOR = 90
+
+    enum class Decision { INSTALL, INSTALL_LATE, SKIP_MODERN, SKIP_UNKNOWN_VERSION, SKIP_NO_DOCUMENT_START }
 
     /** `95.0.4638.74` → 95. Null for anything that does not start with a plausible major. */
     fun majorOf(versionName: String?): Int? {
@@ -49,12 +67,55 @@ object LegacyEnginePolicy {
         return head.toIntOrNull()?.takeIf { it > 0 }
     }
 
-    fun decide(major: Int?, documentStartSupported: Boolean): Decision = when {
+    fun decide(major: Int?, documentStartSupported: Boolean, lateAllowed: Boolean = false): Decision = when {
         major == null -> Decision.SKIP_UNKNOWN_VERSION
         major >= MODERN_WEBVIEW_MAJOR -> Decision.SKIP_MODERN
-        !documentStartSupported -> Decision.SKIP_NO_DOCUMENT_START
-        else -> Decision.INSTALL
+        documentStartSupported -> Decision.INSTALL
+        lateAllowed && major >= LATE_INJECTION_MIN_MAJOR -> Decision.INSTALL_LATE
+        else -> Decision.SKIP_NO_DOCUMENT_START
     }
+
+    /** The late path only targets real web documents — never `about:`, `data:` or our offline pages. */
+    fun lateTargetUrl(url: String?): Boolean {
+        val u = url?.trim()?.lowercase() ?: return false
+        return u.startsWith("https://") || u.startsWith("http://")
+    }
+
+    /**
+     * Evaluated after the layer: is it present in THIS document (the field
+     * case's missing builtin), how far had the document got, and which
+     * document is it. Answers `"1|loading|https://…"` / `"0|…"`.
+     */
+    const val LATE_PROBE_JS =
+        "(function(){var p=0;try{p=(typeof AbortSignal==='function'&&typeof AbortSignal.prototype.throwIfAborted==='function')?1:0}catch(e){}" +
+            "var r='';try{r=String(document.readyState)}catch(e){}var h='';try{h=String(location.href)}catch(e){}return p+'|'+r+'|'+h})()"
+
+    data class LateProbe(val present: Boolean, val readyState: String, val href: String)
+
+    /** `evaluateJavascript` hands back a JSON string literal; anything else is no answer. */
+    fun parseLateProbe(raw: String?): LateProbe? {
+        val v = raw?.trim() ?: return null
+        if (v.length < 2 || !v.startsWith("\"") || !v.endsWith("\"")) return null
+        val body = try { org.json.JSONArray("[$v]").getString(0) } catch (t: Throwable) { return null }
+        val parts = body.split('|', limit = 3)
+        if (parts.size != 3 || (parts[0] != "0" && parts[0] != "1")) return null
+        val state = parts[1].takeIf { it == "loading" || it == "interactive" || it == "complete" } ?: "unknown"
+        return LateProbe(parts[0] == "1", state, parts[2])
+    }
+
+    /** Same document, ignoring the fragment (a hash change is not a new document). */
+    fun sameDocument(href: String?, expected: String?): Boolean {
+        if (href.isNullOrEmpty() || expected.isNullOrEmpty()) return false
+        return href.substringBefore('#') == expected.trim().substringBefore('#')
+    }
+
+    /** The durable line once the late path is proven in a page. */
+    fun lateInstalledLine(major: Int, features: Int, view: String, firstReadyState: String): String =
+        installedLine(major, features, view) + " mode=late first=" + firstReadyState
+
+    /** The layer reached a document only after parsing — too late for a builtin the page needs at boot. */
+    fun lateAfterParseLine(view: String, readyState: String): String =
+        "PLAYER_LEGACY_POLYFILL late-after-parse view=$view state=$readyState"
 
     /** Feature groups in the asset: one `feature('…'` call per line start. */
     fun featureCount(script: String): Int =

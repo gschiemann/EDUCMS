@@ -403,4 +403,24 @@ export const FIELD_CANDIDATE_RELEASES: Readonly<
       size: 325473,
     },
   },
+  // 2026-11-09 — the legacy-engine layer's LATE path (#292): the GUQ's AOSP
+  // WebView 95 has no DOCUMENT_START_SCRIPT, so 1.1.66 skipped the layer and a
+  // customer Metabase login still failed. Built from the 1.1.66 source
+  // (636e77b3) + only the two fix commits (branch claude/field-1.1.67-fix-only,
+  // 694cded7) so the alert-watch watchdog (#275, not yet drilled) does NOT ride
+  // along. Production certificate e45adf50…3d1897 on both, non-debuggable.
+  // Manager code is identical to 1.1.66; it is renamed with the unit.
+  '1.1.67-field.1': {
+    versionName: '1.1.67-field.1',
+    versionCode: 10167,
+    sha256: 'f453f7e81cfbc3ebdb25d78b507e03952e77051baa8c2527499cd7079d4772df', // gitleaks:allow -- verified public APK integrity digest
+    size: 2799741,
+    sourceUrl: 'https://github.com/gschiemann/EDUCMS/actions/runs/42666438508',
+    manager: {
+      versionName: '1.1.67-field.1',
+      versionCode: 10167,
+      sha256: '8304c392fa31364b1641640479ffb08966a725e0b31be657f202c157ff2dfbc5', // gitleaks:allow -- verified public APK integrity digest
+      size: 325477,
+    },
+  },
 };

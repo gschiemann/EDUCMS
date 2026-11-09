@@ -42,9 +42,76 @@ class LegacyEnginePolicyTest {
     }
 
     @Test
-    fun `the feature gate - no DOCUMENT_START_SCRIPT means nothing, never a fallback injection`() {
+    fun `the feature gate - no DOCUMENT_START_SCRIPT means nothing on a view that has not opted in`() {
         assertEquals(Decision.SKIP_NO_DOCUMENT_START, LegacyEnginePolicy.decide(95, false))
         assertEquals(Decision.SKIP_NO_DOCUMENT_START, LegacyEnginePolicy.decide(83, false))
+        assertEquals(Decision.SKIP_NO_DOCUMENT_START, LegacyEnginePolicy.decide(95, false, lateAllowed = false))
+    }
+
+    @Test
+    fun `the late path - the GUQ's AOSP WebView 95 without document-start gets the late install on an opted-in view`() {
+        assertEquals(Decision.INSTALL_LATE, LegacyEnginePolicy.decide(95, false, lateAllowed = true))
+        assertEquals(Decision.INSTALL_LATE, LegacyEnginePolicy.decide(LegacyEnginePolicy.LATE_INJECTION_MIN_MAJOR, false, lateAllowed = true))
+        assertEquals(Decision.INSTALL_LATE, LegacyEnginePolicy.decide(LegacyEnginePolicy.MODERN_WEBVIEW_MAJOR - 1, false, lateAllowed = true))
+        // Document-start support always wins: the late path is only the fallback.
+        assertEquals(Decision.INSTALL, LegacyEnginePolicy.decide(95, true, lateAllowed = true))
+        // Taurus (Chromium 83/87) is untouched, and so is anything below the floor.
+        assertEquals(90, LegacyEnginePolicy.LATE_INJECTION_MIN_MAJOR)
+        for (m in listOf(83, 87, 89)) {
+            assertEquals("major=$m", Decision.SKIP_NO_DOCUMENT_START, LegacyEnginePolicy.decide(m, false, lateAllowed = true))
+        }
+        assertEquals(Decision.SKIP_MODERN, LegacyEnginePolicy.decide(138, false, lateAllowed = true))
+        assertEquals(Decision.SKIP_UNKNOWN_VERSION, LegacyEnginePolicy.decide(null, false, lateAllowed = true))
+    }
+
+    @Test
+    fun `the late path only targets real web documents`() {
+        for (u in listOf("https://bi.example.test/auth/login", "http://10.0.2.2:3000/", " HTTPS://X.TEST/ ")) {
+            assertTrue(u, LegacyEnginePolicy.lateTargetUrl(u))
+        }
+        for (u in listOf(null, "", "about:blank", "data:text/html,x", "file:///sdcard/x.html", "javascript:alert(1)", "content://x")) {
+            assertFalse("$u", LegacyEnginePolicy.lateTargetUrl(u))
+        }
+    }
+
+    @Test
+    fun `the late proof line extends the on-glass line`() {
+        assertEquals(
+            "PLAYER_LEGACY_POLYFILL installed webview=95 features=15 view=overlay mode=late first=loading",
+            LegacyEnginePolicy.lateInstalledLine(95, 15, "overlay", "loading"),
+        )
+        assertEquals(
+            "PLAYER_LEGACY_POLYFILL late-after-parse view=overlay state=complete",
+            LegacyEnginePolicy.lateAfterParseLine("overlay", "complete"),
+        )
+        val probe = LegacyEnginePolicy.LATE_PROBE_JS
+        assertTrue(probe.contains("AbortSignal.prototype.throwIfAborted"))
+        assertTrue(probe.contains("document.readyState") && probe.contains("location.href"))
+    }
+
+    @Test
+    fun `the late probe answer is parsed strictly`() {
+        val ok = LegacyEnginePolicy.parseLateProbe("\"1|loading|https://bi.example.test/auth/login\"")!!
+        assertTrue(ok.present)
+        assertEquals("loading", ok.readyState)
+        assertEquals("https://bi.example.test/auth/login", ok.href)
+        val absent = LegacyEnginePolicy.parseLateProbe("\"0|complete|https://x.test/a|b\"")!!
+        assertFalse(absent.present)
+        assertEquals("https://x.test/a|b", absent.href)
+        assertEquals("unknown", LegacyEnginePolicy.parseLateProbe("\"1|weird|https://x.test/\"")!!.readyState)
+        for (bad in listOf(null, "", "null", "true", "\"\"", "\"2|loading|x\"", "\"1|loading\"", "1|loading|x")) {
+            assertNull("$bad", LegacyEnginePolicy.parseLateProbe(bad))
+        }
+    }
+
+    @Test
+    fun `same document ignores only the fragment`() {
+        assertTrue(LegacyEnginePolicy.sameDocument("https://x.test/a#b", "https://x.test/a"))
+        assertTrue(LegacyEnginePolicy.sameDocument("https://x.test/a", " https://x.test/a#c"))
+        assertFalse(LegacyEnginePolicy.sameDocument("https://x.test/a", "https://x.test/b"))
+        assertFalse(LegacyEnginePolicy.sameDocument("about:blank", "https://x.test/a"))
+        assertFalse(LegacyEnginePolicy.sameDocument(null, "https://x.test/a"))
+        assertFalse(LegacyEnginePolicy.sameDocument("https://x.test/a", null))
     }
 
     @Test
@@ -130,10 +197,14 @@ class LegacyEnginePolicyTest {
         assertTrue(player.contains("LegacyEngineCompat.install(") && player.contains("\"player\""))
         assertTrue("the player origin must be skipped", player.contains("HostAllowlist.playerOrigin()"))
         val overlay = block(main, "private fun configureUrlOverlay(", "\n    private fun showUrlOverlay(")
-        assertTrue(overlay.contains("LegacyEngineCompat.install(applicationContext, wv, \"overlay\")"))
+        assertTrue(overlay.contains("LegacyEngineCompat.install(applicationContext, wv, \"overlay\", allowLate = true)"))
+        // Only the overlay opts into the late path: the player and the faces carry
+        // website zones in IFRAMES, which a top-frame evaluation cannot reach.
+        assertFalse(player.contains("allowLate"))
         val face = code(read("src/main/java/com/educms/player/face/FacePlayerHost.kt"))
         val faceCfg = block(face, "private fun configureWebView(", "\n    private fun ")
         assertTrue(faceCfg.contains("LegacyEngineCompat.install(") && faceCfg.contains("HostAllowlist.playerOrigin()"))
+        assertFalse(faceCfg.contains("allowLate"))
         // Only those three call sites — a renderer replacement re-runs the same configure.
         val all = Regex("""LegacyEngineCompat\.install\(""")
         assertEquals(2, all.findAll(main).count())
@@ -152,5 +223,36 @@ class LegacyEnginePolicyTest {
         assertTrue(src.contains("addDocumentStartJavaScript(webView, script, LegacyEnginePolicy.ALLOWED_ORIGINS)"))
         assertTrue("the layer needs a DOCUMENT_START_SCRIPT probe", src.contains("WebViewFeature.DOCUMENT_START_SCRIPT"))
         assertTrue("the install line must be durable", src.contains("PlayerLogger.durable("))
+    }
+
+    @Test
+    fun `the late injector evaluates the layer and one probe, and reaches no native surface`() {
+        val src = code(read("src/main/java/com/educms/player/webcompat/LegacyEngineLateInjector.kt"))
+        for (surface in listOf("addJavascriptInterface", "addWebMessageListener", "addDocumentStartJavaScript", "postWebMessage", "NativeBridgeChannel")) {
+            assertFalse("LegacyEngineLateInjector must never touch $surface", src.contains(surface))
+        }
+        assertEquals(2, Regex("""evaluateJavascript\(""").findAll(src).count())
+        assertTrue(src.contains("evaluateJavascript(script, null)"))
+        assertTrue(src.contains("evaluateJavascript(LegacyEnginePolicy.LATE_PROBE_JS)"))
+        assertTrue("only real web documents", src.contains("LegacyEnginePolicy.lateTargetUrl(url)"))
+        assertTrue("the proof line must be durable", src.contains("PlayerLogger.durable("))
+    }
+
+    @Test
+    fun `the overlay client feeds every early moment of a main-frame document to the late injector`() {
+        val main = code(read("src/main/java/com/educms/player/MainActivity.kt"))
+        val overlay = block(main, "private fun configureUrlOverlay(", "\n    private fun showUrlOverlay(")
+        val expected = mapOf(
+            "override fun onPageStarted(" to "legacyLate?.onDocumentStarted(view, url)",
+            "override fun onLoadResource(" to "legacyLate?.onResource(view)",
+            "override fun onPageCommitVisible(" to "legacyLate?.onDocument(view, url)",
+            "override fun onPageFinished(" to "legacyLate?.onDocument(view, url)",
+        )
+        for ((cb, call) in expected) {
+            val body = overlay.substringAfter(cb, "").substringBefore("override fun ")
+            assertTrue("$cb missing in the overlay client", body.isNotEmpty())
+            assertTrue("$cb must call $call", body.contains(call))
+        }
+        assertEquals(4, Regex("""legacyLate\?\.on[A-Za-z]+\(""").findAll(overlay).count())
     }
 }
