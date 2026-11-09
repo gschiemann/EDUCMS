@@ -103,10 +103,17 @@ async function bounded(fetchImpl: typeof fetch, url: string, init: RequestInit, 
   }
 }
 
+/** How long the self-test waits for the worker's cache totals (see getCacheStatus). */
+export const EMERGENCY_STATUS_TIMEOUT_MS = 10_000;
+
 async function emergencyTier(deps: PageDeps) {
   try {
-    const st = await (deps.cacheStatus ?? getCacheStatus)();
-    if (!st) return { readable: false, entries: null, bytes: null };
+    const st = await (deps.cacheStatus ?? (() => getCacheStatus(EMERGENCY_STATUS_TIMEOUT_MS)))();
+    // 2026-11-08 (1.1.66 bench, M43 + L55VEC): a worker that does not answer
+    // in time is UNKNOWN, never "not readable" — both screens graded the
+    // emergency tier FAIL while their own cache report showed 18–19 entries.
+    // readable:null grades `unknown` and is dropped by the storage report.
+    if (!st) return { readable: null, entries: null, bytes: null };
     if (!st.supported) return null; // no service worker: nothing to say
     return { readable: true, entries: st.emergency.count, bytes: st.emergency.bytes };
   } catch {
