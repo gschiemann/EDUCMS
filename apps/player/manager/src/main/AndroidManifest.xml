@@ -42,6 +42,11 @@
          user grants this implicitly via the notification permission
          on Android 14+; on 13 and below it's auto-granted. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- 2026-11-08 (wave 5) — the alert-watch watchdog sends ONE broadcast to
+         the Player's AlertWatchKickReceiver, whose android:permission requires
+         the SENDER to hold this signature permission. We define it below; a
+         package is not granted its own permission unless it also uses it. -->
+    <uses-permission android:name="com.educms.manager.HEALTH_PERMISSION" />
 
     <!-- Required when calling startActivity for a different package
          (Player) on Android 11+ scoped queries. -->

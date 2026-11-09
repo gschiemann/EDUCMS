@@ -60,6 +60,7 @@ import {
 } from '@cms/api-types';
 
 import { vendorBacklightFlagFor } from './vendor-backlight-flag';
+import { alertWatchWatchdogModeFor } from './alert-watch-watchdog-flag';
 
 const logger = new Logger('DisplayManifest');
 
@@ -279,6 +280,11 @@ function assembleBlock(
   // per (screen, env), so it is as stable as the rest of the block; omitted
   // for every other screen so nobody else's ETag moves.
   if (vendorBacklightFlagFor(screenId, env) === false) block.vendorBacklight = false;
+  // Manager wave 5 (2026-11-08) — the alert-watch watchdog's mode, present only
+  // for a screen `MANAGER_ALERT_WATCH_WATCHDOG` names (`on` / `observe`). Same
+  // discipline as the key above: deterministic, omitted for everyone else.
+  const alertWatchWatchdog = alertWatchWatchdogModeFor(screenId, env);
+  if (alertWatchWatchdog) block.alertWatchWatchdog = alertWatchWatchdog;
   return block;
 }
 
