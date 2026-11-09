@@ -67,6 +67,6 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 |---|---|---|---|
 | Launch-tracker work (docs/research/2026-10-24-launch-week/00-PLAN.md): "launch ready, stop asking" — proceed at the levels already in force; nothing in the standard adds a prompt | owner (recorded by the lead from the 2026-10-23 instruction; owner to confirm scope) | 2026-10-23 | end of the launch freeze |
 
-## Freeze
+## Holds on a class of change
 
-None. The launch-week hold was lifted by the owner on 2026-11-01 ("the freeze can lift … we need to finish all our development"); `FREEZE.md` is absent.
+None. The launch-week hold was lifted by the owner on 2026-11-01 ("we need to finish all our development"). A hold, when one exists, is a row here with its lift condition — there is no separate file.
