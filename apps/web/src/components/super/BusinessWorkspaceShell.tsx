@@ -125,6 +125,8 @@ export default function BusinessWorkspaceShell({
               ["/super/bugs", "bugs"],
               ["/super/cts-simulator", "simulator"],
               ["/super/field-builds", "fieldBuilds"],
+              // 2026-11-10 — a test alert runs only with the owner's permission.
+              ["/super/emergency-drill", "emergencyDrill"],
               // 2026-10-26 — moved out of customer Settings.
               ["/super/player-updates", "playerUpdates"],
               ["/super/test-integrations", "testIntegrations"],
@@ -182,6 +184,8 @@ export default function BusinessWorkspaceShell({
               ["/super/bugs", "bugs"],
               ["/super/cts-simulator", "simulator"],
               ["/super/field-builds", "fieldBuilds"],
+              // 2026-11-10 — a test alert runs only with the owner's permission.
+              ["/super/emergency-drill", "emergencyDrill"],
               // 2026-10-26 — moved out of customer Settings.
               ["/super/player-updates", "playerUpdates"],
               ["/super/test-integrations", "testIntegrations"],

@@ -49,6 +49,9 @@ import { readDrillConfig, type DrillConfig } from './synthetic-drill.config';
 import {
   DAILY_SCREEN_KINDS,
   DRILL_RESULT_ACTION,
+  DRILL_APPROVAL,
+  DRILL_APPROVAL_REVOKED_ACTION,
+  DRILL_APPROVED_ACTION,
   DRILL_RUNNER_CREATED_ACTION,
   DRILL_RUNNER_FIRST_NAME,
   DRILL_RUNNER_LAST_NAME,
@@ -72,7 +75,11 @@ import {
   drillHardwareClass,
   drillRunnerEmail,
   drillTypeFor,
-  dueSlots,
+  approvalInForce,
+  approvedSlot,
+  isLiveApprover,
+  lastSpentApproval,
+  openApprovals,
   evaluateDrillGuards,
   gradeRun,
   link1Settled,
@@ -85,6 +92,7 @@ import {
   tickEmailKey,
   unitPaneIds,
   verdictAlertsOwner,
+  type DrillApprovedDetails,
   type DrillKind,
   type DrillResultDetails,
   type DrillStartedDetails,
@@ -229,6 +237,8 @@ interface BenchDistrict {
 interface Plan {
   items: PlanItem[];
   displays: Array<{ screenId: string; label: string }>;
+  /** The owner's open approvals at plan time (waiting or in force). */
+  open: DrillApprovedDetails[];
   districtRoots: Array<{ rootTenantId: string; label: string }>;
   benchTenantIds: string[];
 }
@@ -402,6 +412,11 @@ export class SyntheticDrillRunner implements OnModuleInit, OnModuleDestroy {
     if (!display) return { ...result, verdict: 'SKIPPED', reason: 'display-unreadable' };
     const { named, panes, paneIds, rootTenantId, rootInternal } = display;
     const tenantId = named.tenantId as string;
+
+    // ── Guard 0: the owner's permission, read fresh. No approval in force for
+    // THIS screen → nothing is read further, written or dispatched. ──
+    const notApproved = await this.approvalProblem(screenId, [tenantId, rootTenantId]);
+    if (notApproved) return { ...result, verdict: 'SKIPPED', reason: notApproved };
     result.label = opts.label ?? named.name;
     result.rootTenantId = rootTenantId;
     result.paneIds = paneIds;
@@ -539,6 +554,12 @@ export class SyntheticDrillRunner implements OnModuleInit, OnModuleDestroy {
     const district = await this.analyseDistrict(rootTenantId, cfg).catch(() => null);
     if (!district || !district.eligible) {
       return { ...result, verdict: 'SKIPPED', reason: `no-bench-district:${district?.reason ?? 'unreadable'}` };
+    }
+    // Guard 0: a district copy reaches every pane of the district, so every
+    // one of them must be under the owner's permission right now.
+    for (const paneId of district.paneIds) {
+      const notApproved = await this.approvalProblem(paneId, district.tenantIds);
+      if (notApproved) return { ...result, verdict: 'SKIPPED', reason: notApproved };
     }
     const runner = await this.ensureRunnerIdentity(rootTenantId);
     if (!runner.ok) {
@@ -1028,14 +1049,103 @@ export class SyntheticDrillRunner implements OnModuleInit, OnModuleDestroy {
     const cfg = this.config();
     if (!cfg.enabled || !cfg.screenIds.includes(screenId)) return 'recheck:guard1';
     if (!this.redisConnected()) return 'recheck:guard5:redis-not-connected';
+    let rootId: string;
     try {
-      const rootId = await resolveRootTenantId(this.prisma.client.tenant as never, tenantId);
+      rootId = await resolveRootTenantId(this.prisma.client.tenant as never, tenantId);
       const roots = await this.readRoots([rootId]);
       if (roots[0]?.isInternal !== true) return 'recheck:guard2:root-not-internal';
     } catch {
       return 'recheck:guard2:root-unreadable';
     }
-    return null;
+    // The owner may have taken the permission back since the pass began.
+    const notApproved = await this.approvalProblem(screenId, [tenantId, rootId]);
+    return notApproved ? `recheck:${notApproved}` : null;
+  }
+
+  // ═════════════════════════════════════════════════════════════════════
+  // Guard 0 — the owner's permission (2026-11-10)
+  // ═════════════════════════════════════════════════════════════════════
+
+  /**
+   * The approvals still open (waiting or in force) whose rows live in
+   * `tenantIds`, each one approved by an account that is an active SUPER_ADMIN
+   * RIGHT NOW. Null when the rows could not be read — the caller treats that
+   * as "not approved" and dispatches nothing.
+   */
+  async readOpenApprovals(tenantIds: Array<string | null | undefined>): Promise<DrillApprovedDetails[] | null> {
+    const ids = [...new Set(tenantIds.filter((t): t is string => !!t))];
+    if (ids.length === 0) return [];
+    const nowMs = this.now();
+    try {
+      const rows = await this.readApprovalRows(ids, nowMs - DRILL_APPROVAL.MAX_AHEAD_MS - DRILL_APPROVAL.WINDOW_MS - 10 * MIN);
+      const open = openApprovals(rows, nowMs);
+      const out: DrillApprovedDetails[] = [];
+      const live = new Map<string, boolean>();
+      for (const a of open) {
+        const key = `${a.approverTenantId}|${a.approverUserId}`;
+        if (!live.has(key)) {
+          const u = (await this.prisma.client.user.findFirst({
+            where: { id: a.approverUserId, tenantId: a.approverTenantId },
+            select: { role: true, status: true, deletedAt: true },
+          })) as { role: string | null; status: string | null; deletedAt: Date | null } | null;
+          live.set(key, isLiveApprover(u));
+        }
+        if (live.get(key)) out.push(a);
+      }
+      return out;
+    } catch (e) {
+      this.logger.warn(`[synthetic-drill] approvals unreadable (${errorText(e)}) — nothing dispatched`);
+      return null;
+    }
+  }
+
+  /**
+   * The listed screens as the owner sees them before giving permission: name,
+   * location, and whether the organisation root is internal — read fresh. A
+   * screen whose root is not (or cannot be shown to be) internal is never
+   * part of an approval.
+   */
+  async listedScreens(): Promise<Array<{ id: string; name: string; tenantId: string; rootTenantId: string; rootInternal: boolean | null }>> {
+    const cfg = this.config();
+    if (cfg.screenIds.length === 0) return [];
+    const rows = (await this.prisma.client.screen.findMany({
+      where: { id: { in: [...cfg.screenIds] } },
+      select: { id: true, name: true, tenantId: true },
+    })) as Array<{ id: string; name: string; tenantId: string | null }>;
+    const out: Array<{ id: string; name: string; tenantId: string; rootTenantId: string; rootInternal: boolean | null }> = [];
+    for (const id of cfg.screenIds) {
+      const r = rows.find((x) => x.id === id);
+      if (!r || !r.tenantId) continue;
+      let rootTenantId = r.tenantId;
+      let rootInternal: boolean | null = null;
+      try {
+        rootTenantId = await resolveRootTenantId(this.prisma.client.tenant as never, r.tenantId);
+        rootInternal = (await this.readRoots([rootTenantId]))[0]?.isInternal ?? null;
+      } catch {
+        rootInternal = null;
+      }
+      out.push({ id: r.id, name: r.name, tenantId: r.tenantId, rootTenantId, rootInternal });
+    }
+    return out;
+  }
+
+  private async readApprovalRows(tenantIds: string[], sinceMs: number): Promise<Array<{ action: string; userId: string | null; details: string | null }>> {
+    return (await this.prisma.client.auditLog.findMany({
+      where: {
+        tenantId: { in: tenantIds },
+        action: { in: [DRILL_APPROVED_ACTION, DRILL_APPROVAL_REVOKED_ACTION] },
+        createdAt: { gte: new Date(sinceMs) },
+      },
+      select: { action: true, userId: true, details: true },
+      take: 2_000,
+    })) as Array<{ action: string; userId: string | null; details: string | null }>;
+  }
+
+  /** Null when `screenId` is under an approval in force; otherwise the SKIPPED reason. */
+  private async approvalProblem(screenId: string, tenantIds: Array<string | null | undefined>): Promise<string | null> {
+    const open = await this.readOpenApprovals(tenantIds);
+    if (open === null) return 'guard0:approval-unreadable';
+    return approvalInForce(open, screenId, this.now()) ? null : 'guard0:not-approved';
   }
 
   /**
@@ -1215,6 +1325,12 @@ export class SyntheticDrillRunner implements OnModuleInit, OnModuleDestroy {
     }
     const items: PlanItem[] = [];
     const firstDueByTenant = new Map<string, DueSlot>();
+    const tenantIds = [...new Set(rows.map((r) => r.tenantId).filter((t): t is string => !!t))];
+    const rootIds = await this.rootsOf(tenantIds);
+    // NO SCHEDULE (2026-11-10): the only thing that makes a run due is the
+    // owner's approval, at the instant the owner named, for the screens the
+    // owner saw. Unreadable or absent → an empty plan (the sweep still runs).
+    const open = cfg.scheduleValid ? ((await this.readOpenApprovals([...tenantIds, ...rootIds])) ?? []) : [];
     for (const named of displays.values()) {
       const zone = manifestTimeZone(named, named.screenGroup, named.tenant);
       if (!zone) {
@@ -1224,8 +1340,10 @@ export class SyntheticDrillRunner implements OnModuleInit, OnModuleDestroy {
         }
         continue;
       }
-      for (const due of dueSlots(zone, cfg.slots, nowMs)) {
-        const type = drillTypeFor(due.dayNumber, due.slotIndex, cfg.slots.length);
+      const approval = approvalInForce(open, named.id, nowMs);
+      const due = approval ? approvedSlot(zone, approval, nowMs) : null;
+      if (due) {
+        const type = drillTypeFor(due.dayNumber, 0, 1);
         for (const kind of DAILY_SCREEN_KINDS) {
           items.push({ kind, screenId: named.id, rootTenantId: null, due, type: kind === 'override' ? type : null, label: named.name });
         }
@@ -1233,8 +1351,6 @@ export class SyntheticDrillRunner implements OnModuleInit, OnModuleDestroy {
         if (!firstDueByTenant.has(t)) firstDueByTenant.set(t, due);
       }
     }
-    const tenantIds = [...new Set(rows.map((r) => r.tenantId).filter((t): t is string => !!t))];
-    const rootIds = await this.rootsOf(tenantIds);
     const districts = await this.benchDistricts(cfg, tenantIds).catch((): BenchDistrict[] => []);
     for (const d of districts) {
       const due = d.tenantIds.map((t) => firstDueByTenant.get(t)).find((x): x is DueSlot => !!x);
@@ -1243,6 +1359,7 @@ export class SyntheticDrillRunner implements OnModuleInit, OnModuleDestroy {
     return {
       items,
       displays: [...displays.values()].map((d) => ({ screenId: d.id, label: d.name })),
+      open,
       districtRoots: districts.map((d) => ({ rootTenantId: d.rootTenantId, label: d.label })),
       // Where this job's rows live: the listed screens' locations and their roots (district runs).
       benchTenantIds: [...new Set([...tenantIds, ...rootIds])],
@@ -1482,7 +1599,24 @@ export class SyntheticDrillRunner implements OnModuleInit, OnModuleDestroy {
     } catch {
       return; // unreadable: try again next tick (the day is not claimed)
     }
-    const gaps = deadManGaps({ displays: plan.displays, districtRoots: plan.districtRoots, rows, nowMs });
+    // There is no schedule to miss (2026-11-10): the dead-man answers only for
+    // a pass the owner APPROVED whose window has closed — "you approved a drill
+    // and this screen never passed it". No such pass → nothing was owed.
+    let spent: DrillApprovedDetails | null;
+    try {
+      const sinceMs = nowMs - DRILL_TIMING.DEAD_MAN_MS - DRILL_APPROVAL.MAX_AHEAD_MS - DRILL_APPROVAL.WINDOW_MS;
+      spent = lastSpentApproval(await this.readApprovalRows(plan.benchTenantIds, sinceMs), nowMs, DRILL_TIMING.DEAD_MAN_MS);
+    } catch {
+      return;
+    }
+    if (!spent) return;
+    const owed = spent;
+    const gaps = deadManGaps({
+      displays: plan.displays.filter((d) => owed.screenIds.includes(d.screenId)),
+      districtRoots: plan.districtRoots,
+      rows: rows.filter((r) => r.createdAt.getTime() >= owed.runAtMs),
+      nowMs,
+    });
     if (gaps.length === 0) return;
     try {
       if ((await pub.set(`${KEY}:deadman-sent:${day}`, String(gaps.length), 'EX', 2 * 24 * 60 * 60, 'NX')) !== 'OK') return;

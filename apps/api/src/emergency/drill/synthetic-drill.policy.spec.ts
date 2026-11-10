@@ -24,6 +24,8 @@ import { intendedDowntime, syntheticDrillCovers, type ScreenFacts } from '../../
 import {
   DRILL_BROADCAST_TEXT,
   DRILL_RESULT_ACTION,
+  DRILL_APPROVAL_REVOKED_ACTION,
+  DRILL_APPROVED_ACTION,
   DRILL_RUNNER_CREATED_ACTION,
   DRILL_STARTED_ACTION,
   DRILL_SWEPT_ACTION,
@@ -63,11 +65,30 @@ const S2 = '80bf9b8d-0000-4000-8000-000000000002';
 
 // ─── the drill folder adds no trigger path ─────────────────────────────────
 
-describe('drill/ declares no controller or route (design §1: an in-process timer only)', () => {
-  const dir = __dirname;
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.spec.ts'));
+/**
+ * 2026-11-10, the owner's rule ("I give permission before a test runs,
+ * always"): ONE controller now lives here, and it is the opposite of a trigger
+ * path — it records a SUPER_ADMIN's permission and can send nothing to a
+ * screen. Everything that can dispatch stays route-free, exactly as before;
+ * the permission controller is pinned below to its three routes, none of
+ * which imports or reaches the trigger path.
+ */
+const PERMISSION_CONTROLLER = 'synthetic-drill-approval.controller.ts';
 
-  it('no Nest controller / route / gateway / message-handler decorator in any source file', () => {
+describe('drill/ declares no trigger route (design §1: the runner is an in-process timer only)', () => {
+  const dir = __dirname;
+  const all = fs.readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.spec.ts'));
+  const files = all.filter((f) => f !== PERMISSION_CONTROLLER);
+
+  it('the one controller is the owner’s permission: three routes, and it cannot reach the trigger path', () => {
+    expect(all).toContain(PERMISSION_CONTROLLER);
+    const src = fs.readFileSync(path.join(dir, PERMISSION_CONTROLLER), 'utf8');
+    const routes = [...src.matchAll(/@(Get|Post|Put|Patch|Delete|All|Sse)\s*\(([^)]*)\)/g)].map((m) => `${m[1]} ${m[2]}`);
+    expect(routes).toEqual(['Get ', "Post 'approve'", "Post 'revoke'"]);
+    expect(src).not.toMatch(/emergency\.controller|EmergencyController|triggerEmergency|broadcastText|clearEmergency|clearMessage|runOnce|runDistrictCopy|\.tick\(|RedisService|AllowPanicBypass/);
+  });
+
+  it('no Nest controller / route / gateway / message-handler decorator in any other source file', () => {
     expect(files.sort()).toEqual([
       'synthetic-drill.config.ts',
       'synthetic-drill.copy.ts',
@@ -475,7 +496,7 @@ describe('runner-minted ids', () => {
 
 describe('the drill\'s audit actions never reach a customer feed', () => {
   it('STARTED / RESULT / SWEPT / RUNNER_CREATED are not on the customer activity allowlist', () => {
-    for (const action of [DRILL_STARTED_ACTION, DRILL_RESULT_ACTION, DRILL_SWEPT_ACTION, DRILL_RUNNER_CREATED_ACTION]) {
+    for (const action of [DRILL_STARTED_ACTION, DRILL_RESULT_ACTION, DRILL_SWEPT_ACTION, DRILL_RUNNER_CREATED_ACTION, DRILL_APPROVED_ACTION, DRILL_APPROVAL_REVOKED_ACTION]) {
       expect(action.startsWith('EMERGENCY_DRILL_')).toBe(true);
       expect(Object.prototype.hasOwnProperty.call(CUSTOMER_ACTIVITY, action)).toBe(false);
     }

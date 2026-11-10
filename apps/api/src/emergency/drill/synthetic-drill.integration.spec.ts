@@ -40,6 +40,7 @@ import { resetEmergencyRevForTests } from '../../screens/emergency-rev';
 import { invalidateDeviceCredentialCache } from '../../screens/device-auth';
 import { clearDisplayManifestCache } from '../../display/display-manifest';
 import { SyntheticDrillRunner } from './synthetic-drill.runner';
+import { DRILL_APPROVAL, DRILL_APPROVED_ACTION } from './synthetic-drill.policy';
 import { readDrillConfig } from './synthetic-drill.config';
 import { DRILL_RESULT_ACTION, DRILL_STARTED_ACTION, buildOverrideDrillBody, runnerPrincipal } from './synthetic-drill.policy';
 import { mintDrillOverrideId, resetSyntheticDrillRegistryForTests } from './synthetic-drill.registry';
@@ -82,6 +83,8 @@ function makeWorld() {
   const overrides = new Map<string, Row>();
   const audit: Row[] = [];
   const users: Row[] = [];
+  /** The approving SUPER_ADMIN — apart from `users`, which the attribution cases index. */
+  const owners: Row[] = [];
   const messages: Row[] = [];
   const published: Array<{ channel: string; message: Row; at: number }> = [];
 
@@ -145,7 +148,7 @@ function makeWorld() {
       findMany: jest.fn(async ({ where }: Row) => audit.filter((a) => matches(a, where))),
     },
     user: {
-      findFirst: jest.fn(async ({ where }: Row) => users.find((u) => matches(u, where)) ?? null),
+      findFirst: jest.fn(async ({ where }: Row) => [...users, ...owners].find((u) => matches(u, where)) ?? null),
       findMany: jest.fn(async ({ where }: Row) => users.filter((u) => matches(u, where))),
       create: jest.fn(async ({ data }: Row) => {
         users.push({ deletedAt: null, ...data });
@@ -216,6 +219,17 @@ function makeWorld() {
   runner.config = () =>
     readDrillConfig({ NODE_ENV: 'production', EMERGENCY_DRILL_SCREENS: `${FRONT},${BACK}` } as NodeJS.ProcessEnv);
   runner.now = () => Date.now();
+  // The owner's permission (guard 0), as the approval route writes it.
+  owners.push({ id: 'owner-1', tenantId: 'hq', email: 'owner@hq.test', role: 'SUPER_ADMIN', status: 'ACTIVE', passwordHash: '$argon2id$x', canTriggerPanic: false, deletedAt: null });
+  audit.push({
+    tenantId: 'bench',
+    userId: 'owner-1',
+    action: DRILL_APPROVED_ACTION,
+    targetType: 'Tenant',
+    targetId: 'bench',
+    details: JSON.stringify({ v: 1, approvalId: 'apr-1', runAtMs: Date.now() - 1_000, expiresAtMs: Date.now() - 1_000 + DRILL_APPROVAL.WINDOW_MS, screenIds: [FRONT, BACK], approverUserId: 'owner-1', approverTenantId: 'hq' }),
+    createdAt: new Date(Date.now()),
+  });
 
   // ── The page, per pane: what it raises, and what it reports through the handler ──
   type PageMode = 'paints' | 'withholds';

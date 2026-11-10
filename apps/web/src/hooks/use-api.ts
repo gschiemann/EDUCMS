@@ -4416,6 +4416,51 @@ export function useCancelFieldWindow() {
   });
 }
 
+// ─── Emergency drill: the owner's permission (2026-11-10) ───────────────────
+// apps/api/src/emergency/drill/synthetic-drill-approval.controller.ts. No
+// polling: read once, after each action, and on the page's Refresh button.
+
+export interface EmergencyDrillStatus {
+  armed: boolean;
+  disabledReason: string | null;
+  mode: string;
+  nowMs: number;
+  maxAheadMs: number;
+  windowMs: number;
+  screens: Array<{ id: string; name: string; eligible: boolean }>;
+  approvals: Array<{ approvalId: string; runAtMs: number; expiresAtMs: number; screenCount: number; state: 'waiting' | 'running' }>;
+}
+
+export function useEmergencyDrillStatus(enabled: boolean) {
+  return useQuery<EmergencyDrillStatus>({
+    queryKey: ['emergency-drill', 'status'],
+    enabled,
+    queryFn: () => apiFetch('/super/emergency-drill'),
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useApproveEmergencyDrill() {
+  const qc = useQueryClient();
+  return useMutation<
+    { approved: boolean; approvalId: string; runAtMs: number; expiresAtMs: number; screenCount: number },
+    Error & { code?: string },
+    { runAt?: string }
+  >({
+    mutationFn: (body) => apiFetch('/super/emergency-drill/approve', { method: 'POST', body: JSON.stringify(body) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['emergency-drill'] }),
+  });
+}
+
+export function useRevokeEmergencyDrill() {
+  const qc = useQueryClient();
+  return useMutation<{ revoked: number }, Error & { code?: string }, void>({
+    mutationFn: () => apiFetch('/super/emergency-drill/revoke', { method: 'POST', body: JSON.stringify({}) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['emergency-drill'] }),
+  });
+}
+
 export function usePushFieldWindow() {
   const qc = useQueryClient();
   return useMutation<

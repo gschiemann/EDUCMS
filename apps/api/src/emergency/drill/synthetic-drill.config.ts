@@ -13,11 +13,12 @@
  *                                  ignored and logged; past 12 the rest are.
  *   EMERGENCY_DRILL_MODE           shadow (default) | alert | on | off. An
  *                                  unknown value reads as shadow (+ an error).
- *   EMERGENCY_DRILL_SCHEDULE       up to 4 `HH:MM` slots in EACH SCREEN'S OWN
- *                                  time zone (default `10:30` — mid-morning
- *                                  local, inside a panel's ON window; never
- *                                  UTC). An invalid value = NO drills + an
- *                                  error (the dead-man check reports the gap).
+ *   EMERGENCY_DRILL_SCHEDULE       RETIRED AS A SCHEDULE (2026-11-10, the
+ *                                  owner's rule): no value starts a drill. A
+ *                                  pass runs only at the time a SUPER_ADMIN
+ *                                  approves it (guard 0 in the runner). Still
+ *                                  parsed; an invalid value = NO drills + an
+ *                                  error. Leave it unset.
  *
  * All of it is off under NODE_ENV=test (the runner is driven by hand there).
  *

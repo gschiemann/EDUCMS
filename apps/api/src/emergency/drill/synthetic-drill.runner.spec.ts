@@ -22,6 +22,9 @@ import { SyntheticDrillRunner, type DrillEmergencyPort } from './synthetic-drill
 import { readDrillConfig } from './synthetic-drill.config';
 import {
   DRILL_RESULT_ACTION,
+  DRILL_APPROVAL,
+  DRILL_APPROVAL_REVOKED_ACTION,
+  DRILL_APPROVED_ACTION,
   DRILL_RUNNER_CREATED_ACTION,
   DRILL_STARTED_ACTION,
   DRILL_SWEPT_ACTION,
@@ -39,6 +42,7 @@ const FRONT = '40864836-0000-4000-8000-000000000001';
 const BACK = '80bf9b8d-0000-4000-8000-000000000002';
 const SOLO = '1cff5eb0-0000-4000-8000-000000000003';
 const CUSTOMER = '9a9a9a9a-0000-4000-8000-000000000004';
+const OWNER = 'owner-0000-4000-8000-000000000009';
 
 type Row = Record<string, any>;
 type PlayerMode = 'healthy' | 'dead' | 'pending-only' | 'drops' | 'frozen';
@@ -57,6 +61,8 @@ function makeWorld() {
   const overrides = new Map<string, Row>();
   const audit: Row[] = [];
   const users: Row[] = [];
+  /** The approving SUPER_ADMINs — kept apart from `users`, which the identity cases count. */
+  const owners: Row[] = [];
   const messages: Row[] = [];
   const player = new Map<string, { mode: PlayerMode; seenAt: number | null; paintedAt: number | null; lastPost: number; identity: string | null }>();
   const redisStore = new Map<string, { v: string; exp: number | null }>();
@@ -123,7 +129,7 @@ function makeWorld() {
       findMany: jest.fn(async ({ where: w }: Row) => audit.filter((a) => where(a, w))),
     },
     user: {
-      findFirst: jest.fn(async ({ where: w }: Row) => users.find((u) => where(u, w)) ?? null),
+      findFirst: jest.fn(async ({ where: w }: Row) => [...users, ...owners].find((u) => where(u, w)) ?? null),
       create: jest.fn(async ({ data }: Row) => {
         if (users.some((u) => u.email === data.email)) throw new Error('P2002 unique');
         users.push({ deletedAt: null, ...data });
@@ -312,7 +318,43 @@ function makeWorld() {
   screen(BACK, 'bench', { faceOfScreenId: FRONT });
   screen(SOLO, 'bench');
 
-  return { clock, tenants, screens, overrides, audit, users, messages, player, port, calls, behaviour, redis, lease, mailer, alerts, runner, client, failures, setEnv, tenant, screen, step };
+  // The owner's permission (guard 0). Every world starts with ONE approval in
+  // force for the listed screens, written the way the approval route writes it;
+  // the "no permission" cases remove or replace it.
+  const owner: Row = { id: OWNER, tenantId: 'hq', email: 'owner@hq.test', role: 'SUPER_ADMIN', status: 'ACTIVE', passwordHash: '$argon2id$x', canTriggerPanic: false, deletedAt: null };
+  owners.push(owner);
+  let approvalSeq = 0;
+  const approve = (over: { runAtMs?: number; screenIds?: string[]; tenantId?: string; userId?: string; approvalId?: string; details?: Row } = {}) => {
+    const runAtMs = over.runAtMs ?? clock.now - MIN;
+    const approvalId = over.approvalId ?? `apr-${(approvalSeq += 1)}`;
+    audit.push({
+      tenantId: over.tenantId ?? 'bench',
+      userId: over.userId ?? OWNER,
+      action: DRILL_APPROVED_ACTION,
+      targetType: 'Tenant',
+      targetId: over.tenantId ?? 'bench',
+      details: JSON.stringify({
+        v: 1,
+        approvalId,
+        runAtMs,
+        expiresAtMs: runAtMs + DRILL_APPROVAL.WINDOW_MS,
+        screenIds: over.screenIds ?? [FRONT, BACK, SOLO],
+        approverUserId: OWNER,
+        approverTenantId: 'hq',
+        ...over.details,
+      }),
+      createdAt: new Date(clock.now),
+    });
+    return approvalId;
+  };
+  const revoke = (approvalId: string) =>
+    audit.push({ tenantId: 'bench', userId: OWNER, action: DRILL_APPROVAL_REVOKED_ACTION, targetType: 'Tenant', targetId: 'bench', details: JSON.stringify({ v: 1, approvalId, revokedByUserId: OWNER }), createdAt: new Date(clock.now) });
+  const unapprove = () => {
+    for (let i = audit.length - 1; i >= 0; i -= 1) if (audit[i].action === DRILL_APPROVED_ACTION) audit.splice(i, 1);
+  };
+  approve();
+
+  return { owner, approve, revoke, unapprove, clock, tenants, screens, overrides, audit, users, messages, player, port, calls, behaviour, redis, lease, mailer, alerts, runner, client, failures, setEnv, tenant, screen, step };
 }
 
 type World = ReturnType<typeof makeWorld>;
@@ -580,11 +622,14 @@ describe('guards that must never be routed around', () => {
     w.tenant('customer-org', { isInternal: false, name: 'Paying Customer' });
     w.screen(CUSTOMER, 'customer-org');
     w.setEnv({ EMERGENCY_DRILL_SCREENS: CUSTOMER });
+    // Even WITH the owner's permission on record (the organisation stopped
+    // being internal after it was given), guard 2 refuses.
+    w.approve({ screenIds: [CUSTOMER], tenantId: 'customer-org' });
     const r = await w.runner.tick();
     expect(r.results.map((x) => `${x.verdict}:${x.reason}`)).toEqual(['SKIPPED:guard2:root-not-internal', 'SKIPPED:guard2:root-not-internal']);
     expect(w.calls).toEqual([]);
     expect(w.users).toEqual([]);
-    expect(w.audit.filter((a) => a.tenantId === 'customer-org')).toEqual([]);
+    expect(w.audit.filter((a) => a.tenantId === 'customer-org' && a.action !== DRILL_APPROVED_ACTION)).toEqual([]);
     expect(w.mailer.sendAlert.mock.calls.filter((c: any[]) => c[2] === 'ALERT_EMERGENCY_DRILL_REFUSED')).toHaveLength(1);
   });
 
@@ -669,5 +714,126 @@ describe('dead-man (alert / on): a display with no PASS in 36 h, once a day', ()
     w.clock.now += 3600_000; // a new hour, the same UTC day
     await w.runner.tick();
     expect(w.mailer.sendAlert.mock.calls.filter((c: any[]) => c[2] === 'ALERT_EMERGENCY_DRILL_DEAD_MAN')).toHaveLength(1);
+  });
+});
+
+describe('guard 0 — the owner’s permission, every time (2026-11-10)', () => {
+  it('no approval → the tick dispatches nothing and writes nothing, at any hour (there is no schedule)', async () => {
+    w.unapprove();
+    for (const at of [SLOT_TIME, SLOT_TIME + 5 * 60 * MIN, SLOT_TIME + 13 * 60 * MIN]) {
+      w.clock.now = at;
+      const r = await w.runner.tick();
+      expect(r.status).toBe('ran');
+      expect(r.results).toEqual([]);
+    }
+    expect(w.calls).toEqual([]);
+    expect(rows(w, DRILL_STARTED_ACTION)).toEqual([]);
+    expect(rows(w, DRILL_RESULT_ACTION)).toEqual([]);
+  });
+
+  it('runOnce called directly without an approval is refused before anything is sent (no caller routes around it)', async () => {
+    w.unapprove();
+    const r = await w.runner.runOnce(SOLO, { kind: 'override', slot: 's', type: 'hold' });
+    expect(`${r.verdict}:${r.reason}`).toBe('SKIPPED:guard0:not-approved');
+    expect(w.calls).toEqual([]);
+    expect(w.users).toEqual([]);
+  });
+
+  it('one approval is ONE pass: the next tick, and the next day, run nothing more', async () => {
+    const first = await w.runner.tick();
+    expect(first.results.map((x) => x.verdict)).toEqual(['PASS', 'PASS', 'PASS', 'PASS']);
+    const sent = w.calls.length;
+    expect((await w.runner.tick()).results).toEqual([]);
+    w.clock.now += 24 * 60 * MIN;
+    expect((await w.runner.tick()).results).toEqual([]);
+    expect(w.calls).toHaveLength(sent);
+  });
+
+  it('an approval for a later time does nothing until that time, then runs at it', async () => {
+    w.unapprove();
+    w.approve({ runAtMs: w.clock.now + 30 * MIN });
+    expect((await w.runner.tick()).results).toEqual([]);
+    expect(w.calls).toEqual([]);
+    await w.runner.sleep(31 * MIN); // the players keep checking in meanwhile
+    const r = await w.runner.tick();
+    expect(r.results.map((x) => x.verdict)).toEqual(['PASS', 'PASS', 'PASS', 'PASS']);
+    // The result says what time it was on that screen's own wall (11:01 Los Angeles).
+    expect(r.results[0].slot).toMatch(/^2026-11-02@11:01#/);
+  });
+
+  it('a spent approval (its 2 h window closed) is not permission', async () => {
+    w.unapprove();
+    w.approve({ runAtMs: w.clock.now - DRILL_APPROVAL.WINDOW_MS - MIN });
+    expect((await w.runner.tick()).results).toEqual([]);
+    expect(w.calls).toEqual([]);
+  });
+
+  it('only the screens the owner was shown: a screen listed AFTER the approval is not drilled', async () => {
+    w.unapprove();
+    w.approve({ screenIds: [SOLO] });
+    const r = await w.runner.tick();
+    expect(r.results.map((x) => `${x.label}:${x.kind}`)).toEqual(['GUQ55:override', 'GUQ55:broadcast']);
+  });
+
+  it('revoked → nothing; revoked MID-PASS → the screen in hand is cleared and no further screen is started', async () => {
+    const id = w.approve({ approvalId: 'apr-x' });
+    w.unapprove();
+    w.approve({ approvalId: id });
+    // Revoke the moment the first trigger goes out.
+    w.behaviour.trigger = () => {
+      if (!w.audit.some((a) => a.action === DRILL_APPROVAL_REVOKED_ACTION)) w.revoke(id);
+      return undefined;
+    };
+    const r = await w.runner.tick();
+    const order = w.calls.map((c) => c.method);
+    expect(order).toEqual(['trigger', 'clear']);
+    expect(r.results.slice(1).every((x) => x.verdict === 'SKIPPED' && /guard0:not-approved/.test(x.reason))).toBe(true);
+    expect((await w.runner.tick()).results).toEqual([]);
+    expect(w.calls).toHaveLength(2);
+  });
+
+  it('the approver must STILL be an active SUPER_ADMIN when the drill would start', async () => {
+    for (const change of [{ status: 'DISABLED' }, { role: 'DISTRICT_ADMIN' }, { deletedAt: new Date() }]) {
+      resetSyntheticDrillRegistryForTests();
+      w = makeWorld();
+      Object.assign(w.owner, change);
+      expect((await w.runner.tick()).results).toEqual([]);
+      expect(w.calls).toEqual([]);
+    }
+  });
+
+  it('a row that is not exactly an approval is not one: wrong author, a self-granted longer window, bad shape', async () => {
+    for (const bad of [
+      { userId: 'someone-else' },
+      { details: { expiresAtMs: SLOT_TIME + 30 * 24 * 60 * MIN } },
+      { details: { v: 2 } },
+      { details: { screenIds: [] } },
+    ]) {
+      resetSyntheticDrillRegistryForTests();
+      w = makeWorld();
+      w.unapprove();
+      w.approve(bad as never);
+      expect((await w.runner.tick()).results).toEqual([]);
+      expect(w.calls).toEqual([]);
+    }
+  });
+
+  it('approvals unreadable → not approved (fails closed)', async () => {
+    const real = w.client.auditLog.findMany;
+    w.client.auditLog.findMany = jest.fn(async (args: Row) => {
+      if (args?.where?.action?.in?.includes(DRILL_APPROVED_ACTION)) throw new Error('db stall');
+      return real(args);
+    });
+    expect((await w.runner.tick()).results).toEqual([]);
+    const r = await w.runner.runOnce(SOLO, { kind: 'override', slot: 's', type: 'hold' });
+    expect(r.reason).toBe('guard0:approval-unreadable');
+    expect(w.calls).toEqual([]);
+  });
+
+  it('EMERGENCY_DRILL_SCHEDULE no longer starts anything: any value, no approval, no drill', async () => {
+    w.unapprove();
+    w.setEnv({ EMERGENCY_DRILL_SCHEDULE: '10:30' });
+    expect((await w.runner.tick()).results).toEqual([]);
+    expect(w.calls).toEqual([]);
   });
 });
