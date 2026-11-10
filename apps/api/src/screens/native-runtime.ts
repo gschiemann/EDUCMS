@@ -180,6 +180,23 @@ const procSchema = z.object({
   boot: z.number().int().nonnegative().max(2_147_483_647).optional(),
 });
 
+/**
+ * 2026-11-09 — the last remote APP restart, acknowledged BY VALUE: `id` is
+ * the server's actionId, `o` the outcome. `refused` (with `r`, the reason)
+ * and `restarting` are written by the process that received the command;
+ * `started`, `landed` and `not-landed` only by the NEW process after it came
+ * back, so they are the proof that the restart happened (an app restart does
+ * not move the boot count or the uptime). `at` is the device's wall clock —
+ * display only, never compared.
+ */
+export const APP_RESTART_OUTCOMES = ['refused', 'restarting', 'started', 'landed', 'not-landed'] as const;
+const appRestartSchema = z.object({
+  id: z.string().min(1).max(64),
+  o: z.enum(APP_RESTART_OUTCOMES),
+  r: z.string().max(40).optional(),
+  at: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+});
+
 const runtimeSchema = z.object({
   schema: z.literal(1),
   interactive: z.boolean().nullable(),
@@ -217,6 +234,8 @@ const runtimeSchema = z.object({
   // pressure, main-thread stalls, previous exits, thermal. Own header, stored
   // here (telemetry only); a malformed block drops on its own.
   processHealth: processHealthSchema.optional().catch(undefined),
+  // 2026-11-09 — the app-restart acknowledgement. Drops on its own when malformed.
+  appRestart: appRestartSchema.optional().catch(undefined),
 });
 
 export type NativeRuntimeReport = z.infer<typeof runtimeSchema>;
@@ -281,6 +300,8 @@ export function nativePowerStateChanged(
     a.wake?.resAt !== next.wake?.resAt ||
     a.wake?.out !== next.wake?.out ||
     a.proc?.pid !== next.proc?.pid ||
+    a.appRestart?.id !== next.appRestart?.id ||
+    a.appRestart?.o !== next.appRestart?.o ||
     JSON.stringify(a.emergencyProof) !== JSON.stringify(next.emergencyProof)
   );
 }

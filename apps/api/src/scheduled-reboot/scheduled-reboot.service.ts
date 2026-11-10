@@ -7,7 +7,14 @@
  * REBOOT through `runDisplayControl` — the SAME function the dashboard's
  * typed-confirm button uses, so the capability gate (today every screen is
  * `reboot: 'none'` and is refused there too), the delivery honesty and the
- * SCREEN_DISPLAY_REBOOT audit row are identical. No device code changes.
+ * SCREEN_DISPLAY_REBOOT audit row are identical.
+ *
+ * 2026-11-09 — where the device cannot reboot but its APK proved it can
+ * restart its own APP process (`verdict.appRestart === 'relaunch'`), the
+ * worker sends APP_RESTART instead, through the same function (audit row
+ * SCREEN_DISPLAY_APP_RESTART). Its proof of return is the new process's
+ * acknowledgement of the action id (`appRestartAckFrom`), because an app
+ * restart moves neither the boot count nor the uptime.
  *
  * One run row per (screen, slot): its unique key is the claim, so two ticks or
  * two replicas can never send the same slot twice.
@@ -32,11 +39,13 @@ import {
   ONLINE_FRESH_MS,
   PER_TENANT_PER_TICK,
   REBOOT_WAIT_REASONS,
+  appRestartAckFrom,
   bootCountFrom,
   decideScheduledReboot,
   evaluateReturn,
   otaIsInFlight,
   panelIsOff,
+  restartActionFor,
   returnWindowMs,
   scheduledRebootsDisabled,
   tenantNightlyCap,
@@ -225,8 +234,13 @@ export class ScheduledRebootService implements OnModuleInit, OnModuleDestroy {
       }
       // SENT
       const reportAtMs = screen?.nativeRuntimeReportAt ? new Date(screen.nativeRuntimeReportAt).getTime() : null;
-      const bootNow = reportAtMs !== null && reportAtMs > dispatchedAtMs ? bootCountFrom(screen?.nativeRuntimeReport) : null;
+      const freshReport = reportAtMs !== null && reportAtMs > dispatchedAtMs;
+      const bootNow = freshReport ? bootCountFrom(screen?.nativeRuntimeReport) : null;
+      // By value: only an answer naming THIS run's action id counts.
+      const appRestartAck = freshReport ? appRestartAckFrom(screen?.nativeRuntimeReport, run.actionId) : null;
       const verdict = evaluateReturn({
+        appRestartAck,
+        reportAtMs,
         nowMs,
         dispatchedAtMs,
         bootBefore: typeof run.bootBefore === 'number' ? run.bootBefore : null,
@@ -417,6 +431,8 @@ export class ScheduledRebootService implements OnModuleInit, OnModuleDestroy {
       }
       if (!runId) continue;
       const bootBefore = bootCountFrom(s.nativeRuntimeReport);
+      // canRestart was true, so one of the two exists; REBOOT is preferred.
+      const restartAction = restartActionFor(s.displayCapabilities) ?? 'REBOOT';
       const dispatchedAt = new Date();
       let status: string = RUN_STATUS.SENT;
       let reason: string | null = null;
@@ -426,7 +442,7 @@ export class ScheduledRebootService implements OnModuleInit, OnModuleDestroy {
           { prisma: this.prisma, display: this.display },
           { id: s.id, tenantId, displayCapabilities: s.displayCapabilities, lastPushConnectedAt: s.lastPushConnectedAt },
           { userId: null },
-          { action: 'REBOOT', reason: `scheduled-restart:${policy.id}` } as any,
+          { action: restartAction, reason: `scheduled-restart:${policy.id}` } as any,
         );
         actionId = typeof res?.actionId === 'string' ? res.actionId : null;
         if (res?.delivered !== true) {

@@ -172,6 +172,8 @@ object DisplayControlApi {
                 run(app, DisplayAction.Wake, revert, trusted)
             }
             "REBOOT" -> run(app, DisplayAction.Reboot, null, trusted)
+            // 2026-11-09 — restart the player APP's process (AppRestart / AppRestartPolicy).
+            "APPRESTART" -> AppRestart.requestJson(app, obj, trusted)
             else -> errorJson("bad-action", "unknown action '${name.take(32)}'")
         }
     } catch (t: Throwable) {

@@ -506,6 +506,14 @@ describe('false-positive rails', () => {
     expect(email.sendCustomerAlert).not.toHaveBeenCalled();
   });
 
+  it('a remote APP restart just happened (2026-11-09): deferred as maintenance, never emailed', async () => {
+    const { svc, email } = build(w);
+    w.auditLogs.push({ targetId: 'lobby', action: 'SCREEN_DISPLAY_APP_RESTART', details: JSON.stringify({ requested: 'APP_RESTART', outcome: 'dispatched' }), createdAt: new Date(w.clock.now + 10 * MIN) });
+    const res = await dropAndScan(svc);
+    expect(res.deferred).toEqual({ maintenance: 1 });
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+  });
+
   it('a just-installed screen (paired < 2 h before it went quiet): deferred', async () => {
     const { svc, email } = build(w);
     screen(w, 'lobby', 'lincoln', { pairedAt: new Date(w.clock.now - 30 * MIN) });

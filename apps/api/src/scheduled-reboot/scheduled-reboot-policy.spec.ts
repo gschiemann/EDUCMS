@@ -1,5 +1,7 @@
 import {
   CHECK_IN_GRACE_MS,
+  appRestartAckFrom,
+  restartActionFor,
   DISPATCH_WINDOW_MS,
   currentSlot,
   decideScheduledReboot,
@@ -247,5 +249,43 @@ describe('scheduled restart — configuration', () => {
     expect(tenantNightlyCap({ SCHEDULED_REBOOT_TENANT_CAP: '0' })).toBe(20);
     expect(returnWindowMs({})).toBe(15 * 60_000);
     expect(returnWindowMs({ SCHEDULED_REBOOT_RETURN_MINUTES: 'x' })).toBe(15 * 60_000);
+  });
+});
+
+describe('scheduled restart — the app restart (2026-11-09)', () => {
+  const d = SLOT_START;
+  const win = 15 * 60_000;
+  const base = { nowMs: d + 60_000, dispatchedAtMs: d, bootBefore: 10, bootNow: 10, lastPingAtMs: d + 40_000, returnWindowMs: win };
+
+  it('prefers a device reboot, falls back to the app restart, else nothing', () => {
+    expect(restartActionFor({ verdict: { reboot: 'device-owner', appRestart: 'relaunch' } })).toBe('REBOOT');
+    expect(restartActionFor({ verdict: { reboot: 'none', appRestart: 'relaunch' } })).toBe('APP_RESTART');
+    expect(restartActionFor({ verdict: { reboot: 'none', appRestart: 'none' } })).toBeNull();
+    expect(restartActionFor({ verdict: { reboot: 'none' } })).toBeNull();
+    expect(restartActionFor(null)).toBeNull();
+    expect(verdictCanRestart({ verdict: { reboot: 'none', appRestart: 'relaunch' } })).toBe(true);
+  });
+
+  it('reads the acknowledgement BY VALUE — another id proves nothing', () => {
+    const report = { appRestart: { id: 'act-1', o: 'landed' } };
+    expect(appRestartAckFrom(report, 'act-1')).toBe('landed');
+    expect(appRestartAckFrom(report, 'act-2')).toBeNull();
+    expect(appRestartAckFrom({ appRestart: { id: 'act-1', o: 'restarting' } }, 'act-1')).toBeNull();
+    expect(appRestartAckFrom(report, null)).toBeNull();
+  });
+
+  it('BACK, proven, on landed or started — even though the boot count never moved', () => {
+    expect(evaluateReturn({ ...base, appRestartAck: 'landed', reportAtMs: d + 30_000 }))
+      .toEqual({ status: 'BACK', proven: true, returnedAtMs: d + 30_000, bootAfter: 10 });
+    expect(evaluateReturn({ ...base, appRestartAck: 'started', reportAtMs: d + 30_000 })).toMatchObject({ status: 'BACK', proven: true });
+  });
+
+  it('not-landed is NOT_BACK (the process came back, the glass did not); refused is NO_RESTART', () => {
+    expect(evaluateReturn({ ...base, appRestartAck: 'not-landed' })).toEqual({ status: 'NOT_BACK' });
+    expect(evaluateReturn({ ...base, appRestartAck: 'refused' })).toMatchObject({ status: 'NO_RESTART' });
+  });
+
+  it('with no acknowledgement the reboot rules still apply unchanged', () => {
+    expect(evaluateReturn({ ...base, nowMs: d + win, appRestartAck: null })).toMatchObject({ status: 'NO_RESTART' });
   });
 });

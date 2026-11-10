@@ -601,6 +601,18 @@
             </intent-filter>
         </receiver>
 
+        <!-- 2026-11-09 — the remote APP restart's relaunch alarm
+             (display/AppRestart.kt). exported="false": only our own
+             PendingIntent reaches it, and the receiver checks the action. -->
+        <receiver
+            android:name=".display.AppRestartReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.educms.player.APP_RESTART_RELAUNCH" />
+            </intent-filter>
+        </receiver>
+
         <!-- Watchdog alarm receiver — fires every 15min to ensure
              HeartbeatService + the kiosk activity are alive even after
              OEM battery-saver kills. -->

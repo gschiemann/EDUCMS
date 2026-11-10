@@ -59,6 +59,7 @@ import {
   MIN_SAFE_BRIGHTNESS_PERCENT,
   isBrightnessMechanismProven,
   displayActionSupport,
+  normalizeVerdict,
 } from '@cms/api-types';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -373,6 +374,58 @@ describe('DisplayService', () => {
       apply({ action: 'REBOOT', capabilities: stored(BARE_VERDICT) }),
     ).rejects.toThrow(/device-owner or platform-signed/i);
     expect(redis.publish).not.toHaveBeenCalled();
+  });
+
+  // ── APP_RESTART (2026-11-09): the player app's process, not the device ──
+
+  describe('APP_RESTART', () => {
+    const APP = { ...BARE_VERDICT, appRestart: 'relaunch' };
+
+    it('refuses under its OWN code where the APK did not prove it can relaunch (and on old APKs)', async () => {
+      await expect(apply({ action: 'APP_RESTART', capabilities: stored(BARE_VERDICT) })).rejects.toMatchObject({
+        code: 'DISPLAY_APP_RESTART_UNAVAILABLE',
+      });
+      await expect(apply({ action: 'APP_RESTART', capabilities: null })).rejects.toMatchObject({
+        code: 'DISPLAY_CAPABILITIES_UNKNOWN',
+      });
+      expect(redis.publish).not.toHaveBeenCalled();
+      const row = prisma.client.auditLog.create.mock.calls[0][0].data;
+      expect(row.action).toBe(DISPLAY_AUDIT_ACTIONS.APP_RESTART);
+      expect(JSON.parse(row.details)).toMatchObject({ requested: 'APP_RESTART', outcome: 'refused' });
+    });
+
+    it('dispatches as itself with an actionId and audits SCREEN_DISPLAY_APP_RESTART', async () => {
+      const res = await apply({ action: 'APP_RESTART', capabilities: stored(APP) });
+      expect(res).toMatchObject({ action: 'APP_RESTART', mechanism: 'relaunch', delivered: true });
+      const published = redis.publish.mock.calls[0];
+      expect(published[0]).toBe(`device:${SCREEN_ID}`);
+      expect(published[1].payload).toMatchObject({ action: 'APP_RESTART', actionId: res.actionId });
+      expect(published[1].payload.soft).toBeUndefined();
+      const rows = prisma.client.auditLog.create.mock.calls.map((c: any[]) => c[0].data);
+      expect(rows.map((r: any) => r.action)).toEqual([DISPLAY_AUDIT_ACTIONS.APP_RESTART]);
+      expect(JSON.parse(rows[0].details)).toMatchObject({ requested: 'APP_RESTART', outcome: 'dispatched', actionId: res.actionId });
+    });
+
+    it('is refused under an emergency hold, like a blank — the glass goes dark while it restarts', async () => {
+      expect(isDarkeningAction('APP_RESTART', {})).toBe(true);
+      await expect(
+        apply({ action: 'APP_RESTART', capabilities: stored(APP), emergencyHold: { active: true, source: 'tenant' } }),
+      ).rejects.toMatchObject({ code: 'DISPLAY_EMERGENCY_HOLD' });
+      expect(redis.publish).not.toHaveBeenCalled();
+      const row = prisma.client.auditLog.create.mock.calls[0][0].data;
+      expect(row.action).toBe(DISPLAY_AUDIT_ACTIONS.APP_RESTART);
+    });
+
+    it('a verdict change on appRestart alone is a change (so the dashboard refreshes)', () => {
+      const a = normalizeVerdict(BARE_VERDICT);
+      const b = normalizeVerdict(APP);
+      expect(a.appRestart).toBe('none');
+      expect(b.appRestart).toBe('relaunch');
+      expect(verdictChanged(a, b)).toBe(true);
+      expect(verdictChanged(b, b)).toBe(false);
+      // An unknown value from a newer APK degrades to the least capable.
+      expect(normalizeVerdict({ ...BARE_VERDICT, appRestart: 'teleport' }).appRestart).toBe('none');
+    });
   });
 
   // ── unknown verdict: fail-open for recovery, fail-closed for risk (C4) ──
@@ -865,6 +918,7 @@ describe('DisplayService', () => {
     );
 
     expect(Object.keys(report.verdict).sort()).toEqual([
+      'appRestart',
       'brightness',
       'deviceOwnerPath',
       'hardPowerOff',
@@ -886,6 +940,7 @@ describe('DisplayService', () => {
           reboot: 'sudo',
           hardPowerOff: 'axe',
           deviceOwnerPath: 'yes',
+          appRestart: 'reboot-the-world',
         },
       } as any,
       1,
@@ -897,6 +952,7 @@ describe('DisplayService', () => {
       reboot: 'none',
       hardPowerOff: 'none',
       deviceOwnerPath: 'provisionable-after-factory-reset',
+      appRestart: 'none',
     });
   });
 

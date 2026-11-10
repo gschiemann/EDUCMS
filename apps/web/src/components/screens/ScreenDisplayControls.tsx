@@ -516,6 +516,22 @@ export function ScreenDisplayControls({
     await send('REBOOT', { okMsg: t('screens.display.rebootSent') });
   };
 
+  // 2026-11-09 — restart the player APP (not the device). One confirm, no
+  // typed token: the device refuses it during an alert, an update or pairing,
+  // rate-limits it, and brings itself back in seconds.
+  const confirmAppRestart = async () => {
+    const ok = await appConfirm({
+      title: t('screens.display.appRestartConfirmTitle'),
+      message: t('screens.display.appRestartConfirmBody', { name: screen?.name ?? '' }),
+      tone: 'danger',
+      confirmLabel: t('screens.display.appRestartContinue'),
+    });
+    if (!ok) return;
+    await send('APP_RESTART', { okMsg: t('screens.display.appRestartSent') });
+  };
+  // A device reboot, where one exists, is the stronger restart and keeps its button.
+  const restartIsApp = !caps.reboot.available && caps.appRestart.available;
+
   /**
    * Sleep / Awake. The operator picks a STATE; we pick the mechanism.
    *   Sleep -> the panel's own power-off where this hardware proves one
@@ -787,20 +803,20 @@ export function ScreenDisplayControls({
     <div className="px-3.5 py-2 border-t border-slate-100">
       <button
         type="button"
-        data-testid="restart-player"
-        disabled={disabled || lockedBy('REBOOT')}
+        data-testid={restartIsApp ? 'restart-app' : 'restart-player'}
+        disabled={disabled || lockedBy(restartIsApp ? 'APP_RESTART' : 'REBOOT')}
         onClick={(e) => {
           e.stopPropagation();
-          void confirmReboot();
+          void (restartIsApp ? confirmAppRestart() : confirmReboot());
         }}
         className="w-full min-h-[44px] flex items-center gap-3 px-0 text-left text-[13px] font-semibold text-slate-700 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        {busy === 'REBOOT' ? (
+        {busy === (restartIsApp ? 'APP_RESTART' : 'REBOOT') ? (
           <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
         ) : (
           <RotateCw className="w-4 h-4 text-slate-400" />
         )}
-        {t('screens.display.reboot')}
+        {restartIsApp ? t('screens.display.appRestart') : t('screens.display.reboot')}
       </button>
     </div>
   );

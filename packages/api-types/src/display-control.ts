@@ -122,6 +122,16 @@ export type DisplayBlankMechanism =
   | 'novastar-sdk';
 /** Reboot is device-owner only — no fallback exists. */
 export type DisplayRebootMechanism = 'device-owner' | 'none';
+/**
+ * 2026-11-09 — restart of the PLAYER APP's process (not the device), the
+ * no-device-owner answer to "restart this screen". `relaunch` means the APK
+ * proved it can bring itself back from the background on this box (Android
+ * below 10, or "Display over other apps", or the Home default — the same
+ * facts the post-OTA relaunch ladder trusts), holds the trusted bridge, and
+ * has not had an app restart fail to land in the last 7 days. Absent on
+ * every APK before the one that implements it, which reads as 'none'.
+ */
+export type DisplayAppRestartMechanism = 'relaunch' | 'none';
 /** Hard power-off has no public Android API at any privilege level. */
 export type DisplayHardPowerOffMechanism = 'serial-candidate' | 'none';
 /** Whether we could ever take device owner on this box. */
@@ -137,6 +147,8 @@ export interface DisplayCapabilityVerdict {
   reboot: DisplayRebootMechanism;
   hardPowerOff: DisplayHardPowerOffMechanism;
   deviceOwnerPath: DisplayDeviceOwnerPath;
+  /** Optional on the wire (older APKs never send it); always filled in storage. */
+  appRestart: DisplayAppRestartMechanism;
 }
 
 /** Build identity we keep alongside the verdict, for vendor-recipe triage. */
@@ -235,6 +247,7 @@ export const DISPLAY_BLANK_MECHANISMS = [
   'novastar-sdk',
 ] as const;
 export const DISPLAY_REBOOT_MECHANISMS = ['device-owner', 'none'] as const;
+export const DISPLAY_APP_RESTART_MECHANISMS = ['relaunch', 'none'] as const;
 export const DISPLAY_HARD_POWER_OFF_MECHANISMS = [
   'serial-candidate',
   'none',
@@ -249,6 +262,7 @@ const VOLUME_MECHANISMS = DISPLAY_VOLUME_MECHANISMS;
 const BRIGHTNESS_MECHANISMS = DISPLAY_BRIGHTNESS_MECHANISMS;
 const BLANK_MECHANISMS = DISPLAY_BLANK_MECHANISMS;
 const REBOOT_MECHANISMS = DISPLAY_REBOOT_MECHANISMS;
+const APP_RESTART_MECHANISMS = DISPLAY_APP_RESTART_MECHANISMS;
 const HARD_POWER_OFF_MECHANISMS = DISPLAY_HARD_POWER_OFF_MECHANISMS;
 const DEVICE_OWNER_PATHS = DISPLAY_DEVICE_OWNER_PATHS;
 
@@ -294,6 +308,8 @@ export function normalizeVerdict(raw: unknown): DisplayCapabilityVerdict {
       DEVICE_OWNER_PATHS,
       'provisionable-after-factory-reset',
     ),
+    // 2026-11-09 — the seventh key. Least capable when absent or unknown.
+    appRestart: pick('appRestart', APP_RESTART_MECHANISMS, 'none'),
   };
 }
 
@@ -349,6 +365,8 @@ export function readStoredDisplayVerdict(
     hardPowerOff: str('hardPowerOff') ?? 'none',
     deviceOwnerPath:
       str('deviceOwnerPath') ?? 'provisionable-after-factory-reset',
+    // Only the exact capable value counts; anything else is 'none'.
+    appRestart: str('appRestart') === 'relaunch' ? 'relaunch' : 'none',
   } as DisplayCapabilityVerdict;
 }
 
@@ -385,6 +403,9 @@ export const DisplayCapabilityReportSchema = z
         reboot: z.enum(REBOOT_MECHANISMS),
         hardPowerOff: z.enum(HARD_POWER_OFF_MECHANISMS),
         deviceOwnerPath: z.enum(DEVICE_OWNER_PATHS),
+        // A free string, bounded, normalised to the enum by normalizeVerdict:
+        // an unknown value from a newer APK must never 400 the whole report.
+        appRestart: z.string().max(40).optional(),
       })
       .passthrough(),
   })
@@ -447,6 +468,12 @@ export const DISPLAY_ACTIONS = [
   // dedicated `openSetupChecklist` bridge method instead (see
   // apps/web/src/app/player/displayControl.ts).
   'OPEN_SETUP',
+  // ── 2026-11-09 — restart the PLAYER APP (process), not the device ─────
+  // Gated on `verdict.appRestart`; rides the wire as itself (an APK that
+  // does not know it is never sent it, because only an APK that knows it
+  // reports `appRestart: 'relaunch'`). The glass goes dark for seconds, so
+  // `isDarkeningAction` counts it and the emergency interlock refuses it.
+  'APP_RESTART',
 ] as const;
 export type DisplayActionType = (typeof DISPLAY_ACTIONS)[number];
 
@@ -762,6 +789,7 @@ export const DISPLAY_ACTION_CAPABILITY: Record<
   // `displayActionSupport`, which answers `supported: true` before any
   // verdict lookup happens.
   OPEN_SETUP: 'deviceOwnerPath',
+  APP_RESTART: 'appRestart',
 };
 
 /** Refusal codes. Stable strings — the dashboard keys its copy off these. */
@@ -772,6 +800,8 @@ export const DISPLAY_REFUSAL_CODES = {
   UNSUPPORTED: 'DISPLAY_ACTION_UNSUPPORTED',
   /** Reboot specifically — see the NO-DEVICE-OWNER note below. */
   REBOOT_UNAVAILABLE: 'DISPLAY_REBOOT_UNAVAILABLE',
+  /** App restart specifically — the device did not prove it can relaunch itself. */
+  APP_RESTART_UNAVAILABLE: 'DISPLAY_APP_RESTART_UNAVAILABLE',
   /** allowBlack without a dead-man revert window. */
   ALLOW_BLACK_REQUIRES_REVERT: 'DISPLAY_ALLOW_BLACK_REQUIRES_REVERT',
   /**
@@ -1064,6 +1094,25 @@ export function displayActionSupport(
         };
       }
       return { supported: true, mechanism: verdict!.reboot };
+
+    case 'APP_RESTART':
+      if (!known) {
+        return {
+          supported: false,
+          code: DISPLAY_REFUSAL_CODES.UNKNOWN,
+          message:
+            'This screen has not reported its display capabilities yet. Restarting the app stays disabled until it does.',
+        };
+      }
+      if (verdict!.appRestart !== 'relaunch') {
+        return {
+          supported: false,
+          code: DISPLAY_REFUSAL_CODES.APP_RESTART_UNAVAILABLE,
+          message:
+            'This screen cannot restart its player app remotely: its player is older than the version that can, or Android on it would not let the app bring itself back (it needs "Display over other apps" or the Home-app default), or an earlier app restart on it did not come back. Open setup on the panel to grant the permission.',
+        };
+      }
+      return { supported: true, mechanism: verdict!.appRestart };
 
     default: {
       // Exhaustiveness guard: a new action added to DISPLAY_ACTIONS without
