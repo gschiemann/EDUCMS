@@ -102,6 +102,6 @@ it('Chromium-83 safe: no inset, no four-sided style object, no flex gap', () => 
   for (const el of Array.from(document.querySelectorAll('[style]'))) {
     const s = el.getAttribute('style') || '';
     expect(s).not.toMatch(/inset/);
-    expect(s).not.toMatch(/(^|;)\s*gap:/);
+    expect(s).not.toMatch(/(^|;)\s*gap\s*:/);
   }
 });
