@@ -4,6 +4,10 @@ History of `CLAUDE.md`, newest first, one entry per stamp. It moved here on 2026
 
 **Keep it current.** When you change `CLAUDE.md`, a nested `CLAUDE.md` or one of the rulebook documents, add an entry here — `CLAUDE.md` carries no footer stamp since 2026-11-01; the entry is the stamp. A stale footer is not cosmetic: `AGENTS.md` carried the IDENTICAL `2026-05-30` stamp while drifting 361 lines from `CLAUDE.md`, which is exactly why nobody noticed it was telling agents to use a forbidden `DATABASE_URL` for three months.
 
+## 2026-11-09
+
+`apps/player/CLAUDE.md` gains "Process health" (branch `claude/player-process-health`, unmerged): the APK now answers memory-pressure callbacks (records every level except UI_HIDDEN; on RUNNING_CRITICAL / COMPLETE / low-memory drops only the player WebView's RAM cache, at most every 10 minutes, never under an emergency hold), runs a main-thread liveness probe (observe and report only, no restart rung), and carries both plus the previous process's OS exit records and the thermal status on the signed native heartbeat (`x-venueos-process-health` → `nativeRuntimeReport.processHealth`); an ANR or native crash is posted once to the crash-report route with the device credential. `docs/ENVIRONMENT.md` gains the kill switch `PLAYER_PROCESS_HEALTH` in the generated section.
+
 ## 2026-11-08
 
 `apps/player/CLAUDE.md` gains the companion Manager's alert-watch watchdog (Manager wave 5, branch `fable/alert-watch-watchdog`, life safety CHANGE class — unmerged until a different-vendor review and the on-glass drill in `docs/player/ALERT-WATCH-WATCHDOG-DRILL.md`): the native alert watch stamps the Manager's provider after every pass, the Manager judges the stamp while the panel is dark and can only START the watch (re-arm, then restart its host), never the Activity, the hold or a reboot; bounded, persisted, one ladder per device. `docs/ENVIRONMENT.md` gains `MANAGER_ALERT_WATCH_WATCHDOG` (unset = today; `observe` / `on` per screen) by hand and in the generated section.

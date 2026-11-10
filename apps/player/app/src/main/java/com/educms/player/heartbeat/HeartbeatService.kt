@@ -412,6 +412,14 @@ class HeartbeatService : Service() {
                         com.educms.player.alertwatch.AlertWatchStamp.watchdogReportHeader(applicationContext)
                             ?.let { setRequestProperty(com.educms.player.alertwatch.AlertWatchStamp.HEADER, it) }
                     }.onFailure { PlayerLogger.w(TAG, "alert-watch watchdog report unavailable: ${it.message}") }
+                    // 2026-11-09 — process health (health.ProcessHealth): memory pressure,
+                    // main-thread stalls, the previous process's exits, thermal status.
+                    // Built from lock-free reads on THIS thread, so a frozen main thread
+                    // is reported, not inherited. Its own header; omitted when off.
+                    if (nativeAllowed) runCatching {
+                        com.educms.player.health.ProcessHealth.headerValue(applicationContext)
+                            ?.let { setRequestProperty(com.educms.player.health.ProcessHealthReport.HEADER, it) }
+                    }.onFailure { PlayerLogger.w(TAG, "process health report unavailable: ${it.message}") }
                 }
                 // Bound the entire exchange, including a body that trickles
                 // forever inside readTimeout. A stuck native heartbeat must
@@ -436,6 +444,10 @@ class HeartbeatService : Service() {
                         }
                         handleHeartbeatResponse(body, prefs, nativeAllowed && HostAllowlist.isApiHost(conn.url.toString()))
                         consecutiveFailures = 0
+                        // 2026-11-09 — a waiting ANR / native-crash trace, once, on its own thread.
+                        if (nativeAllowed) runCatching {
+                            com.educms.player.health.ProcessHealth.uploadPendingTraces(applicationContext, apiRoot, fp, deviceToken!!)
+                        }
                     } else {
                         consecutiveFailures += 1
                         Log.w(TAG, "Heartbeat returned HTTP $code (consecutive=$consecutiveFailures)")
@@ -464,6 +476,10 @@ class HeartbeatService : Service() {
         if (nativeAllowed) runCatching {
             ManagerReportRelay.acceptServerDirective(prefs, JSONObject(body))
         }.onFailure { PlayerLogger.w(TAG, "manager relay directive failed: ${it.message}") }
+        // 2026-11-09 — PLAYER_PROCESS_HEALTH kill switch, isolated like the rest.
+        if (nativeAllowed) runCatching {
+            com.educms.player.health.ProcessHealth.acceptServerDirective(prefs, JSONObject(body))
+        }.onFailure { PlayerLogger.w(TAG, "process health directive failed: ${it.message}") }
         // Stored device settings — isolated like the power command: a fault
         // here must not stop a back side being hosted or an OTA push below.
         if (nativeAllowed) runCatching {

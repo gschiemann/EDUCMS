@@ -32,6 +32,13 @@ object ProcessExitDiagnostics {
                     ),
                 )
             }
+            // 2026-11-09 — the same exits, remembered for the signed heartbeat
+            // (summary) and, for an ANR / native crash, one authenticated trace post.
+            com.educms.player.health.ProcessHealth.rememberExits(context, exits.map {
+                com.educms.player.health.ExitEvidencePolicy.Exit(
+                    it.timestamp, it.reason, it.status, it.importance, it.pss, it.rss, it.description,
+                )
+            })
             exits.lastOrNull()?.let { prefs.edit().putLong("recordedAt", it.timestamp).commit() }
         }.onFailure { PlayerLogger.w("ProcessExit", "OS exit diagnostics unavailable: ${it.javaClass.simpleName}") }
     }

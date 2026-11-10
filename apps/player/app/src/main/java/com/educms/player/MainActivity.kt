@@ -1657,6 +1657,10 @@ class MainActivity : ComponentActivity() {
         setContentView(binding.root)
         webView = binding.webview
         urlOverlayView = binding.urlOverlayView
+        // 2026-11-09 — under REAL memory pressure (health.MemoryPressurePolicy) drop
+        // only the player WebView's in-RAM cache; reads the CURRENT view, so a
+        // renderer replacement is followed. Never a reload, never while held.
+        com.educms.player.health.ProcessHealth.freeRebuildable = freeRamCache
 
         // ── THE LED CANVAS (2026-09-02, 1.1.14) ─────────────────────
         //
@@ -4852,8 +4856,19 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
+    /** 2026-11-09 — the memory-pressure free: the RAM cache only (disk, service worker and media cache untouched). */
+    private val freeRamCache: () -> Unit = {
+        if (::webView.isInitialized) {
+            webView.clearCache(false)
+            PlayerLogger.i("MainActivity", "PLAYER_MEMORY_PRESSURE freed the player WebView RAM cache")
+        }
+    }
+
     override fun onDestroy() {
         bridgeNonceDelivery.invalidate()
+        if (com.educms.player.health.ProcessHealth.freeRebuildable === freeRamCache) {
+            com.educms.player.health.ProcessHealth.freeRebuildable = null
+        }
         bridgeNonceRetry?.let { if (::webView.isInitialized) webView.removeCallbacks(it) }
         bridgeNonceRetry = null
         if (::urlOverlayView.isInitialized) com.educms.player.media.BroadcastContentViews.unregister(0, urlOverlayView)
