@@ -23,9 +23,10 @@ import { TextEncoder as NodeTextEncoder } from 'util';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 const push = jest.fn();
+const replace = jest.fn();
 let search = '';
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push, replace: jest.fn() }),
+  useRouter: () => ({ push, replace }),
   useSearchParams: () => new URLSearchParams(search),
 }));
 
@@ -122,6 +123,7 @@ async function continueWith(email: string) {
 beforeEach(() => {
   search = '';
   push.mockReset();
+  replace.mockReset();
   leaveForSingleSignOn.mockReset();
   adoptRememberedSession.mockReset();
   adoptRememberedSession.mockResolvedValue(true);
@@ -940,5 +942,50 @@ describe('the manual single sign-on entry — by URL only', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Continue with SSO' })); });
     expect(await screen.findByRole('alert')).toHaveTextContent('Single sign-on is not set up for “nowhere”.');
     expect(leaveForSingleSignOn).not.toHaveBeenCalled();
+  });
+});
+
+// ─── The remembered session must actually be in the browser (2026-11-10) ───
+describe('remember me survives leaving the browser', () => {
+  it('a finished sign-in waits for the remember-me cookie before it leaves the page', async () => {
+    let settle: (ok: boolean) => void = () => undefined;
+    adoptRememberedSession.mockReturnValue(new Promise<boolean>((resolve) => { settle = resolve; }));
+    mockFetchByPath({ '/auth/sign-in-options': NO_SSO, '/auth/login': { body: SESSION } });
+    await renderPage();
+    await continueWith('pat@elsewhere.example');
+    fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Keep me signed in' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Sign in$/ })); });
+    await waitFor(() => { expect(adoptRememberedSession).toHaveBeenCalledWith('tok-1'); });
+    // Signed in, but still here: the cookie has not landed yet.
+    expect(useUIStore.getState().token).toBe('tok-1');
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(push).not.toHaveBeenCalled();
+    await act(async () => { settle(true); });
+    await waitFor(() => { expect(push).toHaveBeenCalledWith('/lincoln/dashboard'); });
+  });
+
+  it('without "Keep me signed in" there is nothing to wait for', async () => {
+    mockFetchByPath({ '/auth/sign-in-options': NO_SSO, '/auth/login': { body: SESSION } });
+    await renderPage();
+    await continueWith('pat@elsewhere.example');
+    fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Sign in$/ })); });
+    await waitFor(() => { expect(push).toHaveBeenCalledWith('/lincoln/dashboard'); });
+    expect(adoptRememberedSession).not.toHaveBeenCalled();
+  });
+
+  it('opening the sign-in page with a session already restored goes straight to the dashboard — no form to fill in', async () => {
+    useUIStore.setState({ token: 'restored-token', user: { id: 'u1', tenantSlug: 'lincoln', tenantId: 't1' } as never });
+    await renderPage();
+    await waitFor(() => { expect(replace).toHaveBeenCalledWith('/lincoln/dashboard'); });
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('…and honours a redirect only inside that person\'s own organization', async () => {
+    search = 'redirect=/other-org/screens';
+    useUIStore.setState({ token: 'restored-token', user: { id: 'u1', tenantSlug: 'lincoln', tenantId: 't1' } as never });
+    await renderPage();
+    await waitFor(() => { expect(replace).toHaveBeenCalledWith('/lincoln/dashboard'); });
   });
 });

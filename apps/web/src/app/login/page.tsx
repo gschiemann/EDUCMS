@@ -167,6 +167,8 @@ const OFFER_HISTORY_STATE = { venueosPasskeyOffer: true };
 
 /** Longest the offer may hold a finished sign-in back while it prepares. */
 const OFFER_PREPARE_TIMEOUT_MS = 8_000;
+/** How long a finished sign-in waits for the remember-me cookie before moving on. Bounded: a slow answer never holds the operator on this page. */
+const ADOPT_WAIT_MS = 4_000;
 
 /** How long the required passkey set-up waits for the browser's sheet before handing the choice back. */
 const REQUIRED_PASSKEY_STALL_MS = 15_000;
@@ -594,13 +596,24 @@ function LoginContent() {
     // JavaScript can never read it — which is the finding this closes ("the
     // remembered bearer remains JS-readable for up to 30 days").
     //
-    // Deliberately NOT awaited: the redirect below must not wait on a network
-    // call, and a failure here is survivable by design — the operator stays
-    // signed in on the short session they already have. It runs from this one
-    // function so BOTH the password path and the MFA path get it.
-    if (keepSignedIn && data.access_token) {
-      void adoptRememberedSession(data.access_token);
-    }
+    // Started here, and given a short, BOUNDED head start before this page
+    // navigates away (see `settleAdoption` below). It used to be fired and
+    // forgotten: on a phone the page could move on before the answer — and
+    // its Set-Cookie — arrived, leaving a session the server remembered and
+    // the browser did not (2026-11-10: five cookies minted for one iPhone,
+    // none ever presented). A failure is still survivable by design — the
+    // operator stays signed in on the short session they already have. It
+    // runs from this one function so BOTH the password path and the MFA path
+    // get it.
+    const adoption: Promise<boolean> | null =
+      keepSignedIn && data.access_token ? adoptRememberedSession(data.access_token) : null;
+    const settleAdoption = async (): Promise<void> => {
+      if (!adoption) return;
+      await Promise.race([
+        adoption.catch(() => false),
+        new Promise<void>((resolve) => window.setTimeout(resolve, ADOPT_WAIT_MS)),
+      ]);
+    };
     // 2026-05-03 — cross-tenant bleed fix. Only honor `redirectTarget`
     // if it points within the authenticated user's own tenant slug;
     // otherwise hard-redirect to their home dashboard.
@@ -653,8 +666,31 @@ function LoginContent() {
       });
       return;
     }
+    await settleAdoption();
     router.push(safeRedirect);
   };
+
+  // ALREADY SIGNED IN (2026-11-10). A phone that reopens the site on this
+  // page — a bookmark, a home-screen icon saved here, a tab iOS restored —
+  // gets its remembered session back from the cookie a moment after load
+  // (`SessionRestorer`). Until now this page kept showing the form anyway,
+  // which is "I ticked Remember me and it asked me again". When a session is
+  // present that this page did not just create, go where a sign-in would go.
+  const storedToken = useUIStore((state) => state.token);
+  const storedUser = useUIStore((state) => state.user);
+  useEffect(() => {
+    if (!storedToken || !storedUser || sessionStartedRef.current) return;
+    const slug = storedUser.tenantSlug || storedUser.tenantId;
+    if (!slug) return;
+    const home = `/${slug}/dashboard`;
+    const target =
+      redirectTarget &&
+      (redirectTarget === '/panic' || redirectTarget.startsWith(`/${slug}/`) || redirectTarget.startsWith(`/${slug}?`))
+        ? redirectTarget
+        : home;
+    sessionStartedRef.current = true;
+    router.replace(target);
+  }, [storedToken, storedUser, redirectTarget, router]);
 
   /**
    * Should this finished sign-in be offered a passkey — and if so, get the

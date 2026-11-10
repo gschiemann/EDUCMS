@@ -14,6 +14,7 @@
  */
 
 import {
+  SESSION_MARKER_COOKIE_NAME,
   SESSION_REQUEST_HEADER,
   SESSION_REQUEST_HEADER_VALUE,
 } from './session-bff';
@@ -35,11 +36,30 @@ function headers(): Record<string, string> {
   };
 }
 
-export function hasRememberMarker(): boolean {
+/**
+ * The companion cookie the session routes set and clear TOGETHER with the
+ * HttpOnly one (see `SESSION_MARKER_COOKIE_NAME`). It is the marker that
+ * cannot disagree with the cookie jar, which the localStorage flag could —
+ * and did, on a phone: sign in, leave the browser, come back to the sign-in
+ * page (2026-11-10).
+ */
+export function hasMarkerCookie(): boolean {
   try {
-    return typeof window !== 'undefined' && window.localStorage.getItem(REMEMBER_MARKER_KEY) === '1';
+    if (typeof document === 'undefined') return false;
+    return document.cookie.split(';').some((c) => c.trim() === `${SESSION_MARKER_COOKIE_NAME}=1`);
   } catch {
     return false;
+  }
+}
+
+/** Is a restore worth one round trip? Either marker says yes. */
+export function hasRememberMarker(): boolean {
+  try {
+    if (typeof window === 'undefined') return false;
+    if (hasMarkerCookie()) return true;
+    return window.localStorage.getItem(REMEMBER_MARKER_KEY) === '1';
+  } catch {
+    return hasMarkerCookie();
   }
 }
 
@@ -50,6 +70,18 @@ export function setRememberMarker(on: boolean): void {
     else window.localStorage.removeItem(REMEMBER_MARKER_KEY);
   } catch {
     /* private mode / storage full — the cookie is still the source of truth */
+  }
+  // Off means off for BOTH markers. The companion cookie is not HttpOnly, so
+  // the page may expire it; the server clears it too whenever it clears the
+  // real one.
+  if (!on) {
+    try {
+      if (typeof document !== 'undefined') {
+        document.cookie = `${SESSION_MARKER_COOKIE_NAME}=; Max-Age=0; Path=/; SameSite=Lax`;
+      }
+    } catch {
+      /* the next refused refresh clears it server-side */
+    }
   }
 }
 
@@ -67,6 +99,10 @@ export async function adoptRememberedSession(accessToken: string): Promise<boole
     const res = await fetch('/api/session/adopt', {
       method: 'POST',
       credentials: 'same-origin',
+      // The sign-in page moves on right after this call. `keepalive` lets the
+      // request — and the Set-Cookie on its answer — finish even if the
+      // document is replaced before it returns.
+      keepalive: true,
       headers: { ...headers(), Authorization: `Bearer ${accessToken}` },
       body: '{}',
     });

@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import {
-  SESSION_COOKIE_NAME,
-  SESSION_COOKIE_PATH,
   bffForwardHeaders,
   cookieMaxAgeFor,
+  logSessionOutcome,
   serverApiBase,
+  setSessionCookies,
   verifySameOriginRequest,
 } from '@/lib/session-bff';
 
@@ -30,11 +30,13 @@ export const runtime = 'nodejs';
 export async function POST(req: NextRequest) {
   const gate = verifySameOriginRequest(req.headers);
   if (!gate.ok) {
+    logSessionOutcome('adopt', `forbidden-${gate.reason}`);
     return NextResponse.json({ error: 'forbidden', reason: gate.reason }, { status: 403 });
   }
 
   const auth = req.headers.get('authorization');
   if (!auth || !/^Bearer\s+\S+/i.test(auth)) {
+    logSessionOutcome('adopt', 'no-bearer');
     return NextResponse.json({ error: 'no-bearer' }, { status: 401 });
   }
 
@@ -48,10 +50,12 @@ export async function POST(req: NextRequest) {
   } catch {
     // The API is unreachable. The caller keeps its normal (short) session —
     // "keep me signed in" degrades to "signed in", never to "signed out".
+    logSessionOutcome('adopt', 'api-unreachable');
     return NextResponse.json({ adopted: false, reason: 'api-unreachable' }, { status: 503 });
   }
 
   if (!upstream.ok) {
+    logSessionOutcome('adopt', 'refused', upstream.status);
     return NextResponse.json({ adopted: false }, { status: upstream.status === 403 ? 200 : 502 });
   }
 
@@ -59,22 +63,21 @@ export async function POST(req: NextRequest) {
     | { refresh_token?: string; expires_at?: string }
     | null;
   if (!body?.refresh_token) {
+    logSessionOutcome('adopt', 'malformed', upstream.status);
     return NextResponse.json({ adopted: false }, { status: 502 });
   }
 
   const maxAge = cookieMaxAgeFor(body.expires_at);
-  if (maxAge <= 0) return NextResponse.json({ adopted: false }, { status: 200 });
+  if (maxAge <= 0) {
+    logSessionOutcome('adopt', 'already-expired', upstream.status);
+    return NextResponse.json({ adopted: false }, { status: 200 });
+  }
 
   const res = NextResponse.json({ adopted: true });
-  res.cookies.set(SESSION_COOKIE_NAME, body.refresh_token, {
-    httpOnly: true,
-    // `secure` on anything but plain-HTTP localhost. A Secure cookie is
-    // silently dropped over http://, which would make local dev look like a
-    // broken feature rather than a deliberate downgrade.
-    secure: req.nextUrl.protocol === 'https:',
-    sameSite: 'lax',
-    path: SESSION_COOKIE_PATH,
-    maxAge,
-  });
+  // `secure` on anything but plain-HTTP localhost. A Secure cookie is
+  // silently dropped over http://, which would make local dev look like a
+  // broken feature rather than a deliberate downgrade.
+  setSessionCookies(res.cookies, req.nextUrl.protocol === 'https:', body.refresh_token, maxAge);
+  logSessionOutcome('adopt', 'adopted', upstream.status);
   return res;
 }
