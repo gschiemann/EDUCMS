@@ -42,6 +42,19 @@ export const SESSION_COOKIE_NAME = 'venueos_rt';
  *  it never lands in an access log for a document request. */
 export const SESSION_COOKIE_PATH = '/api/session';
 
+/**
+ * The companion marker (2026-11-10). NOT a credential: the constant `1`, set
+ * and cleared by the same responses that set and clear the HttpOnly cookie,
+ * with the same lifetime. It exists because the page cannot see an HttpOnly
+ * cookie, so it needs something it CAN see to know a restore is worth asking
+ * for. The earlier marker lived in localStorage and was written by page
+ * script on its own schedule — it could say "remembered" with no cookie in the
+ * jar, or be gone while the cookie was still there, and either way a phone
+ * coming back to the site landed on the sign-in page. Path `/` so every page
+ * can read it; it never carries anything worth stealing.
+ */
+export const SESSION_MARKER_COOKIE_NAME = 'venueos_rm';
+
 /** The custom header a cross-site HTML form provably cannot set. */
 export const SESSION_REQUEST_HEADER = 'x-venueos-session';
 export const SESSION_REQUEST_HEADER_VALUE = '1';
@@ -124,4 +137,37 @@ export function cookieMaxAgeFor(expiresAtIso: string | null | undefined): number
   const secs = Math.floor((ms - Date.now()) / 1000);
   if (secs <= 0) return 0;
   return Math.min(secs, SESSION_COOKIE_MAX_AGE_SEC);
+}
+
+interface CookieJar {
+  set(name: string, value: string, options: Record<string, unknown>): unknown;
+}
+
+/** Set the refresh cookie and its companion marker together — never one without the other. */
+export function setSessionCookies(jar: CookieJar, secure: boolean, refreshToken: string, maxAgeSec: number): void {
+  const maxAge = Math.max(Math.floor(maxAgeSec), 1);
+  jar.set(SESSION_COOKIE_NAME, refreshToken, { httpOnly: true, secure, sameSite: 'lax', path: SESSION_COOKIE_PATH, maxAge });
+  jar.set(SESSION_MARKER_COOKIE_NAME, '1', { httpOnly: false, secure, sameSite: 'lax', path: '/', maxAge });
+}
+
+/** Clear both. */
+export function clearSessionCookies(jar: CookieJar, secure: boolean): void {
+  jar.set(SESSION_COOKIE_NAME, '', { httpOnly: true, secure, sameSite: 'lax', path: SESSION_COOKIE_PATH, maxAge: 0 });
+  jar.set(SESSION_MARKER_COOKIE_NAME, '', { httpOnly: false, secure, sameSite: 'lax', path: '/', maxAge: 0 });
+}
+
+/**
+ * One line per outcome in the server log — the outcome word and the upstream
+ * status only, never a token, a cookie value, an address or a user id. Without
+ * it a remembered session that fails to come back leaves no trace anywhere
+ * (2026-11-10: five cookies minted for one phone, none ever presented, and no
+ * log to say whether the phone asked).
+ */
+export function logSessionOutcome(route: 'adopt' | 'refresh' | 'end', outcome: string, upstreamStatus?: number): void {
+  try {
+    // eslint-disable-next-line no-console
+    console.info(`[session] ${route} outcome=${outcome}${typeof upstreamStatus === 'number' ? ` upstream=${upstreamStatus}` : ''}`);
+  } catch {
+    /* logging must never fail a sign-in */
+  }
 }

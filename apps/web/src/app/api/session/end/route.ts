@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import {
   SESSION_COOKIE_NAME,
-  SESSION_COOKIE_PATH,
   bffForwardHeaders,
+  clearSessionCookies,
+  logSessionOutcome,
   serverApiBase,
   verifySameOriginRequest,
 } from '@/lib/session-bff';
@@ -41,12 +42,7 @@ export async function POST(req: NextRequest) {
   }
 
   const res = NextResponse.json({ ended: true });
-  res.cookies.set(SESSION_COOKIE_NAME, '', {
-    httpOnly: true,
-    secure: req.nextUrl.protocol === 'https:',
-    sameSite: 'lax',
-    path: SESSION_COOKIE_PATH,
-    maxAge: 0,
-  });
+  clearSessionCookies(res.cookies, req.nextUrl.protocol === 'https:');
+  logSessionOutcome('end', cookie ? 'ended' : 'ended-no-cookie');
   return res;
 }

@@ -247,3 +247,43 @@ describe('endRememberedSession', () => {
     expect(hasRememberMarker()).toBe(false);
   });
 });
+
+describe('the companion marker cookie (2026-11-10)', () => {
+  const clearCookie = () => {
+    document.cookie = 'venueos_rm=; Max-Age=0; Path=/';
+  };
+  beforeEach(() => {
+    clearCookie();
+    window.localStorage.clear();
+  });
+  afterEach(clearCookie);
+
+  it('the cookie alone is enough: a browser whose localStorage flag is gone still asks for its session back', () => {
+    expect(hasRememberMarker()).toBe(false);
+    document.cookie = 'venueos_rm=1; Path=/';
+    expect(window.localStorage.getItem(REMEMBER_MARKER_KEY)).toBeNull();
+    expect(hasRememberMarker()).toBe(true);
+  });
+
+  it('only the exact value counts', () => {
+    document.cookie = 'venueos_rm=0; Path=/';
+    expect(hasRememberMarker()).toBe(false);
+    document.cookie = 'xvenueos_rm=1; Path=/';
+    expect(hasRememberMarker()).toBe(false);
+    document.cookie = 'xvenueos_rm=; Max-Age=0; Path=/';
+  });
+
+  it('turning the marker off turns BOTH off (a refused refresh, a sign-out)', () => {
+    document.cookie = 'venueos_rm=1; Path=/';
+    setRememberMarker(true);
+    setRememberMarker(false);
+    expect(document.cookie).not.toContain('venueos_rm=1');
+    expect(hasRememberMarker()).toBe(false);
+  });
+
+  it('the adopt call asks the browser to finish it even if the page moves on', async () => {
+    const fetchMock = mockFetch(() => jsonRes({ adopted: true }));
+    await adoptRememberedSession('access.jwt');
+    expect(fetchMock.mock.calls[0][1].keepalive).toBe(true);
+  });
+});

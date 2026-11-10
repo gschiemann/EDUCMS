@@ -117,6 +117,12 @@ const initial = typeof window !== 'undefined' ? bootstrapAuth() : { token: null,
 function initialRestoring(): boolean {
   if (typeof window === 'undefined') return false;
   if (initial.token) return false;
+  // Either marker: the companion cookie the session routes set together with
+  // the HttpOnly one (it cannot disagree with the cookie jar), or the older
+  // localStorage flag. Kept inline — this runs at module evaluation.
+  try {
+    if (document.cookie.split(';').some((c) => c.trim() === 'venueos_rm=1')) return true;
+  } catch { /* no document.cookie — fall through */ }
   try { return window.localStorage.getItem(REMEMBER_KEY) === '1'; } catch { return false; }
 }
 
