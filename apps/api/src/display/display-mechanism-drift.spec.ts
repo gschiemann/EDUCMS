@@ -313,7 +313,8 @@ describe('display mechanism vocabulary — device ids vs server enums', () => {
     };
     const parsed = DisplayCapabilityReportSchema.safeParse(report);
     expect(parsed.success).toBe(true);
-    expect(normalizeVerdict(report.verdict)).toEqual(report.verdict);
+    // 2026-11-09 — an APK that predates the app restart omits the key; it is stored as 'none'.
+    expect(normalizeVerdict(report.verdict)).toEqual({ ...report.verdict, appRestart: 'none' });
   });
 
   it('REGRESSION: the sysfs-backlight + screen-timeout verdict parses too', () => {
@@ -328,7 +329,7 @@ describe('display mechanism vocabulary — device ids vs server enums', () => {
     expect(
       DisplayCapabilityReportSchema.safeParse({ verdict }).success,
     ).toBe(true);
-    expect(normalizeVerdict(verdict)).toEqual(verdict);
+    expect(normalizeVerdict(verdict)).toEqual({ ...verdict, appRestart: 'none' });
   });
 
   it('still degrades an UNKNOWN mechanism to the least-capable value (storage stays bounded)', () => {
@@ -339,6 +340,7 @@ describe('display mechanism vocabulary — device ids vs server enums', () => {
       reboot: 'made-up',
       hardPowerOff: 'made-up',
       deviceOwnerPath: 'made-up',
+      appRestart: 'made-up',
     });
     expect(v).toEqual({
       volume: 'none',
@@ -347,6 +349,7 @@ describe('display mechanism vocabulary — device ids vs server enums', () => {
       reboot: 'none',
       hardPowerOff: 'none',
       deviceOwnerPath: 'provisionable-after-factory-reset',
+      appRestart: 'none',
     });
   });
 });

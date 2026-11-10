@@ -31,6 +31,12 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
    200-then-stalled-body proxy wedge the chain (deep-audit F1: the first fix bounded only
    headers and its own test codified the hole). Emergency triggers (OVERRIDE/ALL_CLEAR) use the
    preempt lane (`preemptReconcile`) so a slow normal fetch can never queue an alert.
+   A sensitive push the gate refuses as **stale** is still never applied, but it is no longer a
+   dead end (`staleDropRecovery.ts`, 2026-11-09): it asks the manifest (pre-empt at most once per
+   25 s — longer than the 20 s manifest deadline, so refused frames cannot starve the manifest —
+   and plain coalescing in between) and re-measures the server clock offset from
+   `GET /api/v1/realtime/time`, the same `TimeSyncService` clock that stamps AUTH_OK. A wall clock
+   that stepped after sign-in used to refuse every push until the socket reconnected.
 5. **Never equate signals:** TCP `open` ≠ realtime connected (only AUTH_OK resets the WS failure
    counter / stands down SSE-HTTP fallbacks); `onPageFinished` ≠ page success (error documents
    don't count — `LoadOutcomeTracker`); a bridge heartbeat ≠ content health (`heartbeatV2`
@@ -215,6 +221,37 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
     unverified entry counts as ready.
     (f) Moved to `apps/api/src/emergency/CLAUDE.md` — the emergency tier, large files only.
     Incident: `docs/incidents/2026-09-26-4k-cache-fill.md`
+
+18. **The device play log records what was on glass, and can never cost playback or an alert
+    (2026-11-09)** (`playLog.ts`, pure core + thin glue, `__tests__/playLog.test.ts`). One entry
+    per playlist item shown: playlist / item / asset ids, start on the server-corrected clock
+    (`serverClockOffsetRef`), duration on the monotonic clock, `completed`. Ids and times only —
+    never content text, never anything typed. Emergency alerts and drills (any raised hold) are
+    NOT logged: the audit log is their record of truth; a content item an alert cut short is
+    logged `completed: false`. Every entry point swallows its failure and drops the entry; the
+    queue is capped (2,000, oldest dropped) and persisted to localStorage at most every 30 s and
+    on pagehide; uploads go to `POST /api/v1/screens/:id/play-log` every 10 min (backlog: 90 s),
+    never while an alert is on glass, never in preview mode, through `fetchJsonBounded`. A server
+    `stop` (kill switch `PLAY_LOG_DISABLED`) drops the queue and stands the log down across
+    reloads. The page hook is two effects beside the native website-overlay effect; keep it that
+    small.
+19. **The on-screen Unpair is gated by the tenant's screen PIN on the SERVER, never on the
+    device (2026-11-09)** — `unpairPin.ts` (player), `apps/api/src/screens/screen-pin.ts` (API).
+    An unpair takes a screen off the alert channel, and the player's unpair is server-first, so
+    the gate is the device-initiated `POST /screens/unpair/:fp`: with a PIN set it refuses
+    without the correct PIN (403 `SCREEN_UNPAIR_PIN_REQUIRED` / `_WRONG`, 429 `_LOCKED` after
+    five wrong, doubling to 24 h). The manifest carries only the static `unpairPinRequired:
+    true`, ABSENT when unset (never the hash; nothing brute-forceable on the device); an
+    emergency manifest never moves the player's copy. With a PIN known the player asks on its
+    own keypad (`UnpairPinPad.tsx`, rule 15) and tears nothing down until the server says yes;
+    OFFLINE it refuses (a local-only teardown would leave a bootstrap credential every device
+    route refuses — off the channel all the same). With no PIN known `handleUnpair` keeps its
+    old order and ignores the answer, except a PIN refusal, after which
+    `deviceTokenSession.restore` puts the retired credential back. Never gated: the dashboard's
+    `DELETE /screens/:id` (the forgotten-PIN recovery), TENANT_CHANGED, and "Exit to device
+    home" (without device owner the Home key leaves the app anyway). Do not re-attach
+    `OperatorPinGate.kt` to the native bridge. Report:
+    `docs/handoffs/2026-11-09-player-stability/05-screen-pin.md`.
 
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 

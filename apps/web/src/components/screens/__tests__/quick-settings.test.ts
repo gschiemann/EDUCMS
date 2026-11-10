@@ -33,6 +33,18 @@ describe('resolveQuickControls', () => {
     expect(q.restart).toBe(true);
   });
 
+  it('shows restart where only the player APP can restart (2026-11-09), with honest notes either way', () => {
+    const app = resolveDisplayControls(
+      doc({ volume: 'none', brightness: 'settings', screenBlank: 'none', reboot: 'none', appRestart: 'relaunch' }),
+    );
+    expect(app.appRestart).toMatchObject({ available: true, noteKey: 'screens.display.note.appRestartOk' });
+    expect(resolveQuickControls(app).restart).toBe(true);
+    const old = resolveDisplayControls(doc({ volume: 'none', brightness: 'settings', screenBlank: 'none', reboot: 'none' }));
+    expect(old.appRestart).toMatchObject({ available: false, noteKey: 'screens.display.note.appRestartUnavailable' });
+    expect(resolveQuickControls(old).restart).toBe(false);
+    expect(resolveDisplayControls(null).appRestart.available).toBe(false);
+  });
+
   it('an unreported Android screen gets Sleep/Awake, a brightness raise and the schedule only', () => {
     const q = resolveQuickControls(resolveDisplayControls(null));
     expect(q).toEqual({ sleepAwake: true, volume: false, brightness: true, restart: false, schedule: true });

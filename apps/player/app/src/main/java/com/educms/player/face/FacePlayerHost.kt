@@ -301,6 +301,10 @@ class FacePlayerHost(
                 // on the strength of the back having painted.
             },
             onMainFrameDocument = { view, _ ->
+                // A new document has to prove itself again before the bridge
+                // starts refusing an un-authenticated hold release. Start,
+                // commit and finish all land here; see WebAppBridge.pageAuthProven.
+                faceBridge.resetPageAuthProof()
                 sharedMedia.invalidate()
                 // Legacy transport only: re-deliver THIS face's nonce into
                 // THIS face's top frame. The primary's nonce is a different

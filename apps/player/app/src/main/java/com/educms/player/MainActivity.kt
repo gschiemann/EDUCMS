@@ -1657,6 +1657,10 @@ class MainActivity : ComponentActivity() {
         setContentView(binding.root)
         webView = binding.webview
         urlOverlayView = binding.urlOverlayView
+        // 2026-11-09 — under REAL memory pressure (health.MemoryPressurePolicy) drop
+        // only the player WebView's in-RAM cache; reads the CURRENT view, so a
+        // renderer replacement is followed. Never a reload, never while held.
+        com.educms.player.health.ProcessHealth.freeRebuildable = freeRamCache
 
         // ── THE LED CANVAS (2026-09-02, 1.1.14) ─────────────────────
         //
@@ -3561,8 +3565,18 @@ class MainActivity : ComponentActivity() {
             // injection costs the MAIN frame its control plane rather than
             // opening the surface to everyone, so this is a bounded retry
             // rather than a single shot. See [bridgeNonceDelivery].
-            onMainFrameDocument = { view, url -> sharedMedia.invalidate(); pumpBridgeNonceDelivery(view, url) },
-            onMainFrameStarted = { com.educms.player.display.EmergencyPaintRecovery.documentStarted(applicationContext, 0) },
+            onMainFrameDocument = { view, url ->
+                // A new document has to prove itself again before the bridge
+                // starts refusing an un-authenticated hold release. Start,
+                // commit and finish all land here; see
+                // WebAppBridge.pageAuthProven for why all three reset.
+                webAppBridge.resetPageAuthProof()
+                sharedMedia.invalidate()
+                pumpBridgeNonceDelivery(view, url)
+            },
+            onMainFrameStarted = {
+                com.educms.player.display.EmergencyPaintRecovery.documentStarted(applicationContext, 0)
+            },
             onPageFinishedOk = {
                 if (wv !== webView) return@SafePlayerWebViewClient
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()
@@ -4852,8 +4866,19 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
 
+    /** 2026-11-09 — the memory-pressure free: the RAM cache only (disk, service worker and media cache untouched). */
+    private val freeRamCache: () -> Unit = {
+        if (::webView.isInitialized) {
+            webView.clearCache(false)
+            PlayerLogger.i("MainActivity", "PLAYER_MEMORY_PRESSURE freed the player WebView RAM cache")
+        }
+    }
+
     override fun onDestroy() {
         bridgeNonceDelivery.invalidate()
+        if (com.educms.player.health.ProcessHealth.freeRebuildable === freeRamCache) {
+            com.educms.player.health.ProcessHealth.freeRebuildable = null
+        }
         bridgeNonceRetry?.let { if (::webView.isInitialized) webView.removeCallbacks(it) }
         bridgeNonceRetry = null
         if (::urlOverlayView.isInitialized) com.educms.player.media.BroadcastContentViews.unregister(0, urlOverlayView)

@@ -36,6 +36,7 @@ import {
 import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete';
 import { describeTimeZone, localTimeIn, timeZoneOptions } from '@/lib/time-zone-label';
 import { LedPosterStandardCard } from '../LedPosterStandardCard';
+import { ScreenPinCard } from '../ScreenPinCard';
 import { isCcOrgAdmin, useLastChange, useTenantChildren } from '@/hooks/use-settings-cc';
 import { SettingsPageFrame } from '../shell/SettingsPageFrame';
 import {
@@ -415,6 +416,8 @@ export function SettingsOrganizationPage() {
             description={t('settings.cc.organization.defaultsDesc')}
           >
             <LedPosterStandardCard />
+            {/* 2026-11-09 — the optional screen PIN for the on-screen Unpair. */}
+            <ScreenPinCard />
           </EditorSection>
 
           {/* High-impact confirmation (§13.3): names the scope and lists the

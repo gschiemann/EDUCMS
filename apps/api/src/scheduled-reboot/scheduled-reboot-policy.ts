@@ -269,12 +269,40 @@ export function decideScheduledReboot(f: RebootFacts): RebootDecision {
 
 // ─── Facts read off a Screen row ───────────────────────────────────────────
 
-/** The capability verdict allows REBOOT — today only a device-owner build. */
-export function verdictCanRestart(stored: unknown): boolean {
-  if (!stored || typeof stored !== 'object') return false;
+/**
+ * Which restart this screen can take (2026-11-09):
+ *   'REBOOT'      — the device itself (device-owner builds only; none today);
+ *   'APP_RESTART' — the player APP's process, where the APK proved it can
+ *                   relaunch itself (`verdict.appRestart === 'relaunch'`);
+ *   null          — neither, the slot is skipped as `cannot-restart`.
+ * A device reboot is preferred when both exist: it clears more.
+ */
+export type RestartAction = 'REBOOT' | 'APP_RESTART';
+export function restartActionFor(stored: unknown): RestartAction | null {
+  if (!stored || typeof stored !== 'object') return null;
   const s = stored as Record<string, any>;
   const v = s.verdict && typeof s.verdict === 'object' ? s.verdict : s;
-  return typeof v.reboot === 'string' && v.reboot !== 'none';
+  if (typeof v.reboot === 'string' && v.reboot !== 'none') return 'REBOOT';
+  if (v.appRestart === 'relaunch') return 'APP_RESTART';
+  return null;
+}
+
+/** The capability verdict allows a REBOOT or an APP_RESTART. */
+export function verdictCanRestart(stored: unknown): boolean {
+  return restartActionFor(stored) !== null;
+}
+
+/**
+ * The app-restart acknowledgement in a stored native report, for ONE action
+ * id (value identity, never a clock). Only outcomes the NEW process writes
+ * prove a restart; `refused` / `restarting` are the old process talking.
+ */
+export type AppRestartAck = 'landed' | 'started' | 'not-landed' | 'refused' | null;
+export function appRestartAckFrom(report: unknown, actionId: string | null | undefined): AppRestartAck {
+  if (!actionId || !report || typeof report !== 'object') return null;
+  const a = (report as Record<string, any>).appRestart;
+  if (!a || typeof a !== 'object' || a.id !== actionId) return null;
+  return a.o === 'landed' || a.o === 'started' || a.o === 'not-landed' || a.o === 'refused' ? a.o : null;
 }
 
 /** Uptime now, from the stored native report's `elapsedRealtimeMs`; null when absent or stale. */
@@ -329,9 +357,27 @@ export interface ReturnFacts {
   /** BOOT_COUNT from a native report written AFTER the dispatch, else null. */
   bootNow: number | null;
   returnWindowMs: number;
+  /**
+   * 2026-11-09 — the device's by-value answer to THIS run's app restart, from
+   * a native report written after the dispatch (`appRestartAckFrom`). Absent
+   * for a REBOOT run. When `reportAtMs` is given it dates the answer.
+   */
+  appRestartAck?: AppRestartAck;
+  reportAtMs?: number | null;
 }
 
 export function evaluateReturn(f: ReturnFacts): ReturnVerdict {
+  // App restart (2026-11-09): the boot count cannot move, so the NEW
+  // process's acknowledgement of this action id is the proof. `landed` /
+  // `started` = back and proven; `not-landed` = the process came back but
+  // Android kept it off the glass (OEM launcher showing) — that is NOT back;
+  // `refused` = the device said no, nothing restarted.
+  const ackAt = f.reportAtMs ?? f.lastPingAtMs ?? f.nowMs;
+  if (f.appRestartAck === 'landed' || f.appRestartAck === 'started') {
+    return { status: 'BACK', proven: true, returnedAtMs: ackAt, bootAfter: f.bootNow };
+  }
+  if (f.appRestartAck === 'not-landed') return { status: 'NOT_BACK' };
+  if (f.appRestartAck === 'refused') return { status: 'NO_RESTART', returnedAtMs: ackAt, bootAfter: f.bootNow };
   const checkedIn = f.lastPingAtMs !== null && f.lastPingAtMs > f.dispatchedAtMs + CHECK_IN_GRACE_MS;
   const windowOver = f.nowMs >= f.dispatchedAtMs + f.returnWindowMs;
   if (checkedIn) {

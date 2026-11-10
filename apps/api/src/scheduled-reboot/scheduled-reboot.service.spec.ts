@@ -245,6 +245,30 @@ describe('ScheduledRebootService.tick', () => {
     expect(runs[0]).toMatchObject({ status: RUN_STATUS.BACK, restartProven: true, bootAfter: 41 });
   });
 
+  it('APP_RESTART where the device cannot reboot but its player can restart itself (2026-11-09)', async () => {
+    const t = build({ screens: [screen({ displayCapabilities: { verdict: { reboot: 'none', appRestart: 'relaunch' } } })] });
+    const r = await t.svc.tick(NOW);
+    expect(r.sent).toBe(1);
+    expect(t.applyAction.mock.calls[0][0]).toMatchObject({ action: 'APP_RESTART', userId: null, reason: 'scheduled-restart:p1' });
+    expect(t.runs[0]).toMatchObject({ status: RUN_STATUS.SENT, actionId: 'act-1' });
+  });
+
+  it('an app restart is proven BACK by the new process acknowledging THIS action id — the boot count never moves', async () => {
+    const dispatchedAt = new Date(NOW.getTime() - 2 * 60_000);
+    const s = screen({
+      displayCapabilities: { verdict: { reboot: 'none', appRestart: 'relaunch' } },
+      lastPingAt: new Date(NOW.getTime() - 10_000),
+      nativeRuntimeReportAt: new Date(NOW.getTime() - 10_000),
+      nativeRuntimeReport: { elapsedRealtimeMs: 9e8, interactive: true, proc: { pid: 3, at: 2, boot: 40 }, appRestart: { id: 'act-9', o: 'landed' } },
+    });
+    const runs = [
+      { id: 'r1', tenantId: TENANT, screenId: S1, policyId: 'p1', slotKey: '2026-11-10', status: RUN_STATUS.SENT, hardwareClass: 'x', dispatchedAt, actionId: 'act-9', bootBefore: 40, scheduledFor: new Date(SLOT_START), createdAt: NOW },
+    ];
+    const t = build({ screens: [s], runs });
+    await t.svc.tick(NOW);
+    expect(runs[0]).toMatchObject({ status: RUN_STATUS.BACK, restartProven: true });
+  });
+
   it('kill switch: does nothing at all', async () => {
     process.env.SCHEDULED_REBOOTS_DISABLED = '1';
     const t = build();

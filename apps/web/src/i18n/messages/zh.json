@@ -2277,6 +2277,11 @@
       "rebootTypeTitle": "输入 {token} 以确认",
       "rebootTypeBody": "此操作会重启一台你可能无法到达的屏幕。请输入 {token}（大写）以继续。",
       "rebootSent": "重启指令已发送，设备约一分钟后恢复。",
+      "appRestart": "重启应用",
+      "appRestartConfirmTitle": "要重启播放器应用吗？",
+      "appRestartConfirmBody": "播放器应用重启期间，“{name}”将黑屏约 10 到 30 秒。设备本身不会重启。紧急警报、更新或配对期间不会重启。",
+      "appRestartContinue": "重启应用",
+      "appRestartSent": "重启指令已发送，播放器应在一分钟内恢复。",
       "sendFailed": "指令发送失败。",
       "sendTimedOut": "{seconds} 秒内没有响应，无法确认是否成功。如果屏幕已变黑，请按“唤醒”。",
       "notDelivered": "无法连接到此屏幕，因此没有任何变化。请稍后重试。",
@@ -2297,6 +2302,8 @@
         "rebootBlockedOtherOwner": "不可用 — 另一个管理应用已占用设备所有者身份，无法授予远程重启权限。",
         "rebootNeedsProvisioning": "不可用 — 远程重启需要设备所有者权限，这意味着要恢复出厂设置并重新登记此设备。",
         "rebootUnavailable": "不可用 — 此设备未授予远程重启权限。",
+        "appRestartOk": "此设备上的播放器应用可以自行重启。",
+        "appRestartUnavailable": "不可用 — 此设备上的播放器重启后无法自行恢复（需要在设置中开启“显示在其他应用上层”，或更新播放器）。",
         "blankDeviceAdmin": "应该会关闭屏幕。在部分设备上会改为显示黑屏，背光仍亮着。",
         "blankVendorRecipe": "在大多数面板上会关闭屏幕。若此型号不支持，屏幕将显示黑屏。",
         "blankScreenTimeout": "通过 Android 屏幕超时来关闭面板。多数标牌设备支持；少数会忽略，仅显示黑屏。",
@@ -8422,7 +8429,19 @@
     "empty": "此处暂无文件。请上传文件或选择其他文件夹。"
   },
   "playerMenu": {
-    "importFromUsb": "从 U 盘导入"
+    "importFromUsb": "从 U 盘导入",
+    "unpairPin": {
+      "title": "输入屏幕 PIN 码",
+      "body": "您的组织使用 PIN 码保护此屏幕。输入后即可在此解除配对，也可以在控制台中解除配对。",
+      "hint": "方向键和确定键，或直接输入数字 · 返回键取消",
+      "delete": "删除",
+      "ok": "确定",
+      "wrong": "PIN 码错误，请重试。",
+      "locked": "PIN 码错误次数过多。请稍后再试，或在控制台中解除此屏幕的配对。",
+      "unreachable": "无法连接服务器验证 PIN 码。屏幕保持配对状态。请在控制台中解除配对。",
+      "required": "在此解除配对需要此屏幕的 PIN 码。",
+      "checking": "正在验证…"
+    }
   },
   "ui": {
     "filter": "筛选",
@@ -8564,7 +8583,7 @@
     "summaryWeekly": "每{day} {time}",
     "saved": "已保存。此分组中的屏幕将于{summary}重启。",
     "savedOff": "此分组的定时重启已关闭。",
-    "noneCanRestart": "这些屏幕目前都无法远程重启：播放器只能重启它完全管理的设备，而 VenueOS 不获取这种控制权。此设置会保留，并在任何报告可以重启的屏幕上开始生效。",
+    "noneCanRestart": "这些屏幕目前都无法远程重启。VenueOS 重启的是播放器应用（而不是设备），并且只在播放器已证明能自行恢复的屏幕上进行：需要最新的播放器，并在设置中授予“显示在其他应用上层”。此设置会保留，并在任何报告可以重启的屏幕上开始生效。",
     "someCannot": "{total} 台屏幕中有 {count} 台无法远程重启，将被跳过。",
     "screensHeading": "屏幕（{count}）",
     "noScreens": "此分组还没有屏幕。",
@@ -8597,5 +8616,23 @@
       "tenant-cap": "已达到今晚的上限",
       "other": "原因未知"
     }
+  },
+  "screenPin": {
+    "title": "屏幕 PIN 码",
+    "desc": "屏幕菜单解除配对前需要输入此 PIN 码。4 到 8 位数字。在控制台中移除屏幕始终不需要。",
+    "statusSet": "已设置屏幕 PIN 码。",
+    "statusUnset": "未设置屏幕 PIN 码。任何人都可以通过屏幕菜单解除配对。",
+    "pinLabel": "新 PIN 码",
+    "confirmLabel": "再次输入 PIN 码",
+    "save": "设置 PIN 码",
+    "change": "更改 PIN 码",
+    "clear": "移除 PIN 码",
+    "saved": "PIN 码已保存。屏幕将在下次更新时（约一分钟）开始要求输入。",
+    "cleared": "PIN 码已移除。",
+    "mismatch": "两次输入的 PIN 码不一致。",
+    "invalid": "请使用 4 到 8 位数字。",
+    "saveFailed": "保存失败，请重试。",
+    "readOnly": "只有组织管理员可以更改屏幕 PIN 码。",
+    "recovery": "忘记 PIN 码？在“屏幕”中移除该屏幕并重新配对，或在此设置新的 PIN 码。"
   }
 }

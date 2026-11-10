@@ -13,7 +13,14 @@ export function alertLocaleOf(v: string | null | undefined): AlertLocale {
   return v === 'es' || v === 'zh' ? v : 'en';
 }
 
-export type ScreenItemKind = 'OFFLINE' | 'BACK_ONLINE' | 'NO_CONTENT' | 'CONTENT_RESTORED';
+export type ScreenItemKind =
+  | 'OFFLINE'
+  | 'BACK_ONLINE'
+  | 'NO_CONTENT'
+  | 'CONTENT_RESTORED'
+  // 2026-11-09 — the screen's credential needs re-pairing (it keeps playing); and its note that trust is back.
+  | 'REPAIR_REQUIRED'
+  | 'REPAIR_RESTORED';
 
 export interface ScreenAlertItem {
   kind: ScreenItemKind;
@@ -105,12 +112,18 @@ const T = {
         one
           ? `VenueOS: ${one} is showing content again at ${loc}`
           : `VenueOS: ${n} screens showing content again at ${loc}`,
+      REPAIR_REQUIRED: (one: string | null, n: number, loc: string) =>
+        one ? `VenueOS: ${one} at ${loc} needs to be re-paired` : `VenueOS: ${n} screens at ${loc} need to be re-paired`,
+      REPAIR_RESTORED: (one: string | null, n: number, loc: string) =>
+        one ? `VenueOS: ${one} at ${loc} is connected again` : `VenueOS: ${n} screens at ${loc} are connected again`,
     },
     intro: {
       OFFLINE: (loc: string) => `These screens at ${loc} have stopped checking in:`,
       BACK_ONLINE: (loc: string) => `These screens at ${loc} are back online:`,
       NO_CONTENT: (loc: string) => `These screens at ${loc} are online but have not shown your content for at least 20 minutes:`,
       CONTENT_RESTORED: (loc: string) => `These screens at ${loc} are showing your content again:`,
+      REPAIR_REQUIRED: (loc: string) => `These screens at ${loc} are still playing, but their secure connection to VenueOS needs to be set up again:`,
+      REPAIR_RESTORED: (loc: string) => `These screens at ${loc} have their secure connection to VenueOS again:`,
     },
     line: {
       OFFLINE: (m?: number) => (m ? `offline for ${T.en.min(m)}` : 'offline'),
@@ -118,6 +131,8 @@ const T = {
       NO_CONTENT: (m?: number, unavailable?: boolean) =>
         unavailable ? 'showing "Content unavailable" (its scheduled files could not be loaded)' : m ? `no picture confirmed for ${T.en.min(m)}` : 'no picture confirmed',
       CONTENT_RESTORED: () => 'showing content',
+      REPAIR_REQUIRED: (m?: number) => (m ? `needs re-pairing for ${T.en.min(m)}, still playing` : 'needs re-pairing, still playing'),
+      REPAIR_RESTORED: () => 'connected again',
     },
     outro: {
       OFFLINE: (siteWide: boolean) =>
@@ -125,15 +140,18 @@ const T = {
           ? 'They all dropped at about the same time, which usually means the internet or power at the site is down.'
           : 'Common causes: the screen was unplugged or switched off at the wall, or its network is down.',
       NO_CONTENT: () => 'Restarting the screen from the Screens page usually fixes this.',
+      REPAIR_REQUIRED: () =>
+        'Nothing is wrong on the screen right now. Open the Screens page and choose "Restore trust" on the screen, or pair it again with a new code, so it can report what it is showing again.',
     },
     later: {
       OFFLINE: 'We will email you again when they are back online.',
       NO_CONTENT: 'We will email you again when your content is back.',
+      REPAIR_REQUIRED: 'We will email you again once it is connected.',
     },
     digestSubj: (n: number, org: string) => `VenueOS: ${n} screen updates for ${org}`,
     digestIntro: (org: string) =>
       `We held back some alerts so your inbox would not fill up. Here is what happened at ${org}:`,
-    digestKind: { OFFLINE: 'Offline', BACK_ONLINE: 'Back online', NO_CONTENT: 'Not showing content', CONTENT_RESTORED: 'Showing content again' },
+    digestKind: { OFFLINE: 'Offline', BACK_ONLINE: 'Back online', NO_CONTENT: 'Not showing content', CONTENT_RESTORED: 'Showing content again', REPAIR_REQUIRED: 'Needs re-pairing', REPAIR_RESTORED: 'Connected again' },
     missed: {
       subj: (one: string | null, n: number, loc: string, time: string) =>
         one ? `VenueOS: ${one} at ${loc} didn't come back on at ${time}` : `VenueOS: ${n} screens at ${loc} didn't come back on at ${time}`,
@@ -169,12 +187,18 @@ const T = {
         one
           ? `VenueOS: ${one} vuelve a mostrar contenido en ${loc}`
           : `VenueOS: ${n} pantallas vuelven a mostrar contenido en ${loc}`,
+      REPAIR_REQUIRED: (one: string | null, n: number, loc: string) =>
+        one ? `VenueOS: ${one} en ${loc} debe emparejarse de nuevo` : `VenueOS: ${n} pantallas en ${loc} deben emparejarse de nuevo`,
+      REPAIR_RESTORED: (one: string | null, n: number, loc: string) =>
+        one ? `VenueOS: ${one} en ${loc} está conectada de nuevo` : `VenueOS: ${n} pantallas en ${loc} están conectadas de nuevo`,
     },
     intro: {
       OFFLINE: (loc: string) => `Estas pantallas de ${loc} dejaron de reportarse:`,
       BACK_ONLINE: (loc: string) => `Estas pantallas de ${loc} volvieron a estar en línea:`,
       NO_CONTENT: (loc: string) => `Estas pantallas de ${loc} están en línea, pero llevan al menos 20 minutos sin mostrar tu contenido:`,
       CONTENT_RESTORED: (loc: string) => `Estas pantallas de ${loc} vuelven a mostrar tu contenido:`,
+      REPAIR_REQUIRED: (loc: string) => `Estas pantallas de ${loc} siguen mostrando contenido, pero hay que volver a configurar su conexión segura con VenueOS:`,
+      REPAIR_RESTORED: (loc: string) => `Estas pantallas de ${loc} tienen de nuevo su conexión segura con VenueOS:`,
     },
     line: {
       OFFLINE: (m?: number) => (m ? `sin conexión desde hace ${T.es.min(m)}` : 'sin conexión'),
@@ -186,6 +210,8 @@ const T = {
             ? `sin imagen confirmada desde hace ${T.es.min(m)}`
             : 'sin imagen confirmada',
       CONTENT_RESTORED: () => 'mostrando contenido',
+      REPAIR_REQUIRED: (m?: number) => (m ? `debe emparejarse de nuevo desde hace ${T.es.min(m)}, sigue mostrando contenido` : 'debe emparejarse de nuevo, sigue mostrando contenido'),
+      REPAIR_RESTORED: () => 'conectada de nuevo',
     },
     outro: {
       OFFLINE: (siteWide: boolean) =>
@@ -193,15 +219,18 @@ const T = {
           ? 'Todas se desconectaron casi al mismo tiempo; normalmente eso significa que falla el internet o la electricidad en el sitio.'
           : 'Causas comunes: la pantalla se desenchufó o se apagó en la pared, o su red no funciona.',
       NO_CONTENT: () => 'Reiniciar la pantalla desde la página Pantallas suele resolverlo.',
+      REPAIR_REQUIRED: () =>
+        'Ahora mismo no hay ningún problema en la pantalla. Abre la página Pantallas y elige "Restaurar confianza" en la pantalla, o emparéjala de nuevo con un código nuevo, para que pueda volver a informar qué está mostrando.',
     },
     later: {
       OFFLINE: 'Te escribiremos de nuevo cuando vuelvan a estar en línea.',
       NO_CONTENT: 'Te escribiremos de nuevo cuando tu contenido vuelva a verse.',
+      REPAIR_REQUIRED: 'Te escribiremos de nuevo cuando vuelva a estar conectada.',
     },
     digestSubj: (n: number, org: string) => `VenueOS: ${n} novedades de pantallas en ${org}`,
     digestIntro: (org: string) =>
       `Agrupamos algunas alertas para no llenar tu bandeja de entrada. Esto es lo que pasó en ${org}:`,
-    digestKind: { OFFLINE: 'Sin conexión', BACK_ONLINE: 'De nuevo en línea', NO_CONTENT: 'Sin mostrar contenido', CONTENT_RESTORED: 'Vuelve a mostrar contenido' },
+    digestKind: { OFFLINE: 'Sin conexión', BACK_ONLINE: 'De nuevo en línea', NO_CONTENT: 'Sin mostrar contenido', CONTENT_RESTORED: 'Vuelve a mostrar contenido', REPAIR_REQUIRED: 'Debe emparejarse de nuevo', REPAIR_RESTORED: 'Conectada de nuevo' },
     missed: {
       subj: (one: string | null, n: number, loc: string, time: string) =>
         one
@@ -235,12 +264,18 @@ const T = {
         one ? `VenueOS：${loc} 的 ${one} 已开机但未显示内容` : `VenueOS：${loc} 有 ${n} 块屏幕未显示内容`,
       CONTENT_RESTORED: (one: string | null, n: number, loc: string) =>
         one ? `VenueOS：${loc} 的 ${one} 已恢复显示内容` : `VenueOS：${loc} 有 ${n} 块屏幕已恢复显示内容`,
+      REPAIR_REQUIRED: (one: string | null, n: number, loc: string) =>
+        one ? `VenueOS：${loc} 的 ${one} 需要重新配对` : `VenueOS：${loc} 有 ${n} 块屏幕需要重新配对`,
+      REPAIR_RESTORED: (one: string | null, n: number, loc: string) =>
+        one ? `VenueOS：${loc} 的 ${one} 已重新连接` : `VenueOS：${loc} 有 ${n} 块屏幕已重新连接`,
     },
     intro: {
       OFFLINE: (loc: string) => `${loc} 的以下屏幕已停止上报状态：`,
       BACK_ONLINE: (loc: string) => `${loc} 的以下屏幕已恢复在线：`,
       NO_CONTENT: (loc: string) => `${loc} 的以下屏幕在线，但已至少 20 分钟没有显示您的内容：`,
       CONTENT_RESTORED: (loc: string) => `${loc} 的以下屏幕已恢复显示您的内容：`,
+      REPAIR_REQUIRED: (loc: string) => `${loc} 的以下屏幕仍在播放，但需要重新建立与 VenueOS 的安全连接：`,
+      REPAIR_RESTORED: (loc: string) => `${loc} 的以下屏幕已重新建立与 VenueOS 的安全连接：`,
     },
     line: {
       OFFLINE: (m?: number) => (m ? `已离线 ${T.zh.min(m)}` : '离线'),
@@ -248,6 +283,8 @@ const T = {
       NO_CONTENT: (m?: number, unavailable?: boolean) =>
         unavailable ? '显示“内容不可用”（排定的文件无法加载）' : m ? `已有 ${T.zh.min(m)} 未确认画面` : '未确认画面',
       CONTENT_RESTORED: () => '正在显示内容',
+      REPAIR_REQUIRED: (m?: number) => (m ? `已有 ${T.zh.min(m)} 需要重新配对，仍在播放` : '需要重新配对，仍在播放'),
+      REPAIR_RESTORED: () => '已重新连接',
     },
     outro: {
       OFFLINE: (siteWide: boolean) =>
@@ -255,14 +292,16 @@ const T = {
           ? '这些屏幕几乎同时掉线，通常说明现场的网络或电源出现了问题。'
           : '常见原因：屏幕被拔掉电源或在墙上关闭，或其网络中断。',
       NO_CONTENT: () => '在“屏幕”页面重启该屏幕通常可以解决。',
+      REPAIR_REQUIRED: () => '屏幕目前没有任何问题。请打开“屏幕”页面，对该屏幕选择“恢复信任”，或使用新的配对码重新配对，以便它重新上报正在显示的内容。',
     },
     later: {
       OFFLINE: '屏幕恢复在线后，我们会再发邮件通知您。',
       NO_CONTENT: '内容恢复显示后，我们会再发邮件通知您。',
+      REPAIR_REQUIRED: '屏幕重新连接后，我们会再发邮件通知您。',
     },
     digestSubj: (n: number, org: string) => `VenueOS：${org} 的 ${n} 条屏幕动态`,
     digestIntro: (org: string) => `为避免邮件过多，我们合并了部分提醒。以下是 ${org} 的情况：`,
-    digestKind: { OFFLINE: '离线', BACK_ONLINE: '恢复在线', NO_CONTENT: '未显示内容', CONTENT_RESTORED: '恢复显示内容' },
+    digestKind: { OFFLINE: '离线', BACK_ONLINE: '恢复在线', NO_CONTENT: '未显示内容', CONTENT_RESTORED: '恢复显示内容', REPAIR_REQUIRED: '需要重新配对', REPAIR_RESTORED: '已重新连接' },
     missed: {
       subj: (one: string | null, n: number, loc: string, time: string) =>
         one ? `VenueOS：${loc} 的 ${one} 未在 ${time} 按时开机` : `VenueOS：${loc} 有 ${n} 块屏幕未在 ${time} 按时开机`,
@@ -321,6 +360,7 @@ export function renderScreenAlertEmail(
   const body: string[] = [intro, '', ...listLines(input.items, line, t.more), ''];
   if (input.kind === 'OFFLINE') body.push(t.outro.OFFLINE(!!input.siteWide), t.later.OFFLINE, '');
   if (input.kind === 'NO_CONTENT') body.push(t.outro.NO_CONTENT(), t.later.NO_CONTENT, '');
+  if (input.kind === 'REPAIR_REQUIRED') body.push(t.outro.REPAIR_REQUIRED(), t.later.REPAIR_REQUIRED, '');
   body.push(`${t.open}: ${links.screensUrl}`, '', `${t.manage}: ${links.manageUrl}`, '', t.sign);
   return { subject, body: body.join('\n') };
 }

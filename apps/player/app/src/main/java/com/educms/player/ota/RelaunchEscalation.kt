@@ -134,7 +134,7 @@ object RelaunchEscalation {
      * Returns immediately. [source] names the caller in the log so a field
      * log says which rung fired ("post-install-worker", "fgs-package-replaced").
      */
-    fun attempt(ctx: Context, source: String) {
+    fun attempt(ctx: Context, source: String, purpose: RelaunchPurpose = RelaunchPurpose.OTA) {
         try {
             // ⚠️ v1.1.11 (TC22 field test, 2026-09-01): if the player is
             // ALREADY on glass there is nothing to relaunch — bail before
@@ -223,7 +223,7 @@ object RelaunchEscalation {
                 chainInFlight = false
                 return
             }
-            mainHandler.postDelayed({ firstCheck(ctx, source) }, CHECK_DELAY_MS)
+            mainHandler.postDelayed({ firstCheck(ctx, source, purpose) }, CHECK_DELAY_MS)
         } catch (t: Throwable) {
             chainInFlight = false
             PlayerLogger.w(TAG, "relaunch attempt from $source failed: ${t.message}")
@@ -281,7 +281,7 @@ object RelaunchEscalation {
     }
 
     /** +8 s: did it land? If not, take whichever rung the facts allow. */
-    private fun firstCheck(ctx: Context, source: String) {
+    private fun firstCheck(ctx: Context, source: String, purpose: RelaunchPurpose) {
         try {
             val facts = readFacts(ctx, overlayRetryUsed = false)
             when (RelaunchEscalationMath.next(facts)) {
@@ -309,11 +309,11 @@ object RelaunchEscalation {
                             "\"Display over other apps\" is granted — retrying the launch once",
                     )
                     launchNow(ctx, "$source/overlay-retry")
-                    mainHandler.postDelayed({ secondCheck(ctx, source, facts) }, CHECK_DELAY_MS)
+                    mainHandler.postDelayed({ secondCheck(ctx, source, facts, purpose) }, CHECK_DELAY_MS)
                 }
                 RelaunchStage.ESCALATE -> {
                     chainInFlight = false
-                    escalate(ctx, source, facts)
+                    escalate(ctx, source, facts, purpose)
                 }
             }
         } catch (t: Throwable) {
@@ -323,7 +323,7 @@ object RelaunchEscalation {
     }
 
     /** +8 s after the overlay retry: last word. */
-    private fun secondCheck(ctx: Context, source: String, previous: RelaunchFacts) {
+    private fun secondCheck(ctx: Context, source: String, previous: RelaunchFacts, purpose: RelaunchPurpose) {
         chainInFlight = false
         try {
             val facts = readFacts(ctx, overlayRetryUsed = true)
@@ -339,12 +339,12 @@ object RelaunchEscalation {
                 )
                 return
             }
-            escalate(ctx, source, facts)
+            escalate(ctx, source, facts, purpose)
         } catch (t: Throwable) {
             PlayerLogger.w(TAG, "relaunch second check failed: ${t.message}")
             // Still say something rather than going quiet on the one path
             // whose whole job is to not go quiet.
-            runCatching { escalate(ctx, source, previous.copy(overlayRetryUsed = true)) }
+            runCatching { escalate(ctx, source, previous.copy(overlayRetryUsed = true), purpose) }
         }
     }
 
@@ -353,7 +353,7 @@ object RelaunchEscalation {
      * notification they can tap) AND the dashboard (an ota-state row a
      * remote operator can see), once per process.
      */
-    private fun escalate(ctx: Context, source: String, facts: RelaunchFacts) {
+    private fun escalate(ctx: Context, source: String, facts: RelaunchFacts, purpose: RelaunchPurpose) {
         if (escalatedThisProcess) {
             PlayerLogger.i(TAG, "relaunch still not landed ($source) — already reported this process")
             return
@@ -361,8 +361,11 @@ object RelaunchEscalation {
         escalatedThisProcess = true
         val message = RelaunchEscalationMath.blockedMessage(facts)
         PlayerLogger.w(TAG, "relaunch NOT landed ($source): $message")
-        postRelaunchNotification(ctx)
-        reportRelaunchBlocked(ctx, message)
+        postRelaunchNotification(ctx, purpose)
+        // 2026-11-09 — an APP restart is not an update: its outcome reaches
+        // the server by value in the heartbeat (display.AppRestart), never as
+        // an ota-state row that push tracking would read as an install.
+        if (purpose == RelaunchPurpose.OTA) reportRelaunchBlocked(ctx, message)
     }
 
     /** Read every fact we can honestly observe. Each probe caught on its own. */
@@ -377,7 +380,7 @@ object RelaunchEscalation {
 
     // `canDrawOverlays` is API 23+ and this module's minSdk is 24, so no
     // version guard is needed (lint's ObsoleteSdkInt agrees).
-    private fun canDrawOverlays(ctx: Context): Boolean = try {
+    internal fun canDrawOverlays(ctx: Context): Boolean = try {
         Settings.canDrawOverlays(ctx.applicationContext)
     } catch (_: Throwable) {
         false
@@ -389,7 +392,7 @@ object RelaunchEscalation {
      * relaunched by the OS itself, which is why it never reaches this file
      * in anger.
      */
-    private fun isHomeApp(ctx: Context): Boolean = try {
+    internal fun isHomeApp(ctx: Context): Boolean = try {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         val res = ctx.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
         res?.activityInfo?.packageName == ctx.packageName
@@ -431,7 +434,7 @@ object RelaunchEscalation {
      * way the ota-state report below still reaches the dashboard — the
      * notification is the on-panel half, never the only half.
      */
-    private fun postRelaunchNotification(ctx: Context) {
+    private fun postRelaunchNotification(ctx: Context, purpose: RelaunchPurpose) {
         try {
             val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -452,8 +455,11 @@ object RelaunchEscalation {
             )
             val notif = NotificationCompat.Builder(ctx, CHANNEL_OTA)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentTitle("VenueOS updated")
-                .setContentText("VenueOS updated — tap to bring signage back")
+                .setContentTitle(if (purpose == RelaunchPurpose.APP_RESTART) "VenueOS restarted" else "VenueOS updated")
+                .setContentText(
+                    if (purpose == RelaunchPurpose.APP_RESTART) "VenueOS restarted — tap to bring signage back"
+                    else "VenueOS updated — tap to bring signage back",
+                )
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_STATUS)
                 .setContentIntent(pi)
@@ -507,6 +513,13 @@ object RelaunchEscalation {
         }.start()
     }
 }
+
+/**
+ * Why the player is being relaunched (2026-11-09). The ladder is the same;
+ * only what it SAYS differs: an OTA reports RELAUNCH_BLOCKED to ota-state,
+ * a remote app restart ([com.educms.player.display.AppRestart]) does not.
+ */
+enum class RelaunchPurpose { OTA, APP_RESTART }
 
 /** What escalation should do next. */
 enum class RelaunchStage {

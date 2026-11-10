@@ -2277,6 +2277,11 @@
       "rebootTypeTitle": "Escribe {token} para confirmar",
       "rebootTypeBody": "Esto reinicia una pantalla a la que quizá no puedas acceder. Escribe {token} (en mayúsculas) para continuar.",
       "rebootSent": "Reinicio enviado. El dispositivo debería volver en aproximadamente un minuto.",
+      "appRestart": "Reiniciar la app",
+      "appRestartConfirmTitle": "¿Reiniciar la app del reproductor?",
+      "appRestartConfirmBody": "“{name}” se oscurecerá unos 10 a 30 segundos mientras se reinicia la app del reproductor. El dispositivo en sí no se reinicia. No se reiniciará durante una alerta de emergencia, una actualización o un emparejamiento.",
+      "appRestartContinue": "Reiniciar la app",
+      "appRestartSent": "Reinicio enviado. El reproductor debería volver en menos de un minuto.",
       "sendFailed": "No se pudo enviar la orden.",
       "sendTimedOut": "No hubo respuesta en {seconds} segundos, así que no sabemos si funcionó. Si la pantalla se apagó, pulsa Despierta.",
       "notDelivered": "No se pudo llegar a esta pantalla, así que no cambió nada. Inténtalo de nuevo en un momento.",
@@ -2297,6 +2302,8 @@
         "rebootBlockedOtherOwner": "No disponible — otra aplicación de gestión ya es propietaria del dispositivo, así que no se puede conceder el reinicio remoto.",
         "rebootNeedsProvisioning": "No disponible — el reinicio remoto requiere configuración como propietario del dispositivo, lo que implica restablecer de fábrica y volver a registrar el equipo.",
         "rebootUnavailable": "No disponible — este dispositivo no ha concedido el reinicio remoto.",
+        "appRestartOk": "La app del reproductor puede reiniciarse sola en este dispositivo.",
+        "appRestartUnavailable": "No disponible — el reproductor de este dispositivo no puede volver solo tras un reinicio (necesita “Mostrar sobre otras apps” desde la configuración, o un reproductor más reciente).",
         "blankDeviceAdmin": "Debería apagar la pantalla. En algunos equipos, en su lugar, queda en negro con la retroiluminación encendida.",
         "blankVendorRecipe": "Apaga la pantalla en la mayoría de los paneles. Si este modelo no lo admite, la pantalla queda en negro.",
         "blankScreenTimeout": "Usa el tiempo de espera de pantalla de Android para apagar el panel. La mayoría de equipos de señalización lo respetan; algunos lo ignoran y solo muestran negro.",
@@ -8422,7 +8429,19 @@
     "empty": "Aún no hay archivos aquí. Sube un archivo o elige otra carpeta."
   },
   "playerMenu": {
-    "importFromUsb": "Importar desde USB"
+    "importFromUsb": "Importar desde USB",
+    "unpairPin": {
+      "title": "Introduce el PIN de la pantalla",
+      "body": "Tu organización protege esta pantalla con un PIN. Introdúcelo para desvincularla aquí, o desvincúlala desde el panel.",
+      "hint": "Flechas y OK, o escribe los dígitos · Atrás para cancelar",
+      "delete": "Borrar",
+      "ok": "OK",
+      "wrong": "PIN incorrecto. Inténtalo de nuevo.",
+      "locked": "Demasiados PIN incorrectos. Inténtalo más tarde o desvincula esta pantalla desde el panel.",
+      "unreachable": "No se puede contactar con el servidor para comprobar el PIN. La pantalla sigue vinculada. Desvincúlala desde el panel.",
+      "required": "Esta pantalla necesita su PIN para desvincularla aquí.",
+      "checking": "Comprobando…"
+    }
   },
   "ui": {
     "filter": "Filtrar",
@@ -8564,7 +8583,7 @@
     "summaryWeekly": "cada {day} a las {time}",
     "saved": "Guardado. Las pantallas de este grupo se reinician {summary}.",
     "savedOff": "El reinicio programado está desactivado para este grupo.",
-    "noneCanRestart": "Ninguna de estas pantallas puede reiniciarse a distancia todavía: el reproductor solo puede reiniciar un dispositivo que administra por completo, y VenueOS no toma ese control. La configuración se conserva y empieza a funcionar en cualquier pantalla que indique que puede reiniciarse.",
+    "noneCanRestart": "Ninguna de estas pantallas puede reiniciarse a distancia todavía. VenueOS reinicia la app del reproductor (no el dispositivo), y solo en una pantalla cuyo reproductor ha demostrado que puede volver solo: un reproductor actual con “Mostrar sobre otras apps” concedido en la configuración. La configuración se conserva y empieza a funcionar en cualquier pantalla que indique que puede reiniciarse.",
     "someCannot": "{count} de {total} pantallas no pueden reiniciarse a distancia y se omitirán.",
     "screensHeading": "Pantallas ({count})",
     "noScreens": "Este grupo todavía no tiene pantallas.",
@@ -8597,5 +8616,23 @@
       "tenant-cap": "se alcanzó el límite de esta noche",
       "other": "motivo desconocido"
     }
+  },
+  "screenPin": {
+    "title": "PIN de pantalla",
+    "desc": "Se pide en una pantalla antes de que su menú en pantalla pueda desvincularla. De 4 a 8 dígitos. Quitar una pantalla desde el panel nunca lo necesita.",
+    "statusSet": "Hay un PIN de pantalla configurado.",
+    "statusUnset": "Sin PIN de pantalla. Cualquiera frente a una pantalla puede desvincularla desde su menú.",
+    "pinLabel": "PIN nuevo",
+    "confirmLabel": "Repite el PIN",
+    "save": "Configurar PIN",
+    "change": "Cambiar PIN",
+    "clear": "Quitar PIN",
+    "saved": "PIN guardado. Las pantallas lo pedirán desde su próxima actualización (alrededor de un minuto).",
+    "cleared": "PIN quitado.",
+    "mismatch": "Los dos PIN no coinciden.",
+    "invalid": "Usa de 4 a 8 dígitos.",
+    "saveFailed": "No se pudo guardar. Inténtalo de nuevo.",
+    "readOnly": "Solo los administradores de la organización pueden cambiar el PIN de pantalla.",
+    "recovery": "¿Olvidaste el PIN? Quita la pantalla desde Pantallas y vuelve a vincularla, o configura un PIN nuevo aquí."
   }
 }

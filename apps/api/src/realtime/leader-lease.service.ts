@@ -130,6 +130,10 @@ export const LEASE = {
   // screen; screens/events/screen-events-retention.cron.ts). Leased because it
   // is a DELETE: two replicas would race the same rows for nothing.
   SCREEN_EVENTS_RETENTION: 'screens:events-retention',
+  // 2026-11-09 — hourly retention of the device play log (`play_log_entries`,
+  // play-log/play-log-retention.service.ts). Leased because it is a chunked
+  // DELETE: two replicas would race the same rows for nothing.
+  PLAY_LOG_RETENTION: 'play-log:retention',
   // 2026-10-22 — one-shot re-wrap of every stored credential envelope onto the
   // primary DEVICE_SECRET_KEY during a rotation window
   // (security/key-rotation-rewrap.service.ts). Every write is guarded on the

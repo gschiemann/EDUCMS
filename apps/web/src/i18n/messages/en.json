@@ -2277,6 +2277,11 @@
       "rebootTypeTitle": "Type {token} to confirm",
       "rebootTypeBody": "This restarts a screen you may not be able to reach. Type {token} (uppercase) to go ahead.",
       "rebootSent": "Restart sent. The device should be back in about a minute.",
+      "appRestart": "Restart app",
+      "appRestartConfirmTitle": "Restart the player app?",
+      "appRestartConfirmBody": "“{name}” will go dark for about 10 to 30 seconds while the player app restarts. The device itself does not restart. It will not restart during an emergency alert, an update or pairing.",
+      "appRestartContinue": "Restart app",
+      "appRestartSent": "Restart sent. The player should be back in under a minute.",
       "sendFailed": "Couldn’t send that command.",
       "sendTimedOut": "No answer after {seconds} seconds, so we can't tell if it worked. If the screen went dark, press Awake.",
       "notDelivered": "Couldn't reach this screen, so nothing changed. Try again in a moment.",
@@ -2297,6 +2302,8 @@
         "rebootBlockedOtherOwner": "Not available — another management app already owns this device, so remote restart can’t be granted.",
         "rebootNeedsProvisioning": "Not available — remote restart needs device-owner setup, which means a factory reset and re-enrolling this box.",
         "rebootUnavailable": "Not available — this device hasn’t granted remote restart.",
+        "appRestartOk": "The player app can restart itself on this device.",
+        "appRestartUnavailable": "Not available — this device’s player can’t bring itself back after a restart (it needs “Display over other apps” from setup, or a newer player).",
         "blankDeviceAdmin": "Should turn the screen off. On some devices it shows black with the backlight on instead.",
         "blankVendorRecipe": "Turns the screen off on most panels. If this model doesn't support it, the screen shows black instead.",
         "blankScreenTimeout": "Uses the Android screen timeout to power the panel down. Most signage boxes honour it; a few ignore it and just show black.",
@@ -8422,7 +8429,19 @@
     "empty": "No files here yet. Upload a file or choose another folder."
   },
   "playerMenu": {
-    "importFromUsb": "Import from USB"
+    "importFromUsb": "Import from USB",
+    "unpairPin": {
+      "title": "Enter the screen PIN",
+      "body": "Your organization protects this screen with a PIN. Enter it to unpair here, or unpair from the dashboard.",
+      "hint": "Arrows and OK, or type the digits · Back to cancel",
+      "delete": "Delete",
+      "ok": "OK",
+      "wrong": "Wrong PIN. Try again.",
+      "locked": "Too many wrong PINs. Try again later, or unpair this screen from the dashboard.",
+      "unreachable": "Cannot reach the server to check the PIN. The screen stays paired. Unpair it from the dashboard.",
+      "required": "This screen needs its PIN to be unpaired here.",
+      "checking": "Checking…"
+    }
   },
   "ui": {
     "filter": "Filter",
@@ -8564,7 +8583,7 @@
     "summaryWeekly": "every {day} at {time}",
     "saved": "Saved. Screens in this group restart {summary}.",
     "savedOff": "Scheduled restart is off for this group.",
-    "noneCanRestart": "None of these screens can restart remotely yet: the player can only restart a device it manages fully, and VenueOS does not take that control. The setting is kept and starts working on any screen that reports it can restart.",
+    "noneCanRestart": "None of these screens can restart remotely yet. VenueOS restarts the player app (not the device), and only on a screen whose player has proved it can bring itself back: a current player with “Display over other apps” granted in setup. The setting is kept and starts working on any screen that reports it can restart.",
     "someCannot": "{count} of {total} screens can't restart remotely and will be skipped.",
     "screensHeading": "Screens ({count})",
     "noScreens": "This group has no screens yet.",
@@ -8597,5 +8616,23 @@
       "tenant-cap": "tonight's limit was reached",
       "other": "unknown reason"
     }
+  },
+  "screenPin": {
+    "title": "Screen PIN",
+    "desc": "Asked on a screen before its on-screen menu can unpair it. 4 to 8 digits. Removing a screen from the dashboard never needs it.",
+    "statusSet": "A screen PIN is set.",
+    "statusUnset": "No screen PIN. Anyone at a screen can unpair it from its on-screen menu.",
+    "pinLabel": "New PIN",
+    "confirmLabel": "Repeat PIN",
+    "save": "Set PIN",
+    "change": "Change PIN",
+    "clear": "Remove PIN",
+    "saved": "PIN saved. Screens ask for it from their next update (about a minute).",
+    "cleared": "PIN removed.",
+    "mismatch": "The two PINs do not match.",
+    "invalid": "Use 4 to 8 digits.",
+    "saveFailed": "Could not save. Try again.",
+    "readOnly": "Only organization admins can change the screen PIN.",
+    "recovery": "Forgot the PIN? Remove the screen from Screens and pair it again, or set a new PIN here."
   }
 }

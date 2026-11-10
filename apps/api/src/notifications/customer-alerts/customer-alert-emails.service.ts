@@ -62,6 +62,9 @@ import {
   orgHourlyLimit,
   platformClusterAround,
   platformGate,
+  repairCandidate,
+  repairRecovered,
+  sharedCredentialEvent,
   sharedProofStall,
   resolveAlertMode,
   type AlertMode,
@@ -193,6 +196,8 @@ export interface CustomerAlertTickResult {
   offlineMissedOnTime: number;
   offlineCandidates: number;
   noContentCandidates: number;
+  /** 2026-11-09 — screens whose re-pair state is confirmed due this scan (before the defer rules). */
+  repairCandidates: number;
   deferred: Record<string, number>;
   opened: number;
   silenced: number;
@@ -222,6 +227,8 @@ export class CustomerAlertEmailsService {
   private readonly noContentSeen = new ConsecutiveScans();
   /** No content ≥ 20 min, consecutive scans. */
   private readonly noContentDue = new ConsecutiveScans();
+  /** REPAIR_REQUIRED (2026-11-09): due by age, seen on this many consecutive scans. */
+  private readonly repairDue = new ConsecutiveScans();
   /** Tenants the cohort pass called a site-wide drop, and when. */
   private readonly infraAt = new Map<string, number>();
   private platformQuietUntil = 0;
@@ -345,6 +352,7 @@ export class CustomerAlertEmailsService {
       offlineMissedOnTime: 0,
       offlineCandidates: 0,
       noContentCandidates: 0,
+      repairCandidates: 0,
       deferred: {},
       opened: 0,
       silenced: 0,
@@ -397,6 +405,7 @@ export class CustomerAlertEmailsService {
     const maxAgeOf = (id: string) =>
       patternRows.has(id) ? ALERT_RULES.DAILY_DARK_MAX_MS + ALERT_RULES.DAILY_DARK_RETURN_SLACK_MS : ALERT_RULES.OFFLINE_MAX_AGE_MS;
     const openNoContent = open('NO_CONTENT');
+    const openRepair = open('REPAIR_REQUIRED');
 
     // ── When each offline screen's problem STARTED (2026-10-25) ──
     // Its last check-in — unless it went dark while its on/off schedule had it
@@ -451,6 +460,7 @@ export class CustomerAlertEmailsService {
     if (this.countedInRestartQuiet && !ownerOnly) {
       this.offlineDue.reset();
       this.noContentDue.reset();
+      this.repairDue.reset();
     }
     this.countedInRestartQuiet = ownerOnly;
 
@@ -471,11 +481,16 @@ export class CustomerAlertEmailsService {
     });
     this.noContentDue.observe(noContentDueNow.map((c) => c.row.id), now);
 
+    // REPAIR_REQUIRED (2026-11-09): marked ≥ 24 h, still pinging, on two scans.
+    const repairDueNow = await this.findRepairCandidates(now, openRepair);
+    this.repairDue.observe(repairDueNow.map((r) => r.id), now);
+
     if (!gate.open && !ownerOnly) {
       // Nothing is decided while the platform itself is suspect — not even a
       // recovery. Confirmation starts over once it is healthy again.
       this.offlineDue.reset();
       this.noContentDue.reset();
+      this.repairDue.reset();
       result.gate = gate.reason;
       return result;
     }
@@ -489,6 +504,8 @@ export class CustomerAlertEmailsService {
       if (ageOf(s) >= ALERT_RULES.STRAGGLER_MS && ageOf(s) <= maxAgeOf(s.id)) offlineActionable.set(s.id, s);
     }
     const noContentActionable = noContentDueNow.filter((c) => this.noContentDue.confirmed(c.row.id));
+    const repairActionable = repairDueNow.filter((r) => this.repairDue.confirmed(r.id));
+    result.repairCandidates = repairActionable.length;
     result.offlineCandidates = offlineActionable.size;
     result.noContentCandidates = noContentActionable.length;
 
@@ -499,6 +516,7 @@ export class CustomerAlertEmailsService {
     const tenantIds = new Set<string>([
       ...snapshot.filter((s) => ageOf(s) >= ALERT_RULES.OFFLINE_DUE_MS && ageOf(s) <= maxAgeOf(s.id)).map((s) => s.tenantId),
       ...noContent.map((c) => c.row.tenantId as string),
+      ...repairActionable.map((r) => r.tenantId as string),
       ...incidents.map((i) => i.tenantId),
     ]);
     const tenants = await this.loadTenants(tenantIds);
@@ -521,6 +539,13 @@ export class CustomerAlertEmailsService {
         startedAtMs: problemStartOf(c),
         contentUnavailable: c.verdict.blank && c.verdict.signal === 'content-unavailable',
       })),
+      ...repairActionable.map((r) => ({
+        screenId: r.id,
+        tenantId: r.tenantId as string,
+        screenName: r.name,
+        kind: 'REPAIR_REQUIRED' as const,
+        startedAtMs: (r.authStateChangedAt as Date).getTime(),
+      })),
     ];
 
     // ── 1. Intended downtime / maintenance / content facts → defer ──
@@ -539,7 +564,9 @@ export class CustomerAlertEmailsService {
         defer('screen-gone');
         continue;
       }
-      const reason = intendedDowntime(f.facts, p.kind, p.startedAtMs, now, p.missedOnTime ? 'missed-on-time' : undefined);
+      // A re-pair state is a day old when it is first judged: "was the screen
+      // meant to be off when it began?" is the wrong question, so it is asked of NOW.
+      const reason = intendedDowntime(f.facts, p.kind, p.kind === 'REPAIR_REQUIRED' ? now : p.startedAtMs, now, p.missedOnTime ? 'missed-on-time' : undefined);
       if (reason === 'daily-pattern' && !ownerOnly) {
         // The screen's usual nightly dark spell: record it (SILENT) so the
         // pattern chain survives the row being rewritten, and so the
@@ -595,6 +622,23 @@ export class CustomerAlertEmailsService {
       }
     }
 
+    // ── 1c. Re-pair states that began in one burst share one cause (a key
+    // rotation, a deploy of ours): the platform's own credential alarm owns it ──
+    if (real.length > 0 && !ownerOnly) {
+      const burst = sharedCredentialEvent(
+        real.filter((p) => p.kind === 'REPAIR_REQUIRED').map((p) => ({ screenId: p.screenId, startedAtMs: p.startedAtMs })),
+      );
+      if (burst.size > 0) {
+        for (const p of [...real]) {
+          if (!burst.has(p.screenId) || p.kind !== 'REPAIR_REQUIRED') continue;
+          await this.upsertIncident(p, { state: 'SILENT', reason: 'shared-credential-event', emailed: false, mode });
+          result.silenced++;
+          defer('shared-credential-event');
+          real.splice(real.indexOf(p), 1);
+        }
+      }
+    }
+
     // ── 2. Platform incident: many organisations at once is OUR problem ──
     // The cluster is read from EVERY screen currently in trouble — offline
     // past the scanner's threshold, not only the confirmed ones, so the first
@@ -640,7 +684,8 @@ export class CustomerAlertEmailsService {
           ...(p.missedOnTime ? { scheduled: true } : {}),
         }));
       const fleet = await this.recentlyActiveFleet(now);
-      const inIncident = real.filter((p) => platformClusterAround(p.startedAtMs, events, fleet).incident);
+      // A re-pair state began a day ago: it has no place in a minutes-wide drop cluster.
+      const inIncident = real.filter((p) => p.kind !== 'REPAIR_REQUIRED' && platformClusterAround(p.startedAtMs, events, fleet).incident);
       if (inIncident.length > 0) {
         result.platformIncident = true;
         this.platformQuietUntil = now + ALERT_RULES.PLATFORM_QUIET_MS;
@@ -653,6 +698,7 @@ export class CustomerAlertEmailsService {
         await this.alertPlatformIncident(inIncident, events, fleet, tenants, now);
         this.offlineDue.reset();
         this.noContentDue.reset();
+        this.repairDue.reset();
         result.gate = 'platform-incident';
         return result;
       }
@@ -692,7 +738,7 @@ export class CustomerAlertEmailsService {
     if (result.opened || result.held || result.recovered || result.silenced || result.sends) {
       this.logger.log(
         `[alert-email] mode=${mode} offline=${result.offlineCandidates} missedOnTime=${result.offlineMissedOnTime} ` +
-          `noContent=${result.noContentCandidates} ` +
+          `noContent=${result.noContentCandidates} repair=${result.repairCandidates} ` +
           `opened=${result.opened} held=${result.held} silenced=${result.silenced} recovered=${result.recovered} ` +
           `sends=${result.sends} deferred=${JSON.stringify(result.deferred)}`,
       );
@@ -732,6 +778,37 @@ export class CustomerAlertEmailsService {
   }
 
   // ─── No-content candidates ──────────────────────────────────────────────
+
+  /**
+   * Screens marked REPAIR_REQUIRED for at least a day that are pinging now
+   * (`repairCandidate`, the policy). Tenant-constrained by the `tenantId: not
+   * null` + active-tenant filter and judged per screen row. A failed read is
+   * silence.
+   */
+  private async findRepairCandidates(now: number, openRepair: Map<string, IncidentRow>): Promise<FactRow[]> {
+    try {
+      const rows = (await this.prisma.client.screen.findMany({
+        where: {
+          tenantId: { not: null },
+          status: { notIn: ['REVOKED', 'PENDING'] },
+          tenant: { is: { archivedAt: null } },
+          authState: 'REPAIR_REQUIRED',
+          authStateChangedAt: {
+            not: null,
+            gte: new Date(now - ALERT_RULES.REPAIR_MAX_AGE_MS),
+            lte: new Date(now - ALERT_RULES.REPAIR_DUE_MS),
+          },
+          lastPingAt: { gte: new Date(now - ALERT_RULES.PING_FRESH_MS), lte: new Date(now + MIN) },
+        },
+        select: FACT_SELECT,
+        take: 2_000,
+      })) as FactRow[];
+      return rows.filter((r) => !openRepair.has(r.id) && repairCandidate(r, now) === 'due');
+    } catch (e) {
+      this.logger.warn(`[alert-email] repair read failed: ${(e as Error).message}`);
+      return [];
+    }
+  }
 
   private async findNoContentCandidates(
     now: number,
@@ -825,7 +902,8 @@ export class CustomerAlertEmailsService {
         .findMany({
           where: {
             tenantId: { in: tenantIds },
-            action: { in: [DISPLAY_AUDIT_ACTIONS.CONTROL, DISPLAY_AUDIT_ACTIONS.REBOOT] },
+            // APP_RESTART (2026-11-09): a remote app restart is maintenance like a reboot.
+            action: { in: [DISPLAY_AUDIT_ACTIONS.CONTROL, DISPLAY_AUDIT_ACTIONS.REBOOT, DISPLAY_AUDIT_ACTIONS.APP_RESTART] },
             targetId: { in: ids },
             createdAt: { gte: new Date(now - 14 * 24 * 60 * MIN) },
           },
@@ -900,7 +978,11 @@ export class CustomerAlertEmailsService {
       );
       const settleFrom = now - ALERT_RULES.MAINTENANCE_SETTLE_MS;
       const rebootTimes = mine
-        .filter((a) => a.action === DISPLAY_AUDIT_ACTIONS.REBOOT && a.createdAt.getTime() >= settleFrom)
+        .filter(
+          (a) =>
+            (a.action === DISPLAY_AUDIT_ACTIONS.REBOOT || a.action === DISPLAY_AUDIT_ACTIONS.APP_RESTART) &&
+            a.createdAt.getTime() >= settleFrom,
+        )
         .map((a) => a.createdAt);
       const maintenanceTimes = [...rebootTimes, ...ledger.filter((l) => l.screenId === row.id).map((l) => l.createdAt)];
       const lastMaintenanceAt = maintenanceTimes.reduce<Date | null>((m, d) => (!m || d > m ? d : m), null);
@@ -1029,7 +1111,8 @@ export class CustomerAlertEmailsService {
     // Not in the read: look at the screen itself (unknowable when the read was truncated).
     const maybeUp = truncated ? [] : offlineOpen.filter((i) => !offlineById.has(i.screenId));
     const noContentOpen = openRows.filter((i) => i.kind === 'NO_CONTENT');
-    const ids = [...new Set([...maybeUp, ...noContentOpen].map((i) => i.screenId))];
+    const repairOpen = openRows.filter((i) => i.kind === 'REPAIR_REQUIRED');
+    const ids = [...new Set([...maybeUp, ...noContentOpen, ...repairOpen].map((i) => i.screenId))];
     if (ids.length === 0) return out;
     let rows: FactRow[];
     try {
@@ -1048,7 +1131,7 @@ export class CustomerAlertEmailsService {
       return !!at && now - at.getTime() <= ALERT_RULES.PING_FRESH_MS && at.getTime() <= now + MIN;
     };
 
-    for (const i of [...maybeUp, ...noContentOpen]) {
+    for (const i of [...maybeUp, ...noContentOpen, ...repairOpen]) {
       const r = byId.get(i.screenId);
       // Deleted, unpaired, revoked or moved: nothing to say, close quietly.
       if (!r || r.tenantId !== i.tenantId || r.status === 'REVOKED') {
@@ -1058,6 +1141,10 @@ export class CustomerAlertEmailsService {
       let healthy: boolean;
       if (i.kind === 'OFFLINE') {
         healthy = pingFresh(r);
+      } else if (i.kind === 'REPAIR_REQUIRED') {
+        // Trust is back when the column says so; no ping is needed to say it
+        // (a screen that went dark since is judged as OFFLINE, on its own row).
+        healthy = repairRecovered(r.authState);
       } else {
         if (!pingFresh(r)) {
           if (i.recoveringSince) await this.setRecovering(i, null);
@@ -1162,7 +1249,7 @@ export class CustomerAlertEmailsService {
       };
       for (const p of orgProblems) groupOf(p.tenantId, p.kind, mode).problems.push(p);
       for (const r of orgRecoveries) {
-        groupOf(r.incident.tenantId, r.incident.kind === 'OFFLINE' ? 'BACK_ONLINE' : 'CONTENT_RESTORED', r.sendMode).recs.push(r);
+        groupOf(r.incident.tenantId, recoveryKindOf(r.incident.kind), r.sendMode).recs.push(r);
       }
 
       for (const g of groups.values()) {
@@ -1195,7 +1282,7 @@ export class CustomerAlertEmailsService {
             screenName: r.incident.screenName,
             locationName: location?.name ?? '—',
             minutes:
-              g.kind === 'BACK_ONLINE' ? Math.max(1, Math.round((r.recoveredAtMs - r.incident.startedAt.getTime()) / MIN)) : undefined,
+              g.kind === 'BACK_ONLINE' || g.kind === 'REPAIR_RESTORED' ? Math.max(1, Math.round((r.recoveredAtMs - r.incident.startedAt.getTime()) / MIN)) : undefined,
           })),
         ];
         const siteWide = g.kind === 'OFFLINE' && this.infraAt.has(g.tenantId);
@@ -1256,7 +1343,7 @@ export class CustomerAlertEmailsService {
         heldRecoveries.push(h);
         items.push({
           tenantId: h.tenantId,
-          kind: h.kind === 'OFFLINE' ? 'BACK_ONLINE' : 'CONTENT_RESTORED',
+          kind: recoveryKindOf(h.kind),
           screenName: h.screenName,
           locationName: nameOf(h.tenantId),
         });
@@ -1278,7 +1365,7 @@ export class CustomerAlertEmailsService {
     for (const r of args.recoveries) {
       items.push({
         tenantId: r.incident.tenantId,
-        kind: r.incident.kind === 'OFFLINE' ? 'BACK_ONLINE' : 'CONTENT_RESTORED',
+        kind: recoveryKindOf(r.incident.kind),
         screenName: r.incident.screenName,
         locationName: nameOf(r.incident.tenantId),
       });
@@ -1630,6 +1717,11 @@ export class CustomerAlertEmailsService {
   }
 }
 
+/** The recovery note's kind for an incident's problem kind. */
+function recoveryKindOf(kind: string): ScreenItemKind {
+  return kind === 'OFFLINE' ? 'BACK_ONLINE' : kind === 'REPAIR_REQUIRED' ? 'REPAIR_RESTORED' : 'CONTENT_RESTORED';
+}
+
 // ─── Screen columns every rule reads ──────────────────────────────────────
 
 const FACT_SELECT = {
@@ -1644,6 +1736,7 @@ const FACT_SELECT = {
   lastRenderedAt: true,
   lastRenderedHash: true,
   authState: true,
+  authStateChangedAt: true,
   nativeRuntimeReport: true,
   nativeRuntimeReportAt: true,
   credentialEpochRotatedAt: true,
@@ -1667,6 +1760,7 @@ export interface FactRow {
   lastRenderedAt: Date | null;
   lastRenderedHash: string | null;
   authState: string | null;
+  authStateChangedAt: Date | null;
   nativeRuntimeReport: unknown;
   nativeRuntimeReportAt: Date | null;
   credentialEpochRotatedAt: Date | null;

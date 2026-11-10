@@ -25,7 +25,7 @@ export interface QuickControls {
   sleepAwake: boolean;
   volume: boolean;
   brightness: boolean;
-  /** The restart button. Only where the unit can actually restart. */
+  /** The restart button. Only where the unit can actually restart (device reboot or app restart). */
   restart: boolean;
   /** The one-line on/off schedule. Dead on a browser player, so hidden there. */
   schedule: boolean;
@@ -39,7 +39,8 @@ export interface QuickControls {
  * needs the native bridge and would fail 100% of the time.
  */
 export function resolveQuickControls(
-  caps: Pick<ResolvedDisplayControls, 'reported' | 'volume' | 'brightness' | 'reboot'>,
+  caps: Pick<ResolvedDisplayControls, 'reported' | 'volume' | 'brightness' | 'reboot'> &
+    Partial<Pick<ResolvedDisplayControls, 'appRestart'>>,
   opts: { browserPlayer?: boolean } = {},
 ): QuickControls {
   if (opts.browserPlayer && !caps.reported) {
@@ -51,7 +52,7 @@ export function resolveQuickControls(
     // at all (the API refuses it), so `caps.volume.available` is already false.
     volume: caps.volume.available,
     brightness: caps.brightness.available,
-    restart: caps.reboot.available,
+    restart: caps.reboot.available || caps.appRestart?.available === true,
     schedule: true,
   };
 }

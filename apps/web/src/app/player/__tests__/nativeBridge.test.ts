@@ -633,6 +633,166 @@ describe('SEC-002 — the legacy nonce prefix', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────
+/**
+ * ⚠️ LIFE SAFETY — the page-authenticated twins (2026-11-09).
+ *
+ * On the every-frame legacy object a content iframe can call
+ * `displayEmergencyHold(false)` and `heartbeatV2(...)` too. A newer APK
+ * offers `displayEmergencyHoldAuth(nonce, active)` and
+ * `heartbeatV2Auth(nonce, json)`; once the page has used one, the APK
+ * refuses an un-authenticated release and ignores an un-authenticated
+ * heartbeat's state. The page must therefore use the twin whenever it can,
+ * and must send the exact historic call whenever it cannot — an APK without
+ * the twin, or a page without the nonce, has to keep working unchanged.
+ */
+describe('page-authenticated hold and heartbeat on the legacy object', () => {
+  const NONCE = 'b'.repeat(64);
+
+  it('uses the Auth twin, nonce first, when the APK has it and the nonce is present', () => {
+    const legacy = {
+      displayEmergencyHold: jest.fn(() => '{"ok":true}'),
+      displayEmergencyHoldAuth: jest.fn(() => '{"ok":true}'),
+      heartbeatV2: jest.fn(),
+      heartbeatV2Auth: jest.fn(),
+    };
+    w().EduCmsNative = legacy;
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+
+    const out = b.nativeFireChecked('displayEmergencyHold', false, false);
+    expect(out.delivered).toBe(true);
+    // The banner flag never crosses the legacy object — one boolean, as before.
+    expect(legacy.displayEmergencyHoldAuth).toHaveBeenCalledWith(NONCE, false);
+    expect(legacy.displayEmergencyHold).not.toHaveBeenCalled();
+
+    expect(b.nativeFire('heartbeatV2', '{"syncOk":true}')).toBe(true);
+    expect(legacy.heartbeatV2Auth).toHaveBeenCalledWith(NONCE, '{"syncOk":true}');
+    expect(legacy.heartbeatV2).not.toHaveBeenCalled();
+  });
+
+  it('returns the APK refusal to the caller so the hold is retried, never latched', () => {
+    const refusal = '{"ok":false,"code":"hold-release-unauthenticated"}';
+    const legacy = {
+      displayEmergencyHold: jest.fn(() => refusal),
+      displayEmergencyHoldAuth: jest.fn(() => refusal),
+    };
+    w().EduCmsNative = legacy;
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+    const out = b.nativeFireChecked('displayEmergencyHold', false);
+    expect(out.delivered).toBe(true);
+    expect(out.result).toBe(refusal);
+  });
+
+  it('sends the exact historic call on an APK without the twin (every APK shipped before this change)', () => {
+    const legacy = { displayEmergencyHold: jest.fn(() => '{"ok":true}'), heartbeatV2: jest.fn() };
+    w().EduCmsNative = legacy;
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+
+    b.nativeFireChecked('displayEmergencyHold', true, true);
+    expect(legacy.displayEmergencyHold).toHaveBeenCalledWith(true);
+    b.nativeFire('heartbeatV2', '{}');
+    expect(legacy.heartbeatV2).toHaveBeenCalledWith('{}');
+  });
+
+  it('sends the exact historic call when the nonce never landed, even if the APK has the twin', () => {
+    for (const bad of [undefined, '', 42, null, {}]) {
+      clearGlobals();
+      const legacy = {
+        displayEmergencyHold: jest.fn(() => '{"ok":true}'),
+        displayEmergencyHoldAuth: jest.fn(() => '{"ok":true}'),
+        heartbeatV2: jest.fn(),
+        heartbeatV2Auth: jest.fn(),
+      };
+      w().EduCmsNative = legacy;
+      if (bad !== undefined) w().__eduCmsBridgeNonce = bad;
+      const b = loadBridge();
+
+      b.nativeFireChecked('displayEmergencyHold', false);
+      expect(legacy.displayEmergencyHold).toHaveBeenCalledWith(false);
+      expect(legacy.displayEmergencyHoldAuth).not.toHaveBeenCalled();
+      b.nativeFire('heartbeatV2', '{}');
+      expect(legacy.heartbeatV2).toHaveBeenCalledWith('{}');
+      expect(legacy.heartbeatV2Auth).not.toHaveBeenCalled();
+    }
+  });
+
+  it('falls back to the plain call when the twin throws — a hold or heartbeat is never lost to it', () => {
+    const legacy = {
+      displayEmergencyHold: jest.fn(() => '{"ok":true}'),
+      displayEmergencyHoldAuth: jest.fn(() => {
+        throw new Error('Method not found');
+      }),
+      heartbeatV2: jest.fn(),
+      heartbeatV2Auth: jest.fn(() => {
+        throw new Error('Method not found');
+      }),
+    };
+    w().EduCmsNative = legacy;
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+
+    const out = b.nativeFireChecked('displayEmergencyHold', true);
+    expect(out.delivered).toBe(true);
+    expect(legacy.displayEmergencyHold).toHaveBeenCalledWith(true);
+    expect(b.nativeFire('heartbeatV2', '{}')).toBe(true);
+    expect(legacy.heartbeatV2).toHaveBeenCalledWith('{}');
+  });
+
+  it('changes nothing over the CHANNEL — no twin name, no nonce on the wire', () => {
+    const ch = new FakeChannel();
+    w().EduCmsNativeChannel = ch;
+    w().EduCmsNative = { displayEmergencyHoldAuth: jest.fn(), heartbeatV2Auth: jest.fn() };
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+
+    b.nativeFireChecked('displayEmergencyHold', false, false);
+    b.nativeFire('heartbeatV2', '{}');
+    expect(ch.parsed(0).method).toBe('displayEmergencyHold');
+    expect(ch.parsed(0).args).toEqual([false, false]);
+    expect(ch.parsed(1).method).toBe('heartbeatV2');
+    expect(ch.posted.join('')).not.toContain(NONCE);
+    expect(ch.posted.join('')).not.toContain('Auth');
+  });
+
+  it('touches no other method — a twin-shaped name on the object is never called for them', () => {
+    const legacy = { reload: jest.fn(), reloadAuth: jest.fn(), heartbeat: jest.fn(), heartbeatAuth: jest.fn() };
+    w().EduCmsNative = legacy;
+    w().__eduCmsBridgeNonce = NONCE;
+    const b = loadBridge();
+    b.nativeFire('reload');
+    b.nativeFire('heartbeat');
+    expect(legacy.reload).toHaveBeenCalledWith();
+    expect(legacy.heartbeat).toHaveBeenCalledWith();
+    expect(legacy.reloadAuth).not.toHaveBeenCalled();
+    expect(legacy.heartbeatAuth).not.toHaveBeenCalled();
+  });
+
+  it('names twins the APK really exposes, with the nonce as the first parameter', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = jest.requireActual('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = jest.requireActual('path') as typeof import('path');
+    const kt = path.resolve(__dirname, '../../../../../player/app/src/main/java/com/educms/player/WebAppBridge.kt');
+    const ts = path.resolve(__dirname, '../nativeBridge.ts');
+    if (!fs.existsSync(kt)) {
+      // eslint-disable-next-line no-console
+      console.warn(`[nativeBridge.test] skipping the Auth-twin name check — ${kt} not found`);
+      return;
+    }
+    const bridgeSrc = fs.readFileSync(kt, 'utf8');
+    const tableSrc = /const LEGACY_PAGE_AUTH_METHODS[^=]*=\s*\{([\s\S]*?)\};/.exec(fs.readFileSync(ts, 'utf8'));
+    expect(tableSrc).not.toBeNull();
+    const pairs = Array.from((tableSrc as RegExpExecArray)[1].matchAll(/(\w+):\s*'(\w+)'/g)).map((m) => [m[1], m[2]]);
+    expect(pairs.map((p) => p[0]).sort()).toEqual(['displayEmergencyHold', 'heartbeatV2']);
+    for (const [, twin] of pairs) {
+      expect(bridgeSrc).toMatch(new RegExp(`@JavascriptInterface\\s+fun ${twin}\\(nonce: String, `));
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
 describe('method tables stay in sync with the APK', () => {
   it('every advertised method is in exactly one of the two lists', () => {
     const b = loadBridge();

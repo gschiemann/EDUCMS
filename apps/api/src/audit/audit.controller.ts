@@ -52,7 +52,7 @@ function clampInt(value: string | undefined, def: number, min: number, max: numb
   return Math.min(Math.max(n, min), max);
 }
 
-function csvEscape(v: unknown): string {
+export function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return '';
   let s = String(v);
   // CSV formula-injection defense (2026-05-23 launch audit P1):

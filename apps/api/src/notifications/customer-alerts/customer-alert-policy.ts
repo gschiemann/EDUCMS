@@ -114,6 +114,19 @@ export const ALERT_RULES = {
   POWER_NATIVE_APPLY_MS: 2 * MIN,
   /** Tolerance between the panel's own clock and ours when tying its blank record to our command. */
   POWER_CLOCK_SLACK_MS: 10 * MIN,
+  /**
+   * 2026-11-09 — "needs re-pairing". The player re-registers every 10 minutes
+   * and the server's one-shot restore window heals a downgraded credential on
+   * its own, so a screen still marked REPAIR_REQUIRED after this long is not
+   * healing by itself and needs a person. Content keeps playing meanwhile:
+   * this is a "needs attention soon" note, never an outage.
+   */
+  REPAIR_DUE_MS: 24 * 60 * MIN,
+  /** Marked longer ago than this when we first look = old news, never emailed (the long-standing tail). */
+  REPAIR_MAX_AGE_MS: 14 * 24 * 60 * MIN,
+  /** This many screens flipping to REPAIR_REQUIRED within REPAIR_CLUSTER_MS of each other share one cause (a key rotation, a bad deploy of ours), not N customer problems. */
+  REPAIR_CLUSTER_MS: 5 * MIN,
+  REPAIR_CLUSTER_MIN_SCREENS: 3,
 } as const;
 
 export function orgHourlyLimit(env: NodeJS.ProcessEnv = process.env): number {
@@ -139,7 +152,7 @@ export function platformGate(input: {
 
 // ─── Intended downtime (DEFER) ────────────────────────────────────────────
 
-export type ProblemKind = 'OFFLINE' | 'NO_CONTENT';
+export type ProblemKind = 'OFFLINE' | 'NO_CONTENT' | 'REPAIR_REQUIRED';
 
 export interface ScreenFacts {
   id: string;
@@ -510,6 +523,77 @@ export function noContentVerdict(
   if (grade === 'not-painting' && lastRenderedAt) return { blank: true, signal: 'stale-proof', sinceMs: lastRenderedAt.getTime() };
   if (grade === 'content-unavailable') return { blank: true, signal: 'content-unavailable' };
   return { blank: false };
+}
+
+// ─── "Needs re-pairing" (2026-11-09) ──────────────────────────────────────
+
+/**
+ * Is this screen a re-pair candidate on this scan? Pure. `Screen.authState` is
+ * `REPAIR_REQUIRED` and `authStateChangedAt` is the moment it flipped (written
+ * on the TRANSITION only — screens.controller.ts, repair-required-stamp.ts), so
+ * the age of the state is exact, not a guess.
+ *
+ *   due        — marked for REPAIR_DUE_MS … REPAIR_MAX_AGE_MS and pinging now;
+ *                judged by the two-scan confirmation and the usual defer rules.
+ *   not-yet    — newer than REPAIR_DUE_MS: the player and the server's restore
+ *                window may still heal it (a state the system heals itself
+ *                never asks the operator).
+ *   too-old    — long-standing: the first look at a months-old state is never
+ *                an email (nobody was told when it began; a flood on deploy).
+ *   not-online — not pinging: an OFFLINE matter, whose own rules apply.
+ *   no-clock / future-clock — the flip time is missing or not credible.
+ *   not-required — any other trust state (PROVEN, null, unknown).
+ */
+export type RepairCandidate =
+  | 'due'
+  | 'not-yet'
+  | 'too-old'
+  | 'not-online'
+  | 'no-clock'
+  | 'future-clock'
+  | 'not-required';
+
+export function repairCandidate(
+  s: { authState: string | null; authStateChangedAt: Date | null; lastPingAt: Date | null; status?: string | null },
+  nowMs: number,
+): RepairCandidate {
+  if (s.authState !== 'REPAIR_REQUIRED') return 'not-required';
+  if (s.status === 'REVOKED' || s.status === 'PENDING') return 'not-required';
+  if (!s.authStateChangedAt) return 'no-clock';
+  const changed = s.authStateChangedAt.getTime();
+  if (!Number.isFinite(changed) || changed > nowMs + MIN) return 'future-clock';
+  const ping = s.lastPingAt?.getTime();
+  if (ping === undefined || nowMs - ping > ALERT_RULES.PING_FRESH_MS || ping > nowMs + MIN) return 'not-online';
+  const age = nowMs - changed;
+  if (age < ALERT_RULES.REPAIR_DUE_MS) return 'not-yet';
+  if (age > ALERT_RULES.REPAIR_MAX_AGE_MS) return 'too-old';
+  return 'due';
+}
+
+/**
+ * Screens whose re-pair state began in one burst. Three or more within
+ * REPAIR_CLUSTER_MS of each other did not independently lose their credential:
+ * a signing-key rotation or a deploy of ours downgraded them together (the
+ * 2026-10-23 strand), and the platform's own credential alarm owns that. Their
+ * incidents are SILENT. Returns the ids to hold back.
+ */
+export function sharedCredentialEvent(
+  problems: ReadonlyArray<{ screenId: string; startedAtMs: number }>,
+): Set<string> {
+  const out = new Set<string>();
+  const sorted = [...problems].sort((a, b) => a.startedAtMs - b.startedAtMs);
+  for (let i = 0; i < sorted.length; i++) {
+    const run = sorted.filter(
+      (x) => x.startedAtMs >= sorted[i].startedAtMs && x.startedAtMs - sorted[i].startedAtMs <= ALERT_RULES.REPAIR_CLUSTER_MS,
+    );
+    if (run.length >= ALERT_RULES.REPAIR_CLUSTER_MIN_SCREENS) for (const r of run) out.add(r.screenId);
+  }
+  return out;
+}
+
+/** A recovery note applies only when the credential is proven again. Anything but REPAIR_REQUIRED (PROVEN, or a column since cleared) is healthy. */
+export function repairRecovered(authState: string | null): boolean {
+  return authState !== 'REPAIR_REQUIRED';
 }
 
 // ─── Platform incident ────────────────────────────────────────────────────
