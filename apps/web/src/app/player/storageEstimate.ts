@@ -24,3 +24,26 @@ export function storageEstimateText(estimate: PlayerStorageEstimate | null) {
     percent: Math.max(0, Math.min(100, (estimate.usage / estimate.quota) * 100)),
   };
 }
+
+export type PersistentStorageOutcome = 'already-persistent' | 'granted' | 'declined' | 'skipped' | 'unsupported';
+
+/**
+ * Ask the browser to exempt this origin's storage (the media cache and the
+ * emergency tier in it) from automatic clean-up under disk pressure.
+ *
+ * It is a request, not a guarantee: Chromium and Safari decide silently and
+ * may say no, and an Android WebView may ignore it. Firefox answers with a
+ * permission prompt, which a screen must never show, so it is not asked.
+ * Never throws; every failure reads as "unsupported".
+ */
+export async function requestPersistentStorage(
+  storage?: Partial<Pick<StorageManager, 'persist' | 'persisted'>>,
+  userAgent = '',
+): Promise<PersistentStorageOutcome> {
+  try {
+    if (!storage || typeof storage.persist !== 'function') return 'unsupported';
+    if (typeof storage.persisted === 'function' && (await storage.persisted()) === true) return 'already-persistent';
+    if (/\bFirefox\//.test(userAgent)) return 'skipped';
+    return (await storage.persist()) === true ? 'granted' : 'declined';
+  } catch { return 'unsupported'; }
+}
