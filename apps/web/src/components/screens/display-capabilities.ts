@@ -135,6 +135,8 @@ export interface DisplayCapabilityVerdict {
   reboot?: RebootVerdict;
   hardPowerOff?: HardPowerOffVerdict;
   deviceOwnerPath?: DeviceOwnerPath;
+  /** 2026-11-09 — the player app can restart its own process ('relaunch') or not ('none'). */
+  appRestart?: 'relaunch' | 'none';
 }
 
 /**
@@ -218,6 +220,8 @@ export function parseDisplayCapabilities(raw: unknown): DisplayCapabilityVerdict
     reboot: pick<RebootVerdict>(v.reboot, REBOOT_VALUES),
     hardPowerOff: pick<HardPowerOffVerdict>(v.hardPowerOff, HARD_POWER_VALUES),
     deviceOwnerPath: pick<DeviceOwnerPath>(v.deviceOwnerPath, OWNER_PATH_VALUES),
+    // readStoredDisplayVerdict already narrowed it to exactly these two.
+    appRestart: v.appRestart === 'relaunch' ? 'relaunch' : 'none',
   };
 }
 
@@ -261,6 +265,11 @@ export interface ResolvedDisplayControls {
   /** The WAKE action. Never gated (C4 — recovery direction). */
   wake: ControlAxis;
   reboot: ControlAxis;
+  /**
+   * 2026-11-09 — restart the player APP (not the device). Available only
+   * where the APK proved it can bring itself back; the note says why not.
+   */
+  appRestart: ControlAxis;
   /**
    * The HARD power pair (2026-08-25 blank/power split). Separate from
    * blank/wake because it is the only thing here that touches panel power.
@@ -660,6 +669,7 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
       blank: resolveBlankAxis(),
       wake: resolveWakeAxis(),
       reboot: NOT_REPORTED,
+      appRestart: NOT_REPORTED,
       // Panel POWER still needs an observed verdict — that is where the
       // hardware went, so that is where fail-closed moved.
       power: resolvePowerAxes(undefined, false),
@@ -762,7 +772,12 @@ export function resolveDisplayControls(raw: unknown): ResolvedDisplayControls {
           }
         : NOT_REPORTED;
 
-  return { reported: true, verdict, volume, brightness, blank, wake, reboot, power };
+  const appRestart: ControlAxis =
+    verdict.appRestart === 'relaunch'
+      ? { available: true, softwareOnly: false, noteKey: 'screens.display.note.appRestartOk' }
+      : { available: false, softwareOnly: false, noteKey: 'screens.display.note.appRestartUnavailable' };
+
+  return { reported: true, verdict, volume, brightness, blank, wake, reboot, appRestart, power };
 }
 
 /**

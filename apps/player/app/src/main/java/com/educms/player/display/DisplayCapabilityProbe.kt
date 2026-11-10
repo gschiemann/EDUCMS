@@ -234,7 +234,7 @@ object DisplayCapabilityProbe {
         section(root, "serial") { serialSurface(ctx) }
         section(root, "control") { resolvedControl(ctx) }
 
-        root.put("verdict", verdict(root))
+        root.put("verdict", verdict(root).put("appRestart", AppRestart.capability(ctx)))
         return root
     }
 

@@ -57,6 +57,8 @@ object NativePowerControl {
         // that was woken. See `wake.WakeReport`.
         com.educms.player.wake.WakeRecovery.attachTo(out, ctx)
         runCatching { com.educms.player.display.EmergencyPaintRecovery.report(ctx)?.let { out.put("emergencyProof", it) } }
+        // 2026-11-09 — the last remote app restart, by action id (display.AppRestart).
+        runCatching { com.educms.player.display.AppRestart.reportJson(ctx)?.let { out.put("appRestart", it) } }
         return out.toString()
     }
 

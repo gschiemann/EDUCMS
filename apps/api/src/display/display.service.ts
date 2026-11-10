@@ -125,6 +125,8 @@ export const DISPLAY_AUDIT_ACTIONS = {
   CONTROL: 'SCREEN_DISPLAY_CONTROL',
   /** Its own string so "who rebooted that screen" is a one-line grep. */
   REBOOT: 'SCREEN_DISPLAY_REBOOT',
+  /** 2026-11-09 — restart of the player APP's process (not the device). Its own string, same reason. */
+  APP_RESTART: 'SCREEN_DISPLAY_APP_RESTART',
   CAPABILITIES: 'SCREEN_DISPLAY_CAPABILITIES_CHANGED',
   SCHEDULE_CREATED: 'DISPLAY_SCHEDULE_CREATED',
   SCHEDULE_UPDATED: 'DISPLAY_SCHEDULE_UPDATED',
@@ -467,8 +469,16 @@ export function verdictChanged(
     before.screenBlank !== after.screenBlank ||
     before.reboot !== after.reboot ||
     before.hardPowerOff !== after.hardPowerOff ||
-    before.deviceOwnerPath !== after.deviceOwnerPath
+    before.deviceOwnerPath !== after.deviceOwnerPath ||
+    (before.appRestart ?? 'none') !== (after.appRestart ?? 'none')
   );
+}
+
+/** The audit action string for a display action: REBOOT and APP_RESTART get their own. */
+export function auditActionFor(action: DisplayActionType): string {
+  if (action === 'REBOOT') return DISPLAY_AUDIT_ACTIONS.REBOOT;
+  if (action === 'APP_RESTART') return DISPLAY_AUDIT_ACTIONS.APP_RESTART;
+  return DISPLAY_AUDIT_ACTIONS.CONTROL;
 }
 
 /** Refusal code for the emergency interlock. Its own string, so it is greppable. */
@@ -498,6 +508,11 @@ export function isDarkeningAction(
 ): boolean {
   if (opts.allowBlack === true) return true;
   if (action === 'BLANK' || action === 'POWER_OFF') return true;
+  // 2026-11-09 — an app restart ends the player process: the glass is dark
+  // (OEM launcher or black) for the seconds the relaunch takes, and the page
+  // that paints an alert is gone meanwhile. So it is refused under any
+  // emergency hold exactly like a blank. (The device refuses it too.)
+  if (action === 'APP_RESTART') return true;
   if (action === 'SET_BRIGHTNESS') {
     const p = typeof opts.percent === 'number' ? opts.percent : 0;
     return p < DISPLAY_RECOVERY_MIN_BRIGHTNESS_PERCENT;
@@ -692,7 +707,7 @@ export class DisplayService {
     // operator lighting a screen mid-incident is worse than the risk.
     if (opts.emergencyHold?.active && isDarkeningAction(action, opts)) {
       await this.writeAudit({
-        action: DISPLAY_AUDIT_ACTIONS.CONTROL,
+        action: auditActionFor(action),
         screenId,
         tenantId,
         userId,
@@ -713,9 +728,13 @@ export class DisplayService {
       );
       throw new DisplayActionUnsupportedError(
         DISPLAY_EMERGENCY_HOLD_CODE,
-        opts.emergencyHold.source === 'unreadable'
-          ? 'Emergency state could not be confirmed for this screen, so it cannot be dimmed or blanked right now. Try again in a moment.'
-          : 'An emergency alert is active on this screen. It cannot be blanked or dimmed until the all-clear.',
+        action === 'APP_RESTART'
+          ? opts.emergencyHold.source === 'unreadable'
+            ? 'Emergency state could not be confirmed for this screen, so its player cannot be restarted right now. Try again in a moment.'
+            : 'An emergency alert is active on this screen. Its player cannot be restarted until the all-clear.'
+          : opts.emergencyHold.source === 'unreadable'
+            ? 'Emergency state could not be confirmed for this screen, so it cannot be dimmed or blanked right now. Try again in a moment.'
+            : 'An emergency alert is active on this screen. It cannot be blanked or dimmed until the all-clear.',
         { action },
       );
     }
@@ -821,10 +840,7 @@ export class DisplayService {
       // cannot be rebooted" is exactly the kind of thing you want in the log
       // when a wall of screens is behaving oddly.
       await this.writeAudit({
-        action:
-          action === 'REBOOT'
-            ? DISPLAY_AUDIT_ACTIONS.REBOOT
-            : DISPLAY_AUDIT_ACTIONS.CONTROL,
+        action: auditActionFor(action),
         screenId,
         tenantId,
         userId,
@@ -889,10 +905,7 @@ export class DisplayService {
     const actionId = crypto.randomUUID();
     const revertAfterMs =
       typeof opts.revertAfterMs === 'number' ? opts.revertAfterMs : null;
-    const auditAction =
-      action === 'REBOOT'
-        ? DISPLAY_AUDIT_ACTIONS.REBOOT
-        : DISPLAY_AUDIT_ACTIONS.CONTROL;
+    const auditAction = auditActionFor(action);
 
     // Transport state is knowable BEFORE the publish and synchronously, so
     // the pre-publish audit row can already tell the truth about whether the

@@ -825,7 +825,8 @@ export class CustomerAlertEmailsService {
         .findMany({
           where: {
             tenantId: { in: tenantIds },
-            action: { in: [DISPLAY_AUDIT_ACTIONS.CONTROL, DISPLAY_AUDIT_ACTIONS.REBOOT] },
+            // APP_RESTART (2026-11-09): a remote app restart is maintenance like a reboot.
+            action: { in: [DISPLAY_AUDIT_ACTIONS.CONTROL, DISPLAY_AUDIT_ACTIONS.REBOOT, DISPLAY_AUDIT_ACTIONS.APP_RESTART] },
             targetId: { in: ids },
             createdAt: { gte: new Date(now - 14 * 24 * 60 * MIN) },
           },
@@ -900,7 +901,11 @@ export class CustomerAlertEmailsService {
       );
       const settleFrom = now - ALERT_RULES.MAINTENANCE_SETTLE_MS;
       const rebootTimes = mine
-        .filter((a) => a.action === DISPLAY_AUDIT_ACTIONS.REBOOT && a.createdAt.getTime() >= settleFrom)
+        .filter(
+          (a) =>
+            (a.action === DISPLAY_AUDIT_ACTIONS.REBOOT || a.action === DISPLAY_AUDIT_ACTIONS.APP_RESTART) &&
+            a.createdAt.getTime() >= settleFrom,
+        )
         .map((a) => a.createdAt);
       const maintenanceTimes = [...rebootTimes, ...ledger.filter((l) => l.screenId === row.id).map((l) => l.createdAt)];
       const lastMaintenanceAt = maintenanceTimes.reduce<Date | null>((m, d) => (!m || d > m ? d : m), null);

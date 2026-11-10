@@ -1415,6 +1415,15 @@ describe('payload normalisation', () => {
     expect(toDeviceActionJson({ action: 'SET_BRIGHTNESS', percent: 0, allowBlack: true }))
       .toBe('{"action":"SET_BRIGHTNESS","percent":0,"allowBlack":true}');
   });
+
+  it('APP_RESTART (2026-11-09) is parsed, carries its actionId to the device, and never runs over an alert', () => {
+    const cmd = parseDisplayControlCommand({ action: 'APP_RESTART', actionId: 'act-1' });
+    expect(cmd).toEqual({ action: 'APP_RESTART', actionId: 'act-1' });
+    expect(toDeviceActionJson(cmd!)).toBe('{"action":"APP_RESTART","actionId":"act-1"}');
+    // Other verbs never carry the id to the device (unchanged wire).
+    expect(toDeviceActionJson({ action: 'WAKE', actionId: 'x' })).toBe('{"action":"WAKE"}');
+    expect(displayFrameDarkensContent(cmd!)).toBe(true);
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════

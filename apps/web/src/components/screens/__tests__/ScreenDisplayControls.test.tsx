@@ -399,6 +399,32 @@ describe('ScreenDisplayControls — what actually reaches the DOM', () => {
   });
 });
 
+describe('ScreenDisplayControls — Restart app (2026-11-09)', () => {
+  it('offers "Restart app" where only the player app can restart, and posts APP_RESTART after one confirm', async () => {
+    const dialog = jest.requireActual('@/components/ui/app-dialog');
+    const spy = jest.spyOn(dialog, 'appConfirm').mockResolvedValue(true);
+    try {
+      renderPanel({ ...NO_DEVICE_OWNER, appRestart: 'relaunch' });
+      expect(rtl.queryByRole('button', { name: /Restart player/ })).toBeNull();
+      await act(async () => {
+        fireEvent.click(rtl.getByRole('button', { name: /Restart app/ }));
+      });
+      await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
+      const [path, init] = apiFetchMock.mock.calls[0];
+      expect(path).toBe('/screens/s1/display-control');
+      expect(JSON.parse(init.body).action).toBe('APP_RESTART');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('a device reboot, where it exists, keeps its own button', () => {
+    renderPanel({ ...CAPABLE, appRestart: 'relaunch' });
+    expect(rtl.getByRole('button', { name: /Restart player/ })).toBeTruthy();
+    expect(rtl.queryByRole('button', { name: /Restart app/ })).toBeNull();
+  });
+});
+
 describe('ScreenDisplayControls — the wire shape (contract C1)', () => {
   it('Sleep posts the soft BLANK where the hardware has no proven power-off', async () => {
     renderPanel({ ...CAPABLE, screenBlank: 'device-admin' });

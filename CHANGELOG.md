@@ -4,6 +4,10 @@ History of `CLAUDE.md`, newest first, one entry per stamp. It moved here on 2026
 
 **Keep it current.** When you change `CLAUDE.md`, a nested `CLAUDE.md` or one of the rulebook documents, add an entry here — `CLAUDE.md` carries no footer stamp since 2026-11-01; the entry is the stamp. A stale footer is not cosmetic: `AGENTS.md` carried the IDENTICAL `2026-05-30` stamp while drifting 361 lines from `CLAUDE.md`, which is exactly why nobody noticed it was telling agents to use a forbidden `DATABASE_URL` for three months.
 
+## 2026-11-09
+
+`apps/player/CLAUDE.md` gains the remote app restart (branch `claude/player-app-restart`, unmerged): the APK can end its own process and bring itself back through the existing relaunch ladder without device owner or root; it reports `appRestart: 'relaunch' | 'none'` in its display verdict (auto-detected, no setting), refuses during an emergency hold, an OTA, pairing, setup or user standby, is rate-limited (30 min apart, 3 per day, never in a process younger than 5 minutes), and acknowledges by action id in the native heartbeat. The API's new `APP_RESTART` display action (audit `SCREEN_DISPLAY_APP_RESTART`, refused under an emergency hold like a blank) is what the scheduled restart now sends where a device reboot is unavailable, and an app restart counts as maintenance for customer alert emails. No schema change, no new environment variable.
+
 ## 2026-11-08
 
 `apps/player/CLAUDE.md` gains the companion Manager's alert-watch watchdog (Manager wave 5, branch `fable/alert-watch-watchdog`, life safety CHANGE class — unmerged until a different-vendor review and the on-glass drill in `docs/player/ALERT-WATCH-WATCHDOG-DRILL.md`): the native alert watch stamps the Manager's provider after every pass, the Manager judges the stamp while the panel is dark and can only START the watch (re-arm, then restart its host), never the Activity, the hold or a reboot; bounded, persisted, one ladder per device. `docs/ENVIRONMENT.md` gains `MANAGER_ALERT_WATCH_WATCHDOG` (unset = today; `observe` / `on` per screen) by hand and in the generated section.

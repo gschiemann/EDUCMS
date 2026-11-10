@@ -186,6 +186,12 @@ export const DISPLAY_ACTIONS = [
   // that method, so `nativeHas` is false and the frame reports
   // `no-bridge` — an honest outcome, not a silent drop.
   'OPEN_SETUP',
+  // ── 2026-11-09 — restart the player APP's process (APK AppRestart) ─────
+  // Rides `displayApply` as itself. The server sends it ONLY to a screen whose
+  // own probe reported `appRestart: 'relaunch'`, which only an APK that parses
+  // it can do — so the five-verb rule above still holds for every older APK.
+  // Carries the server's actionId: the device acknowledges BY that value.
+  'APP_RESTART',
 ] as const;
 export type DisplayAction = (typeof DISPLAY_ACTIONS)[number];
 
@@ -420,6 +426,8 @@ export function displayFrameNeedsFreshness(cmd: DisplayControlCommand): boolean 
  */
 export function displayFrameDarkensContent(cmd: DisplayControlCommand): boolean {
   if (cmd.action === 'BLANK') return true;
+  // The glass goes dark while the app restarts: never over an alert.
+  if (cmd.action === 'APP_RESTART') return true;
   if (cmd.soft && cmd.action === 'SET_BRIGHTNESS') return softDimAlpha(cmd.percent) > 0;
   return false;
 }
@@ -518,6 +526,7 @@ export function toDeviceActionJson(cmd: DisplayControlCommand): string {
   if (cmd.percent !== undefined) body.percent = cmd.percent;
   if (cmd.revertAfterMs !== undefined) body.revertAfterMs = cmd.revertAfterMs;
   if (cmd.allowBlack) body.allowBlack = true;
+  if (cmd.action === 'APP_RESTART' && cmd.actionId) body.actionId = cmd.actionId;
   if (cmd.action === 'WAKE' && cmd.hard && cmd.nativePowerOn) {
     body.screenId = cmd.nativePowerOn.screenId;
     body.nativePowerOnRequestedAt = cmd.nativePowerOn.requestedAt;
