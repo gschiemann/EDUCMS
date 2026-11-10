@@ -195,6 +195,14 @@ async function bootstrap() {
     expressBody.json({ limit: '32kb' }),
   );
 
+  // Device play log (2026-11-09): a batch of ≤ 200 entries is ~34 KB, so this
+  // route gets its own 64 KB parser ahead of the global 5 MB one, for the same
+  // reason as telemetry above. The controller re-checks Content-Length.
+  app.use(
+    /^\/api\/v1\/screens\/[^/]+\/play-log\/?$/,
+    expressBody.json({ limit: '64kb' }),
+  );
+
   // Player diagnostics upload (2026-10-03). The APK posts its log as
   // `text/plain`; with only the JSON/form parsers below, Express 5 left the
   // body undefined and every upload was stored as empty. Route-scoped text

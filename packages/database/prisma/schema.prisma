@@ -2990,6 +2990,43 @@ model PlaybackRollupState {
   @@map("playback_rollup_state")
 }
 
+// Device play log (2026-11-09, player stability gap 7). One row per playlist
+// item the web player actually put on the glass: when it started (the
+// player's server-corrected clock), how long it was shown, and whether it
+// ran to its end. The proof-of-play SAMPLER above says which playlist was
+// scheduled every 10 minutes; this says what each screen really showed.
+//
+// Telemetry, never manifest content: NOT in MANIFEST_FED_MODELS, so a write
+// here never busts the manifest hot cache. No foreign keys: the ids are the
+// device's report, stored as opaque strings and only ever read inside the
+// row's own tenant (the tenant comes from the device credential's live screen
+// row, never from the request body).
+//
+// The primary key IS the idempotency key: a screen cannot start the same
+// playlist item twice in the same millisecond, and the player stores
+// `startedAt` once and resends it unchanged, so a retried batch is
+// `ON CONFLICT DO NOTHING`, never a double count.
+model PlayLogEntry {
+  screenId       String   @map("screen_id")
+  startedAt      DateTime @map("started_at")
+  playlistItemId String   @map("playlist_item_id")
+  tenantId       String   @map("tenant_id")
+  playlistId     String   @map("playlist_id")
+  assetId        String?  @map("asset_id")
+  shownMs        Int      @map("shown_ms")
+  completed      Boolean
+  receivedAt     DateTime @default(now()) @map("received_at")
+
+  // "What played on this screen between these times": the primary key's
+  // (screen_id, started_at) prefix. "Where did this file play": below.
+  @@id([screenId, startedAt, playlistItemId], map: "play_log_entries_pkey")
+  @@index([tenantId, assetId, startedAt])
+  // Retention sweep. BRIN: rows arrive in roughly time order, so a block-range
+  // index is a few pages instead of a btree the size of the table.
+  @@index([startedAt], type: Brin)
+  @@map("play_log_entries")
+}
+
 // Sprint 1.5 — submit-for-review workflow.
 //
 // CONTRIBUTOR creates draft assets/playlists/schedules, bundles them

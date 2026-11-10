@@ -55,6 +55,7 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 | Playback demotion (serve the 1080p copy after bad minutes) | on | `VIDEO_PLAYBACK_DEMOTION=off` / `observe` | no lighter copy → keep playing + notify | specs | tenant + platform, once/day |
 | AI model catalog sync (adopts new vendor model versions, no deploy) | on | `AI_MODEL_SYNC_DISABLED=1` | catalog stays where it is | canary test on our key | super-admin page |
 | Proof-of-play rollup + raw purge | on | `PROOF_OF_PLAY_ROLLUP_DISABLED=1` | purge never ahead of the rollup watermark | sampler specs | — |
+| Device play log (web player records items on glass, uploads every 10 min; hourly chunked retention) | on | `PLAY_LOG_DISABLED=1` (route accepts and discards, player drops its queue and stands down 6 h); `PLAY_LOG_RETENTION_DAYS≤0` stops the purge | every failure drops the entry, playback and the alert path untouched; no upload during an alert; a purge that cannot run deletes nothing | `play-log.spec.ts`, `playLog.test.ts` | — |
 | APK delivery via storage redirect | on | `PLAYER_APK_STORAGE_REDIRECT=off` | byte proxy | — | — |
 | Vendor backlight standby (Goodview) | on | `PLAYER_VENDOR_BACKLIGHT=-<uuid>`/`off` | a failed ON after our OFF withdraws BLANK, never WAKE | APK tests | — |
 | Setup email verification | auto | `SETUP_EMAIL_VERIFICATION=off` | required only when mail is deliverable | `setup-email-code` specs | — |

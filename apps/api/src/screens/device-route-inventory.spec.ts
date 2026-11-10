@@ -218,6 +218,14 @@ const DEVICE_AUTH_SITES: DeviceAuthSite[] = [
     why: 'Clears Screen.pendingRefreshAt — the durable "reload yourself" command — on the strength of the screen saying it ran it. A credential minted from a fingerprint alone could otherwise cancel a recovery command a wedged screen never received (the dashboard would then show it as confirmed).',
   },
   {
+    file: 'play-log/play-log.controller.ts',
+    fn: 'ingest',
+    routes: ['POST /api/v1/screens/:id/play-log'],
+    unpaired: 'refused',
+    unprovenAllowed: false,
+    why: 'Writes the per-play record a customer bills or reports from (device play log, 2026-11-09). A credential minted from a fingerprint alone could otherwise forge plays into a real tenant; an unpaired screen has no tenant to attribute a play to.',
+  },
+  {
     file: 'notifications/notifications.controller.ts',
     fn: 'requestHelp',
     routes: ['POST /api/v1/notifications/help'],
