@@ -43,7 +43,7 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 
 | Behaviour | Mode | Kill switch (subtractive) | Failure direction when it cannot run | Test | Alerts whom |
 |---|---|---|---|---|---|
-| Customer alert emails (offline / no picture / recovery / emergency copy) | shadow | `CUSTOMER_ALERT_EMAILS_DISABLED=1`; `_MODE=off` | no email; 15-min restart quiet; platform-incident rule | `customer-alert-policy.spec.ts` | owner (shadow copies) |
+| Customer alert emails (offline / no picture / needs re-pairing / recovery / emergency copy) | shadow | `CUSTOMER_ALERT_EMAILS_DISABLED=1`; `_MODE=off` | no email; 15-min restart quiet; platform-incident rule | `customer-alert-policy.spec.ts`, `repair-required-policy.spec.ts` | owner (shadow copies) |
 | Owner fleet alarms (post-restart check; credential-refusal alarm) | on | `POST_RESTART_FLEET_CHECK_DISABLED`, `DEVICE_CREDENTIAL_REFUSAL_ALARM_DISABLED` | skipped, never guessed | specs in `notifications/fleet-alarms/` | owner |
 | Capacity early-warning | on | `CAPACITY_WATCH_DISABLED=1` | a probe that cannot run is omitted, never invented | `capacity/` specs | owner |
 | Video probe auto-heal | on | `VIDEO_PROBE_AUTOHEAL_DISABLED=1` | stamp and retry once per probe version | specs | — |

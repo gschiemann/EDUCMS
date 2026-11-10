@@ -51,6 +51,20 @@ function makeWorld() {
     screen: {
       findMany: jest.fn(async ({ where }: any) => {
         if (where.id?.in) return [...screens.values()].filter((s) => where.id.in.includes(s.id));
+        // 2026-11-09: the re-pair query (authState, the flip window, a fresh ping).
+        if (where.authState) {
+          return [...screens.values()].filter(
+            (s) =>
+              s.tenantId &&
+              s.status !== 'REVOKED' &&
+              s.authState === where.authState &&
+              s.authStateChangedAt &&
+              s.authStateChangedAt >= where.authStateChangedAt.gte &&
+              s.authStateChangedAt <= where.authStateChangedAt.lte &&
+              s.lastPingAt &&
+              s.lastPingAt >= where.lastPingAt.gte,
+          );
+        }
         // Back faces whose own ping stopped (judged on their unit's liveness).
         if (where.faceOfScreenId) {
           return [...screens.values()].filter(
@@ -1242,5 +1256,166 @@ describe('a synthetic emergency drill is not an incident (2026-11-01)', () => {
     await scan(w, svc, 0);
     await scan(w, svc);
     expect(sentTo(email)).toEqual(['principal@example.org', 'superintendent@example.org']);
+  });
+});
+
+// ─── "Needs re-pairing" (2026-11-09) ──────────────────────────────────────
+
+describe('REPAIR_REQUIRED: marked ≥ 24 h, still pinging, two scans, one email, a recovery note', () => {
+  const HOUR = 60 * MIN;
+  const flagged = (id: string, tenant: string, hoursAgo: number, over: Row = {}) =>
+    screen(w, id, tenant, { authState: 'REPAIR_REQUIRED', authStateChangedAt: new Date(w.clock.now - hoursAgo * HOUR), ...over });
+  const alive = () => {
+    for (const s of w.screens.values()) Object.assign(s, { lastPingAt: new Date(w.clock.now - 10_000), lastRenderedAt: new Date(w.clock.now - 10_000) });
+  };
+  const tick = async (svc: CustomerAlertEmailsService, n = 1) => {
+    for (let i = 0; i < n; i++) {
+      alive();
+      await scan(w, svc);
+      alive();
+    }
+  };
+
+  it('nothing on the first scan; ONE email (en + es) on the second; says it is still playing', async () => {
+    const { svc, email } = build(w);
+    flagged('lobby', 'lincoln', 30);
+    await tick(svc);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    await tick(svc);
+    expect(sentTo(email)).toEqual(['principal@example.org', 'superintendent@example.org']);
+    expect(subjects(email)).toEqual(['VenueOS: lobby at Lincoln Elementary needs to be re-paired', 'VenueOS: lobby en Lincoln Elementary debe emparejarse de nuevo']);
+    expect(email.sendCustomerAlert.mock.calls[0][0].body).toContain('still playing');
+    expect(w.incidents).toEqual([expect.objectContaining({ kind: 'REPAIR_REQUIRED', state: 'EMAILED', screenId: 'lobby' })]);
+    expect(w.sends).toEqual([expect.objectContaining({ kind: 'REPAIR_REQUIRED', mode: 'on', itemCount: 1 })]);
+  });
+
+  it('inside the first day (it may still heal by itself): never', async () => {
+    const { svc, email } = build(w);
+    flagged('lobby', 'lincoln', 23);
+    await tick(svc, 6);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+  });
+
+  it('long-standing (> 14 days): old news, never emailed on first sight', async () => {
+    const { svc, email } = build(w);
+    flagged('lobby', 'lincoln', 15 * 24);
+    await tick(svc, 6);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(w.incidents).toEqual([]);
+  });
+
+  it('a screen that is not pinging is an OFFLINE matter, never a re-pair email', async () => {
+    const { svc, email } = build(w);
+    flagged('lobby', 'lincoln', 30);
+    for (let i = 0; i < 4; i++) {
+      Object.assign(w.screens.get('lobby')!, { lastPingAt: new Date(w.clock.now - 60 * MIN) });
+      await scan(w, svc);
+    }
+    expect(w.incidents.filter((i) => i.kind === 'REPAIR_REQUIRED')).toEqual([]);
+    expect(subjects(email).join()).not.toContain('re-paired');
+  });
+
+  it('a screen that heals between the two scans gets nothing', async () => {
+    const { svc, email } = build(w);
+    flagged('lobby', 'lincoln', 30);
+    await tick(svc);
+    w.screens.get('lobby')!.authState = 'PROVEN';
+    await tick(svc, 5);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+  });
+
+  it('three screens flipped in one burst share one cause (a key rotation): SILENT, never emailed', async () => {
+    const { svc, email } = build(w);
+    for (const [i, id] of ['a', 'b', 'c'].entries()) flagged(id, 'lincoln', 30, { authStateChangedAt: new Date(w.clock.now - 30 * HOUR + i * MIN) });
+    await tick(svc, 4);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(w.incidents.map((i) => [i.kind, i.state, i.reason])).toEqual([
+      ['REPAIR_REQUIRED', 'SILENT', 'shared-credential-event'],
+      ['REPAIR_REQUIRED', 'SILENT', 'shared-credential-event'],
+      ['REPAIR_REQUIRED', 'SILENT', 'shared-credential-event'],
+    ]);
+  });
+
+  it('a screen restarting or updating right now is deferred, and is emailed once it has settled', async () => {
+    const { svc, email } = build(w);
+    flagged('lobby', 'lincoln', 30);
+    w.screenEvents.push({ screenId: 'lobby', kind: 'app-relaunch', createdAt: new Date(w.clock.now) });
+    await tick(svc, 3);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    w.clock.now += 40 * MIN;
+    await tick(svc, 2);
+    expect(email.sendCustomerAlert).toHaveBeenCalled();
+  });
+
+  it('a screen installed in the last two hours is deferred', async () => {
+    const { svc, email } = build(w);
+    flagged('new', 'lincoln', 30, { pairedAt: new Date(w.clock.now - 30 * MIN) });
+    await tick(svc, 4);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+  });
+
+  it('dedupe across a RESTART: the same incident is never emailed twice', async () => {
+    const a = build(w);
+    flagged('lobby', 'lincoln', 30);
+    await tick(a.svc, 2);
+    expect(a.email.sendCustomerAlert).toHaveBeenCalledTimes(2);
+    const b = build(w);
+    await tick(b.svc, 6);
+    expect(b.email.sendCustomerAlert).not.toHaveBeenCalled();
+  });
+
+  it('"connected again" only after trust has held 5 min, and only because we emailed about the problem', async () => {
+    const { svc, email } = build(w);
+    flagged('lobby', 'lincoln', 30);
+    await tick(svc, 2);
+    email.sendCustomerAlert.mockClear();
+    w.screens.get('lobby')!.authState = 'PROVEN';
+    await tick(svc, 5);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    await tick(svc);
+    expect(subjects(email)).toEqual(['VenueOS: lobby at Lincoln Elementary is connected again', 'VenueOS: lobby en Lincoln Elementary está conectada de nuevo']);
+    expect(w.incidents[0]).toMatchObject({ open: false });
+  });
+
+  it('a SILENT re-pair incident closes with no "connected again" note', async () => {
+    const { svc, email } = build(w);
+    for (const [i, id] of ['a', 'b', 'c'].entries()) flagged(id, 'lincoln', 30, { authStateChangedAt: new Date(w.clock.now - 30 * HOUR + i * MIN) });
+    await tick(svc, 3);
+    for (const s of w.screens.values()) s.authState = 'PROVEN';
+    await tick(svc, 8);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(w.incidents.every((i) => i.open === false)).toBe(true);
+  });
+
+  it('SHADOW (the default): no customer email; the owner sees what would have gone out', async () => {
+    delete process.env.CUSTOMER_ALERT_EMAILS_MODE;
+    const { svc, email, mailer } = build(w);
+    flagged('lobby', 'lincoln', 30);
+    await tick(svc, 2);
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    expect(mailer.sendAlert.mock.calls[0][0]).toBe('[shadow] would have sent to 2 admins at Springfield District: VenueOS: lobby at Lincoln Elementary needs to be re-paired');
+  });
+
+  it('the kill switch and mode=off send nothing', async () => {
+    for (const env of [{ CUSTOMER_ALERT_EMAILS_DISABLED: '1' }, { CUSTOMER_ALERT_EMAILS_MODE: 'off' }]) {
+      Object.assign(process.env, env);
+      const { svc, email, mailer } = build(w);
+      flagged('lobby', 'lincoln', 30);
+      await tick(svc, 4);
+      expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+      expect(mailer.sendAlert).not.toHaveBeenCalled();
+      delete process.env.CUSTOMER_ALERT_EMAILS_DISABLED;
+      process.env.CUSTOMER_ALERT_EMAILS_MODE = 'on';
+    }
+  });
+
+  it('the organisation hourly cap holds the rest (HELD), counted with the other kinds', async () => {
+    process.env.CUSTOMER_ALERT_EMAILS_PER_HOUR = '1';
+    const { svc } = build(w);
+    flagged('lobby', 'lincoln', 30);
+    flagged('desk', 'adams', 40);
+    await tick(svc, 2);
+    expect(w.incidents.filter((i) => i.state === 'EMAILED')).toHaveLength(1);
+    expect(w.incidents.filter((i) => i.state === 'HELD')).toHaveLength(1);
   });
 });
