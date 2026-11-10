@@ -13,6 +13,7 @@ import { EmergencyReadinessService } from './emergency/emergency-readiness.servi
 // through the controller's own trigger / all-clear. Off unless
 // EMERGENCY_DRILL_SCREENS is set; EMERGENCY_DRILL_CRON_DISABLED=1 beats everything.
 import { SyntheticDrillRunner } from './emergency/drill/synthetic-drill.runner';
+import { SyntheticDrillApprovalController } from './emergency/drill/synthetic-drill-approval.controller';
 import { StatsController } from './stats/stats.controller';
 import { AuditController } from './audit/audit.controller';
 import { UsersController } from './users/users.controller';
@@ -318,6 +319,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     EmergencyController,
     ScreenEmergencyController,
     EmergencyReadinessController,
+    SyntheticDrillApprovalController,
     StatsController,
     AuditController,
     UsersController,

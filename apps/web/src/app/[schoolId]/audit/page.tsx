@@ -41,6 +41,9 @@ const ACTION_OPTIONS = [
   // The synthetic drill's own rows (emergency/drill/): machine rows, owner view only.
   'EMERGENCY_DRILL_STARTED',
   'EMERGENCY_DRILL_RESULT',
+  // The owner's permission for a pass, and taking it back (2026-11-10).
+  'EMERGENCY_DRILL_APPROVED',
+  'EMERGENCY_DRILL_APPROVAL_REVOKED',
   'AUTH_LOGIN_SUCCESS',
   'AUTH_LOGIN_FAILED',
   'USER_INVITED',

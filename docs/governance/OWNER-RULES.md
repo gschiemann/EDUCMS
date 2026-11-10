@@ -4,6 +4,7 @@ Article 32. The owner's binding corrections, written where **every** vendor can 
 
 | Date | Rule (the owner's intent) | Scope | Mechanism or GAP |
 |---|---|---|---|
+| 2026-11-10 | No test alert runs on any screen — bench included — unless the owner gave permission for that test, every time; and never on a timer in the middle of the day. | app | Guard 0 in `apps/api/src/emergency/drill/synthetic-drill.runner.ts` (no schedule; one SUPER_ADMIN approval = one pass; no variable waives it); `synthetic-drill.runner.spec.ts`, `synthetic-drill-approval.controller.spec.ts` |
 | 2026-11-02 | Every menu, picker and control reuses the app's existing components and style — never a one-off look. | app | PROSE |
 | 2026-11-01 | The launch-week hold is lifted: finish all development; API restarts are acceptable; do not use the word "freeze" with the owner — say what is held and why, in plain words. | global | Phase 1 items proceed to merge |
 | 2026-10-31 | Adopt the Foundry Standard above every app; the lead reviews every other model's finding and must agree 100 % before it is implemented; cost-first routing — not everything is built with the frontier model; a full audit of the standard and the app on every new LLM. | global | `AGENTS.md`, `docs/governance/standard/`, `FRONTIER-INTAKE.md` |

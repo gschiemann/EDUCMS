@@ -91,6 +91,14 @@ export const DRILL_SWEPT_ACTION = 'EMERGENCY_DRILL_SWEPT';
 /** The service identity was created (once per bench location). */
 export const DRILL_RUNNER_CREATED_ACTION = 'EMERGENCY_DRILL_RUNNER_CREATED';
 
+/**
+ * The owner's permission for ONE pass (2026-11-10). Written only by the
+ * SUPER_ADMIN approval route; the runner dispatches nothing without one.
+ */
+export const DRILL_APPROVED_ACTION = 'EMERGENCY_DRILL_APPROVED';
+/** The owner took a permission back (also stops a pass between two screens). */
+export const DRILL_APPROVAL_REVOKED_ACTION = 'EMERGENCY_DRILL_APPROVAL_REVOKED';
+
 export const PLAYER_PAINTED_ACTION = 'PLAYER_EMERGENCY_PAINTED';
 export const PLAYER_NO_PAINT_ACTION = 'PLAYER_EMERGENCY_NO_PAINT_PROOF';
 
@@ -700,6 +708,128 @@ export const DrillSweptDetailsSchema = z.object({
 });
 export type DrillSweptDetails = z.infer<typeof DrillSweptDetailsSchema>;
 
+// ─── The owner's permission (2026-11-10) ────────────────────────────────────
+
+/**
+ * NO DRILL WITHOUT THE OWNER'S PERMISSION, EVERY TIME. There is no schedule:
+ * a pass starts only at the instant a SUPER_ADMIN approved (`runAt`), for the
+ * screens named in that approval, and one approval is one pass. Unreadable,
+ * malformed, expired, revoked, or approved by an account that is no longer an
+ * active SUPER_ADMIN all read as "not approved" — nothing is dispatched.
+ */
+export const DRILL_APPROVAL = Object.freeze({
+  /** An approval may name a start at most this far ahead. */
+  MAX_AHEAD_MS: 24 * 60 * MIN,
+  /** The pass may START runs for this long after `runAt`; afterwards the permission is spent. */
+  WINDOW_MS: 2 * 60 * MIN,
+  /** A start time this far in the past is still read as "now" (clock skew between browser and API). */
+  PAST_TOLERANCE_MS: 2 * MIN,
+});
+
+export const DrillApprovedDetailsSchema = z.object({
+  v: z.literal(1),
+  approvalId: id,
+  runAtMs: z.number().int().positive(),
+  expiresAtMs: z.number().int().positive(),
+  /** The listed bench screens this permission covers (never widened later). */
+  screenIds: z.array(id).min(1).max(64),
+  approverUserId: id,
+  approverTenantId: id,
+});
+export type DrillApprovedDetails = z.infer<typeof DrillApprovedDetailsSchema>;
+
+export const DrillApprovalRevokedDetailsSchema = z.object({
+  v: z.literal(1),
+  approvalId: id,
+  revokedByUserId: id,
+});
+export type DrillApprovalRevokedDetails = z.infer<typeof DrillApprovalRevokedDetailsSchema>;
+
+/** The approval window for a requested start, or why it is refused. */
+export function approvalWindow(
+  requestedRunAtMs: number | null,
+  nowMs: number,
+): { ok: true; runAtMs: number; expiresAtMs: number } | { ok: false; reason: 'in-the-past' | 'too-far-ahead' | 'not-a-time' } {
+  if (requestedRunAtMs !== null && !Number.isFinite(requestedRunAtMs)) return { ok: false, reason: 'not-a-time' };
+  let runAtMs = requestedRunAtMs ?? nowMs;
+  if (runAtMs < nowMs - DRILL_APPROVAL.PAST_TOLERANCE_MS) return { ok: false, reason: 'in-the-past' };
+  if (runAtMs < nowMs) runAtMs = nowMs;
+  if (runAtMs - nowMs > DRILL_APPROVAL.MAX_AHEAD_MS) return { ok: false, reason: 'too-far-ahead' };
+  runAtMs = Math.floor(runAtMs);
+  return { ok: true, runAtMs, expiresAtMs: runAtMs + DRILL_APPROVAL.WINDOW_MS };
+}
+
+export interface ApprovalAuditRow {
+  action: string;
+  userId: string | null;
+  details: string | null;
+}
+
+/**
+ * The approvals that are not revoked and not yet spent at `nowMs` — waiting
+ * (`runAtMs` ahead) or in force. One entry per approval id (a pass over two
+ * bench locations writes one row in each). The row's author must be the
+ * approver it names; whether that account is still an active SUPER_ADMIN is
+ * the caller's fresh read.
+ */
+export function openApprovals(rows: readonly ApprovalAuditRow[], nowMs: number): DrillApprovedDetails[] {
+  const revoked = new Set<string>();
+  for (const r of rows) {
+    if (r.action !== DRILL_APPROVAL_REVOKED_ACTION) continue;
+    const d = parseDetails(DrillApprovalRevokedDetailsSchema, r.details);
+    if (d) revoked.add(d.approvalId);
+  }
+  const byId = new Map<string, DrillApprovedDetails>();
+  for (const r of rows) {
+    if (r.action !== DRILL_APPROVED_ACTION) continue;
+    const d = parseDetails(DrillApprovedDetailsSchema, r.details);
+    if (!d || !r.userId || r.userId !== d.approverUserId) continue;
+    if (revoked.has(d.approvalId)) continue;
+    // The window is OURS, not the row's: a row can never grant itself a longer one.
+    if (d.expiresAtMs !== d.runAtMs + DRILL_APPROVAL.WINDOW_MS) continue;
+    if (nowMs >= d.expiresAtMs) continue;
+    const prev = byId.get(d.approvalId);
+    if (!prev) byId.set(d.approvalId, d);
+    else byId.set(d.approvalId, { ...prev, screenIds: [...new Set([...prev.screenIds, ...d.screenIds])] });
+  }
+  return [...byId.values()].sort((a, b) => a.runAtMs - b.runAtMs);
+}
+
+/**
+ * The newest approval whose window has closed within `withinMs` and was not
+ * revoked — the pass the dead-man check answers for ("you approved a drill and
+ * this screen never passed it"). No such approval → nothing was owed.
+ */
+export function lastSpentApproval(rows: readonly ApprovalAuditRow[], nowMs: number, withinMs: number): DrillApprovedDetails | null {
+  // Every unrevoked, well-formed approval as it stood just before its window opened…
+  const all = new Map<string, DrillApprovedDetails>();
+  for (const r of rows) {
+    if (r.action !== DRILL_APPROVED_ACTION) continue;
+    const d = parseDetails(DrillApprovedDetailsSchema, r.details);
+    if (!d) continue;
+    for (const a of openApprovals([r, ...rows.filter((x) => x.action === DRILL_APPROVAL_REVOKED_ACTION)], d.runAtMs)) {
+      const prev = all.get(a.approvalId);
+      all.set(a.approvalId, prev ? { ...prev, screenIds: [...new Set([...prev.screenIds, ...a.screenIds])] } : a);
+    }
+  }
+  // …of which the newest one that is now spent.
+  return (
+    [...all.values()]
+      .filter((a) => a.expiresAtMs <= nowMs && nowMs - a.expiresAtMs <= withinMs)
+      .sort((x, y) => y.runAtMs - x.runAtMs)[0] ?? null
+  );
+}
+
+/** The approval in force for `screenId` right now (earliest first), or null. */
+export function approvalInForce(open: readonly DrillApprovedDetails[], screenId: string, nowMs: number): DrillApprovedDetails | null {
+  return open.find((a) => nowMs >= a.runAtMs && nowMs < a.expiresAtMs && a.screenIds.includes(screenId)) ?? null;
+}
+
+/** May this account approve a drill, read fresh? Only an active, undeleted SUPER_ADMIN. */
+export function isLiveApprover(u: { role?: string | null; status?: string | null; deletedAt?: Date | null } | null | undefined): boolean {
+  return !!u && u.role === 'SUPER_ADMIN' && u.status === 'ACTIVE' && !u.deletedAt;
+}
+
 /** Parse a stored details string against a schema; null when it does not match. */
 export function parseDetails<T>(schema: z.ZodType<T>, raw: string | null | undefined): T | null {
   if (!raw || raw.length > 64_000) return null;
@@ -988,6 +1118,30 @@ export function dueSlots(zone: string | null, slots: readonly DrillSlot[], nowMs
     }
   });
   return out;
+}
+
+/**
+ * The one "slot" an approval grants a screen in `zone`: its start instant,
+ * named by the screen's own wall clock (`<localDate>@<HH:MM>#<approval>`), so
+ * a result row still says what time it was on that wall. Null when the zone is
+ * unknown (never a guessed clock) or the approval is not in force.
+ */
+export function approvedSlot(zone: string | null, approval: DrillApprovedDetails, nowMs: number): DueSlot | null {
+  if (!zone) return null;
+  if (nowMs < approval.runAtMs || nowMs >= approval.expiresAtMs) return null;
+  const day = localDay(zone, approval.runAtMs);
+  const p = localParts(zone, approval.runAtMs);
+  if (!day || !p) return null;
+  const label = `${String(p.hh).padStart(2, '0')}:${String(p.mm).padStart(2, '0')}`;
+  const tag = approval.approvalId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12);
+  return {
+    slot: { label, minuteOfDay: p.hh * 60 + p.mm },
+    slotIndex: 0,
+    key: `${day.key}@${label}#${tag}`,
+    localDate: day.key,
+    dayNumber: day.dayNumber,
+    atMs: approval.runAtMs,
+  };
 }
 
 /** A hash of the run ids an email reports — the per-tick Redis claim key. */
