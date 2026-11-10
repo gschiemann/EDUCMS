@@ -20,6 +20,7 @@ import { registeredResolution } from './registered-resolution';
 import { loadDemotedSources } from './playback-demotions';
 import { NATIVE_PRESENTING_HEADER, NATIVE_RUNTIME_HEADER, nativePowerStateChanged, parseNativePresentingHeader, parseNativeRuntime, pendingNativePowerOn } from './native-runtime';
 import { ALERT_WATCH_WATCHDOG_HEADER, parseAlertWatchWatchdogHeader } from './alert-watch-watchdog';
+import { PROCESS_HEALTH_HEADER, parseProcessHealthHeader, processHealthOff } from './process-health';
 import { ScreenEventsService } from './events/screen-events.service';
 import {
   LEDGER_KIND_LIST,
@@ -1750,6 +1751,14 @@ export class ScreensController {
       const watchdog = parseAlertWatchWatchdogHeader(req?.headers?.[ALERT_WATCH_WATCHDOG_HEADER]);
       if (watchdog) nativeRuntime.alertWatchWatchdog = watchdog;
     }
+    // 2026-11-09 — the Player process's health (process-health.ts): its own
+    // header, stored INSIDE the runtime report (telemetry only), same gate.
+    // PLAYER_PROCESS_HEALTH=off ignores it; absent or malformed stores nothing.
+    const playerProcessHealthOff = processHealthOff();
+    if (nativeRuntime && !nativeRuntime.processHealth && !playerProcessHealthOff) {
+      const health = parseProcessHealthHeader(req?.headers?.[PROCESS_HEALTH_HEADER]);
+      if (health) nativeRuntime.processHealth = health;
+    }
 
     if (nativeRuntime?.emergencyProof && screen.tenantId) {
       for (const event of newEmergencyEvents((screen.nativeRuntimeReport as any)?.emergencyProof, nativeRuntime.emergencyProof)) {
@@ -2090,6 +2099,8 @@ export class ScreensController {
       // 2026-11-08 — the MANAGER_REPORT_RELAY kill switch, told to the Player
       // that relays (manager-health.ts). Only on a device-authenticated reply.
       ...(paired && credential.proved ? { managerRelay: managerRelayOff ? 'off' : 'on' } : {}),
+      // 2026-11-09 — the PLAYER_PROCESS_HEALTH kill switch (process-health.ts).
+      ...(paired && credential.proved ? { processHealth: playerProcessHealthOff ? 'off' : 'on' } : {}),
       ...diagnostics,
       ...(nativeRuntime ? {
         nativeControl: {

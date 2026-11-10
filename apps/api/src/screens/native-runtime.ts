@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { nativeEmergencyProofSchema } from './emergency-proof';
 import { alertWatchWatchdogSchema } from './alert-watch-watchdog';
+import { processHealthSchema } from './process-health';
 
 /** Native heartbeat evidence is independent of web rendering and cache readiness. */
 export const NATIVE_RUNTIME_HEADER = 'x-venueos-native-runtime';
@@ -212,6 +213,10 @@ const runtimeSchema = z.object({
   // here (telemetry only). `.catch(undefined)`: a malformed block drops on its
   // own, never the power report it rides with.
   alertWatchWatchdog: alertWatchWatchdogSchema.optional().catch(undefined),
+  // 2026-11-09 — the Player process's own health (process-health.ts): memory
+  // pressure, main-thread stalls, previous exits, thermal. Own header, stored
+  // here (telemetry only); a malformed block drops on its own.
+  processHealth: processHealthSchema.optional().catch(undefined),
 });
 
 export type NativeRuntimeReport = z.infer<typeof runtimeSchema>;

@@ -51,6 +51,11 @@ class PlayerApp : Application() {
         // 1.1.46 — load the pending install confirmation (and clear it if the install landed).
         runCatching { com.educms.player.ota.PendingInstallStore.init(this) }
         ProcessExitDiagnostics.recordPreviousExit(applicationContext)
+        // 2026-11-09 — process health: memory-pressure callbacks and the
+        // main-thread liveness probe (health/ProcessHealth). Observe and
+        // report; never reloads, restarts or touches the display. Never throws.
+        runCatching { com.educms.player.health.ProcessHealth.install(this) }
+            .onFailure { Log.w("PlayerApp", "process health install skipped: ${it.message}") }
 
         // ⚠️ AND-001 (2026-08-01) — self-heal before ANY background job
         // reads `api_root`. That pref is written by the `setBootstrap` JS
