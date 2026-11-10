@@ -13,6 +13,14 @@ import com.educms.player.security.HostAllowlist
 private const val REFUSED_LOGS = "(refused: bridge-nonce — this frame may not read device logs)"
 
 /**
+ * The answer to a hold RELEASE that carried no page proof after the page
+ * proved itself. `ok:false` is what the web reads as "not delivered": it
+ * does not latch the release and retries it on every manifest poll
+ * (`emergencyHold.ts`).
+ */
+internal const val HOLD_RELEASE_REFUSED_JSON = """{"ok":false,"code":"hold-release-unauthenticated"}"""
+
+/**
  * Minimal JS ↔ native bridge surface exposed to the web player as
  * `window.EduCmsNative`. Keep this surface tiny — every method becomes
  * an attack surface if the player loads untrusted content.
@@ -353,6 +361,95 @@ class WebAppBridge(
     internal fun channelNonce(): String = bridgeNonce?.value() ?: ""
 
     /**
+     * ⚠️ LIFE SAFETY — the page-proof latch (2026-11-09).
+     *
+     * True once the player's own page has PROVEN it can authenticate to this
+     * bridge in the current document:
+     *
+     *  - any message accepted by [com.educms.player.security.NativeBridgeChannel]
+     *    (exact origin + main frame — set there, before the call is run), or
+     *  - a legacy call that carried the valid nonce through one of the
+     *    `*Auth` methods below, which only a bundle that authenticates BOTH
+     *    its hold and its heartbeat ever calls.
+     *
+     * While it is true, the two un-authenticated calls a content iframe can
+     * still reach on the every-frame object lose what made them dangerous:
+     * `displayEmergencyHold(false)` is refused and `heartbeatV2` counts as a
+     * bare liveness tick. A RAISE is never refused, by anyone, ever.
+     *
+     * While it is false the bridge behaves exactly as it did before this
+     * change. That is deliberate and is the failure direction: a page that
+     * cannot authenticate (an old web bundle, a device whose nonce delivery
+     * never lands, a Chromium 83 panel on an old bundle) can still release
+     * its own hold, so the 2026-08-14 "pinned lit forever" failure cannot
+     * come back. It is why a passing [gate] on some other method does NOT
+     * set the latch: an old bundle carries the nonce on gated calls but not
+     * on its hold release.
+     *
+     * Reset by the WebView client at every main-frame document event
+     * (navigation start, commit, finish — [resetPageAuthProof]), so a new
+     * document starts from the open state and has to prove itself again. The
+     * reset at commit and finish is what stops the OUTGOING document's last
+     * authenticated call, landing between navigation start and commit, from
+     * latching the incoming one. A page that can authenticate re-sets the
+     * latch on its next call, so the extra resets cost it nothing. A
+     * renderer-crash rebuild makes a new bridge, so it starts open too.
+     *
+     * Not `@JavascriptInterface`: no page can read or write it.
+     */
+    @Volatile
+    private var pageAuthProven = false
+
+    @Volatile
+    private var lastUnauthRefusalLogAtNs = 0L
+
+    /** Called by the channel after its origin, main-frame and allow-list gates. */
+    internal fun markPageAuthProven() {
+        pageAuthProven = true
+    }
+
+    /** Called by the WebView client at every main-frame document event. */
+    internal fun resetPageAuthProof() {
+        pageAuthProven = false
+    }
+
+    internal fun isPageAuthProven(): Boolean = pageAuthProven
+
+    /** A valid nonce on a legacy `*Auth` call. Sets the latch when it is. */
+    private fun legacyCallAuthenticated(nonce: String?): Boolean {
+        val ok = bridgeNonce?.accepts(nonce) == true
+        if (ok) pageAuthProven = true
+        return ok
+    }
+
+    /**
+     * The hold as it arrives on the every-frame object. A raise always goes
+     * through. A release goes through unless this document's page has proven
+     * it can authenticate and this call did not.
+     */
+    private fun holdFromEveryFrameObject(active: Boolean, authenticated: Boolean): String = try {
+        if (!active && !authenticated && pageAuthProven) {
+            // A hostile frame can call this in a loop — one line a minute.
+            val now = System.nanoTime()
+            if (lastUnauthRefusalLogAtNs == 0L || now - lastUnauthRefusalLogAtNs > 60_000_000_000L) {
+                lastUnauthRefusalLogAtNs = now
+                PlayerLogger.w(
+                    "WebAppBridge",
+                    "REFUSED an emergency hold RELEASE with no page proof — the player's page has " +
+                        "authenticated in this document and this call did not (a frame that is not " +
+                        "the player called it). The hold stands.",
+                )
+            }
+            HOLD_RELEASE_REFUSED_JSON
+        } else {
+            displayEmergencyHoldImpl(active, false, false)
+        }
+    } catch (ex: Exception) {
+        PlayerLogger.e("WebAppBridge", "displayEmergencyHold FAILED", ex)
+        """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
      * Escape hatch — exits our kiosk task stack and returns the user to
      * the OEM launcher (Goodview/NovaStar/TCL). Critical for signage
      * boxes where our app is a guest on top of a vendor CMS that
@@ -444,9 +541,39 @@ class WebAppBridge(
      * equality against the Kotlin array).
      */
     @JavascriptInterface
-    fun heartbeatV2(stateJson: String) {
-        // Liveness FIRST — never gated on parsing.
+    fun heartbeatV2(stateJson: String) = heartbeatV2From(stateJson, authenticated = false)
+
+    /**
+     * [heartbeatV2] with the page's nonce — LEGACY SURFACE ONLY (2026-11-09).
+     *
+     * The web calls it instead of [heartbeatV2] when it holds the nonce and
+     * this method exists. It is deliberately NOT on
+     * `NativeBridgeChannel.METHODS`: the channel has already proven more
+     * than the nonce can, and dispatches to [heartbeatV2ViaSecureChannel].
+     *
+     * A wrong or missing nonce is never a refusal — the liveness tick always
+     * lands. It only decides whether the STATE in the payload is believed
+     * once this document's page has proven itself; see [heartbeatV2From].
+     */
+    @JavascriptInterface
+    fun heartbeatV2Auth(nonce: String, stateJson: String) =
+        heartbeatV2From(stateJson, authenticated = legacyCallAuthenticated(nonce))
+
+    /** Channel-only entry: the origin + main-frame gates already passed. */
+    internal fun heartbeatV2ViaSecureChannel(stateJson: String) =
+        heartbeatV2From(stateJson, authenticated = true)
+
+    private fun heartbeatV2From(stateJson: String, authenticated: Boolean) {
+        // Liveness FIRST — never gated on parsing, and never on who called.
         onWebHeartbeat()
+        // Once the player's page has authenticated in this document, an
+        // un-authenticated heartbeatV2 is a bare heartbeat(): it ticks
+        // liveness and its state is not read. Otherwise a content iframe
+        // could report a healthy sync for a stuck page, or announce a new
+        // paint-proof episode every second so the alert-paint escalation
+        // never fires. Before the page has proven itself (an old bundle, no
+        // nonce delivery) the state is read exactly as before.
+        if (!authenticated && pageAuthProven) return
         var syncOk: Boolean? = null
         var telemetryOk = false
         var contentHash: String? = null
@@ -739,12 +866,16 @@ class WebAppBridge(
     //
     // `displayCapabilities()` is READ-ONLY and stays ungated so a board
     // can ask what it is running on, exactly like `probeDisplay()`.
-    // `displayEmergencyHold()` is ungated in BOTH directions — raising is
-    // fail-safe (it can only make a dark screen visible) and releasing is
-    // recovery-direction (it darkens nothing; every darkening action here
-    // stays trusted-only). On a pre-channel box EVERY call arrives on
-    // this transport, so a trusted-only release meant the first alert
-    // pinned the screen lit forever with no way back.
+    // `displayEmergencyHold()` is never nonce-GATED: a raise is fail-safe
+    // (it can only make a dark screen visible) and is accepted from anyone.
+    // A release is NOT harmless — it restores the pre-alert standby, blank
+    // and brightness and un-gates every native reader of the hold — so
+    // since 2026-11-09 an un-authenticated release is refused once this
+    // document's page has proven it can authenticate (the page-proof latch
+    // above). Until that proof exists a release is accepted as before: on
+    // a pre-channel box with an old bundle EVERY call arrives here
+    // un-authenticated, and a trusted-only release pinned the screen lit
+    // forever with no way back (2026-08-14).
     // ────────────────────────────────────────────────────────────────
 
     /**
@@ -816,24 +947,55 @@ class WebAppBridge(
      * forces the panel visible. See
      * `com.educms.player.display.DisplayEmergency`.
      *
-     * BOTH directions are honoured on THIS untrusted transport, on
-     * purpose (2026-08-14). `active = true` can only ever make a dark
-     * screen visible. `active = false` is ALSO recovery-direction: it
-     * darkens nothing by itself, and every darkening action on this
-     * transport stays trusted-only, so a hostile frame that clears a hold
-     * unlocks nothing it can use. Refusing it was worse than the threat
-     * it modelled — on a Chromium 83-87 Taurus the origin-scoped channel
-     * cannot attach at all, so EVERY call lands here, and the first alert
-     * engaged a hold nothing could ever lift. See
-     * `DisplayControlApi.emergencyHoldJson` for the full argument.
+     * On THIS every-frame transport (2026-11-09):
+     *
+     *  - `active = true` is always honoured. It can only ever make a dark
+     *    screen visible.
+     *  - `active = false` is honoured UNLESS this document's page has
+     *    proven it can authenticate (the page-proof latch) — then a call
+     *    that carries no proof is refused with
+     *    `{"ok":false,"code":"hold-release-unauthenticated"}`, which the
+     *    web treats as "not delivered" and retries on every manifest poll.
+     *
+     * Why a release needs proof at all: it is not harmless. The release
+     * restores the pre-alert standby, blank and brightness, re-arms the
+     * on/off schedule and un-gates every native reader of the hold, so a
+     * content iframe that calls it during a banner or broadcast alert can
+     * put a panel back to sleep under a live alert.
+     *
+     * Why it is not simply nonce-gated: on a Chromium 83-87 Taurus the
+     * origin-scoped channel cannot attach, so EVERY call lands here, and a
+     * bundle that predates this change sends its release with no nonce. A
+     * trusted-only release (before 2026-08-14) engaged a hold nothing
+     * could ever lift. So the proof is demanded only after the page has
+     * shown it has one, and the latch resets on every navigation.
+     *
+     * The page's own release arrives through the channel
+     * ([displayEmergencyHoldViaSecureChannel]) or, on a pre-channel box,
+     * through [displayEmergencyHoldAuth].
      */
     @JavascriptInterface
-    fun displayEmergencyHold(active: Boolean): String = try {
-        displayEmergencyHoldImpl(active, false, false)
-    } catch (ex: Exception) {
-        PlayerLogger.e("WebAppBridge", "displayEmergencyHold FAILED", ex)
-        """{"ok":false,"code":"exception"}"""
-    }
+    fun displayEmergencyHold(active: Boolean): String =
+        holdFromEveryFrameObject(active, authenticated = false)
+
+    /**
+     * The hold with the page's nonce — LEGACY SURFACE ONLY (2026-11-09).
+     *
+     * The web calls it instead of the one-argument form when it holds the
+     * nonce and this method exists (it probes; an older APK never sees the
+     * call). Not on `NativeBridgeChannel.METHODS` — the channel's own entry
+     * is stronger.
+     *
+     * A wrong nonce is NOT a refusal by itself: the call is then treated
+     * exactly like the one-argument form, so a raise still lands. The
+     * transport stays "untrusted" for the display layer either way (no
+     * banner-only hold, the release is logged with its transport) — the
+     * nonce proves the caller is the player's page, it does not turn this
+     * object into the channel.
+     */
+    @JavascriptInterface
+    fun displayEmergencyHoldAuth(nonce: String, active: Boolean): String =
+        holdFromEveryFrameObject(active, authenticated = legacyCallAuthenticated(nonce))
 
     /**
      * ONE-TAP DEVICE-ADMIN ENROLMENT (2026-08-14).
@@ -1189,10 +1351,8 @@ class WebAppBridge(
     /**
      * ⚠️ DELIBERATELY NOT NONCE-GATED (SEC-002). Recovery direction: it can
      * only ever REMOVE content from the glass, and the method that puts
-     * content there ([showUrlOverlay]) is gated. Same argument the
-     * emergency interlock already makes for `displayEmergencyHold(false)` —
-     * a screen that can be pinned under an overlay with no way back is the
-     * worse failure.
+     * content there ([showUrlOverlay]) is gated. A screen that can be
+     * pinned under an overlay with no way back is the worse failure.
      */
     @JavascriptInterface
     fun hideUrlOverlay() {

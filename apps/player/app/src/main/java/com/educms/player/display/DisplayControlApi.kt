@@ -216,22 +216,34 @@ object DisplayControlApi {
      *     and no operator-reachable recovery short of a factory reset.
      *     A hold that cannot be released is not a safety feature.
      *
-     *  2. **Release is recovery-direction, so it gains an attacker
-     *     nothing.** Clearing the hold does not darken anything; it only
-     *     returns the layer to normal operation. And on that same
-     *     untrusted transport every darkening action is STILL refused by
-     *     [isRecoveryAction] — BLANK, any brightness lowering, any
-     *     allowBlack, KEEP and SET_SCHEDULE are all trusted-only. So a
-     *     hostile board that clears a hold unlocks precisely nothing it
-     *     can then use. The worst it can do is let a legitimate,
-     *     operator-configured schedule run, which is the normal state of
-     *     the product.
+     *  2. **A page that cannot authenticate must still be able to
+     *     release its own hold.** On that same untrusted transport every
+     *     darkening action is STILL refused by [isRecoveryAction] — BLANK,
+     *     any brightness lowering, any allowBlack, KEEP and SET_SCHEDULE
+     *     are all trusted-only.
      *
-     * Contract C4, applied consistently: fail-open for recovery,
-     * fail-closed for risk. Raising is fail-safe, releasing is recovery,
-     * and BOTH belong on the recovery side of the line. The release is
-     * logged at WARN with its transport so the forensic trail still
-     * shows exactly which surface cleared a life-safety hold.
+     * ⚠️ CORRECTED 2026-11-09. Reason 2 used to read "release is
+     * recovery-direction, so it gains an attacker nothing". That stopped
+     * being true as the hold grew: a release now restores the pre-alert
+     * brightness, lets a pre-alert standby or blank come back
+     * ([UserStandby.restoreAfterAlertIfDue]), re-arms the schedule and
+     * un-gates every native reader of [DisplayEmergency.isHeld]. A
+     * content iframe that reaches the every-frame object could therefore
+     * take a live alert off a panel that was dark before it.
+     *
+     * The answer is NOT a return to "trusted-only" — that is reason 1's
+     * bricked box. It lives one layer up, in `WebAppBridge`: once the
+     * player's own page has proven in this document that it can
+     * authenticate (the channel, or the nonce on `displayEmergencyHoldAuth`),
+     * an un-authenticated release is refused there and never reaches
+     * this function. A page that has never authenticated keeps the
+     * behaviour above. So an untrusted release that arrives here is
+     * either page-authenticated on the legacy transport, or comes from a
+     * document that has not proven itself yet.
+     *
+     * Contract C4: fail-open for recovery, fail-closed for risk. The
+     * release is logged at WARN with its transport so the forensic trail
+     * still shows which surface cleared a life-safety hold.
      */
     /**
      * @param faceIndex which PANE of this box is reporting (2026-09-16,
@@ -253,10 +265,10 @@ object DisplayControlApi {
         if (!active && !trusted) {
             PlayerLogger.w(
                 TAG,
-                "emergency hold RELEASE accepted on the untrusted every-frame transport " +
-                    "(face $faceIndex) — " +
-                    "release is recovery-direction and every darkening action stays trusted-only there; " +
-                    "refusing it is what pinned Chromium-83 boxes lit forever",
+                "emergency hold RELEASE accepted on the every-frame transport " +
+                    "(face $faceIndex) — the bridge let it through: nonce-authenticated, or this " +
+                    "document's page has not proven it can authenticate yet; " +
+                    "every darkening action stays trusted-only there",
             )
         }
         val persisted = DisplayEmergency.setHold(app, faceIndex, active, bannerOnly && trusted)

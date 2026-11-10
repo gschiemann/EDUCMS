@@ -257,6 +257,12 @@ class BridgeNonce(
          *  screen boots, proves itself, recovers, and receives a life-safety
          *  alert. This class is the answer to "can this brick a screen?" —
          *  a device that never arms keeps every one of them.
+         *  (2026-11-09: `displayEmergencyHold` and `heartbeatV2` stay OUT of
+         *  [GATED_METHODS]. What they gained is a separate, self-proving
+         *  check in `WebAppBridge.pageAuthProven`: once this document's page
+         *  has authenticated, an un-authenticated RELEASE is refused and an
+         *  un-authenticated `heartbeatV2` is a bare liveness tick. A page
+         *  that never authenticates keeps both exactly as before.)
          *
          *  **3. READ-ONLY DIAGNOSTIC — ungated, an accepted trade.**
          *  deviceInfo, probeDisplay, displayCapabilities, ctsSerial*. These

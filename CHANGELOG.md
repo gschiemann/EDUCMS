@@ -4,6 +4,10 @@ History of `CLAUDE.md`, newest first, one entry per stamp. It moved here on 2026
 
 **Keep it current.** When you change `CLAUDE.md`, a nested `CLAUDE.md` or one of the rulebook documents, add an entry here — `CLAUDE.md` carries no footer stamp since 2026-11-01; the entry is the stamp. A stale footer is not cosmetic: `AGENTS.md` carried the IDENTICAL `2026-05-30` stamp while drifting 361 lines from `CLAUDE.md`, which is exactly why nobody noticed it was telling agents to use a forbidden `DATABASE_URL` for three months.
 
+## 2026-11-09
+
+`apps/player/CLAUDE.md` gains the page-proof latch on the every-frame bridge (branch `claude/emergency-hold-release-nonce`, life safety CHANGE class — unmerged until a different-vendor review and the on-glass drill): once the player's page has authenticated in a document, an un-authenticated emergency-hold RELEASE on the legacy bridge object is refused and an un-authenticated `heartbeatV2` is a bare liveness tick; a raise is never refused, and a page that cannot authenticate keeps today's behaviour. No environment variable; the web half is a no-op on every APK that lacks the two `*Auth` methods.
+
 ## 2026-11-08
 
 `apps/player/CLAUDE.md` gains the companion Manager's alert-watch watchdog (Manager wave 5, branch `fable/alert-watch-watchdog`, life safety CHANGE class — unmerged until a different-vendor review and the on-glass drill in `docs/player/ALERT-WATCH-WATCHDOG-DRILL.md`): the native alert watch stamps the Manager's provider after every pass, the Manager judges the stamp while the panel is dark and can only START the watch (re-arm, then restart its host), never the Activity, the hold or a reboot; bounded, persisted, one ladder per device. `docs/ENVIRONMENT.md` gains `MANAGER_ALERT_WATCH_WATCHDOG` (unset = today; `observe` / `on` per screen) by hand and in the generated section.

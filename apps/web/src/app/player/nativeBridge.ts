@@ -501,6 +501,61 @@ function legacyArgs(method: string, args: unknown[]): unknown[] {
 }
 
 /**
+ * ⚠️ LIFE SAFETY — the two lifeline calls that prove the page to the APK.
+ *
+ * `displayEmergencyHold` and `heartbeatV2` are never nonce-GATED: a page
+ * that cannot authenticate must still raise and release its own hold and
+ * still feed the watchdog. But on a device whose bridge object is visible
+ * to every frame, an un-authenticated release let content inside a zone
+ * take a live alert off the glass (audit finding A, 2026-11-09).
+ *
+ * An APK that closes that hole exposes a second NAME for each, taking the
+ * nonce first. Calling it is how this page proves itself; once it has, the
+ * APK refuses an un-authenticated release for the rest of the document.
+ *
+ * Why a new name and not a new arity: `typeof legacy.name === 'function'`
+ * can see a name and cannot see an overload, and a wrong-arity call is
+ * LOST inside the WebView (see `legacyArgs`). So: the name is absent (every
+ * APK before the fix) or no nonce was injected ⇒ today's exact call.
+ *
+ * ⚠️ BOTH ENTRIES MOVE TOGETHER. The APK treats either authenticated call
+ * as "this bundle authenticates both". A bundle that authenticated only
+ * its heartbeat would have its own hold release refused — the 2026-08-14
+ * "panel pinned lit" failure. Never split this table across call sites.
+ *
+ * These are NOT bridge methods in the `nativeHas` sense and are
+ * deliberately absent from the method tables: nothing calls them by name.
+ */
+const LEGACY_PAGE_AUTH_METHODS: Readonly<Record<string, string>> = {
+  displayEmergencyHold: 'displayEmergencyHoldAuth',
+  heartbeatV2: 'heartbeatV2Auth',
+};
+
+/**
+ * The one place a legacy `@JavascriptInterface` method is invoked. The
+ * caller has already checked `typeof legacy[method] === 'function'`.
+ */
+function callLegacy(legacy: any, method: string, args: unknown[]): unknown {
+  const authName = Object.prototype.hasOwnProperty.call(LEGACY_PAGE_AUTH_METHODS, method)
+    ? LEGACY_PAGE_AUTH_METHODS[method]
+    : undefined;
+  if (authName && typeof legacy[authName] === 'function') {
+    const w = win();
+    const nonce = w ? (w as { __eduCmsBridgeNonce?: unknown }).__eduCmsBridgeNonce : undefined;
+    if (typeof nonce === 'string' && nonce.length > 0) {
+      try {
+        return legacy[authName](nonce, ...legacyArgs(method, args));
+      } catch (err) {
+        // Never lose a hold or a heartbeat to the authenticated form: fall
+        // through to the call every APK has always taken.
+        console.warn(`[nativeBridge] ${authName} threw; using ${method}`, err);
+      }
+    }
+  }
+  return legacy[method](...legacyArgs(method, args));
+}
+
+/**
  * Which transport this frame will actually use. Exposed so diagnostics
  * (and, eventually, fleet telemetry) can answer "is any screen still on
  * the legacy bridge?" — that is removal criterion #3 for deleting
@@ -600,7 +655,7 @@ export function nativeFire(method: string, ...args: unknown[]): boolean {
   if (legacy) {
     try {
       if (typeof legacy[method] === 'function') {
-        legacy[method](...legacyArgs(method, args));
+        callLegacy(legacy, method, args);
         return true;
       }
     } catch (err) {
@@ -656,7 +711,7 @@ export function nativeFireChecked(method: string, ...args: unknown[]): NativeFir
   if (legacy) {
     try {
       if (typeof legacy[method] === 'function') {
-        const result = legacy[method](...legacyArgs(method, args));
+        const result = callLegacy(legacy, method, args);
         return { transport: 'legacy', delivered: true, result };
       }
       // Method absent on this APK — the native feature does not exist here.
@@ -710,7 +765,7 @@ export function nativeCall<T = unknown>(method: string, ...args: unknown[]): Pro
         return Promise.reject(new Error(`native bridge method unavailable: ${method}`));
       }
       // Legacy @JavascriptInterface methods return synchronously.
-      return Promise.resolve(legacy[method](...legacyArgs(method, args)) as T);
+      return Promise.resolve(callLegacy(legacy, method, args) as T);
     } catch (err) {
       return Promise.reject(err instanceof Error ? err : new Error(String(err)));
     }

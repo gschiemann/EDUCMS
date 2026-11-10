@@ -3561,8 +3561,18 @@ class MainActivity : ComponentActivity() {
             // injection costs the MAIN frame its control plane rather than
             // opening the surface to everyone, so this is a bounded retry
             // rather than a single shot. See [bridgeNonceDelivery].
-            onMainFrameDocument = { view, url -> sharedMedia.invalidate(); pumpBridgeNonceDelivery(view, url) },
-            onMainFrameStarted = { com.educms.player.display.EmergencyPaintRecovery.documentStarted(applicationContext, 0) },
+            onMainFrameDocument = { view, url ->
+                // A new document has to prove itself again before the bridge
+                // starts refusing an un-authenticated hold release. Start,
+                // commit and finish all land here; see
+                // WebAppBridge.pageAuthProven for why all three reset.
+                webAppBridge.resetPageAuthProof()
+                sharedMedia.invalidate()
+                pumpBridgeNonceDelivery(view, url)
+            },
+            onMainFrameStarted = {
+                com.educms.player.display.EmergencyPaintRecovery.documentStarted(applicationContext, 0)
+            },
             onPageFinishedOk = {
                 if (wv !== webView) return@SafePlayerWebViewClient
                 lastSuccessfulLoadAtMs = android.os.SystemClock.elapsedRealtime()

@@ -602,6 +602,16 @@ object NativeBridgeChannel {
         }
         val args = obj.optJSONArray("args") ?: JSONArray()
 
+        // ⚠️ LIFE SAFETY (2026-11-09). This message cleared the main-frame,
+        // origin and allow-list gates, so the player's own page has proven
+        // it can authenticate in this document. From here on the bridge
+        // refuses an un-authenticated hold RELEASE on the every-frame object
+        // and reads no state from an un-authenticated heartbeatV2 — see
+        // WebAppBridge.pageAuthProven. Set HERE, on the listener thread and
+        // before the call is queued, so the proof never waits behind a slow
+        // call on the worker.
+        bridge.markPageAuthProven()
+
         // ⚠️ Chosen AFTER all four gates, so this is a scheduling decision
         // and never a trust one. See [lifelineWorker].
         // Only when a second face is actually hosted. A single-sided screen —
@@ -643,7 +653,7 @@ object NativeBridgeChannel {
             "heartbeat" -> { bridge.heartbeat(); null }
             // 2026-08-30 (W2-4) — a malformed/empty payload degrades inside
             // heartbeatV2 itself (liveness ticks first, syncOk reads null).
-            "heartbeatV2" -> { bridge.heartbeatV2(strAt(args, 0)); null }
+            "heartbeatV2" -> { bridge.heartbeatV2ViaSecureChannel(strAt(args, 0)); null }
             "setOrientation" -> { bridge.setOrientation(bridge.channelNonce(), strAt(args, 0)); null }
             "setBootstrap" -> { bridge.setBootstrap(bridge.channelNonce(), strAt(args, 0), strAt(args, 1)); null }
             "sharedVideoPrepare" -> { bridge.sharedVideoPrepare(bridge.channelNonce(), strAt(args, 0)); null }
