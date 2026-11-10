@@ -68,6 +68,7 @@ Articles 15, 33, 34; rules in `standard/AUTONOMY.md`. Only the owner raises a le
 | Scope | Granted by | Date | Expiry |
 |---|---|---|---|
 | Launch-tracker work (docs/research/2026-10-24-launch-week/00-PLAN.md): "launch ready, stop asking" — proceed at the levels already in force; nothing in the standard adds a prompt | owner (recorded by the lead from the 2026-10-23 instruction; owner to confirm scope) | 2026-10-23 | end of the launch freeze |
+| Different-vendor review, for the 2026-11-09 player stability work only (PRs #294, #295 and the `claude/player-stability-train` PR): "bypass the codex review because we aren't live yet". **Not waived:** the owner's explicit go to merge each PR, hardware qualification before any APK ships, and the on-glass drill on a bench screen | owner, in chat (recorded by the lead; scope is the lead's reading, owner to confirm) | 2026-11-09 | when those PRs are merged or closed; lapses for all later work, and at first customer go-live |
 
 ## Holds on a class of change
 
