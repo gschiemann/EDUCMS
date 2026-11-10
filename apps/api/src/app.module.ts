@@ -120,6 +120,8 @@ import { GoogleReviewsModule } from './integrations/google-reviews/google-review
 // module loads, /status says so, and the cron self-disables.
 import { SocialModule } from './integrations/social/social.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+// 2026-11-09 — device play log (ingest, read + CSV, retention).
+import { PlayLogModule } from './play-log/play-log.module';
 // 2026-05-27 — Goodview EP6N GPIO IN/OUT controller + service.
 // Exports GpioService so EmergencyController can auto-drive a wired
 // status lamp on emergency trigger / all-clear.
@@ -241,6 +243,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     GoogleReviewsModule,
     SocialModule,
     AnalyticsModule,
+    PlayLogModule,
     GpioModule,
     DisplayModule,
     // 2026-11-08 — opt-in scheduled restarts (kill switch SCHEDULED_REBOOTS_DISABLED).

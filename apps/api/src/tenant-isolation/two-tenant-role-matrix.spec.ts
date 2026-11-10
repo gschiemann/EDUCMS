@@ -74,6 +74,7 @@ import { ScoreboardConsoleController } from '../sports/scoreboard-console.contro
 import { ScoreboardConsoleService } from '../sports/scoreboard-console.service';
 import { BrandingController } from '../branding/branding.controller';
 import { AnalyticsController } from '../analytics/analytics.controller';
+import { PlayLogReadController } from '../play-log/play-log-read.controller';
 import { AiKeyController } from '../ai/ai-key.controller';
 import { SampleDataController } from '../sample-data/sample-data.controller';
 import { SuperLicenseController } from '../license/super-license.controller';
@@ -412,6 +413,20 @@ function dataset(): Dataset {
       playlistId: `pl-${s}`,
       assetId: `asset-${s}`,
       sampledAt: new Date(),
+    })),
+    // Device play log (2026-11-09). The real table has a composite key; `id`
+    // here is only the double's row handle. BOTH tenants' rows name the SAME
+    // asset id, so only the tenant predicate separates them.
+    playLogEntry: pair((tenantId, s) => ({
+      id: `pi-${s}`,
+      tenantId,
+      screenId: `scr-${s}`,
+      startedAt: new Date(Date.now() - 60_000),
+      playlistItemId: `pi-${s}`,
+      playlistId: `pl-${s}`,
+      assetId: 'asset-shared',
+      shownMs: 10_000,
+      completed: true,
     })),
     // Both tenants carry the SAME `[Sample]` display-name prefix — the wipe
     // matches on that prefix, so only the tenant predicate separates them.
@@ -1232,6 +1247,18 @@ const MATRIX: Case[] = [
     controller: AnalyticsController, handler: 'proofOfPlay', op: 'read',
     build: (p) => new AnalyticsController(p),
     invoke: (c, req) => c.proofOfPlay(req, '7'),
+  },
+  {
+    name: 'play-log: read where a file played never returns another tenant\'s plays',
+    controller: PlayLogReadController, handler: 'read', op: 'read',
+    build: (p) => new PlayLogReadController(p),
+    invoke: (c, req) => c.read(req, { setHeader: () => undefined } as any, undefined, 'asset-shared'),
+  },
+  {
+    name: 'play-log: read another tenant\'s screen by id',
+    controller: PlayLogReadController, handler: 'read', op: 'read',
+    build: (p) => new PlayLogReadController(p),
+    invoke: (c, req) => c.read(req, { setHeader: () => undefined } as any, 'scr-b'),
   },
 
   // ── BYOK AI key (SEC-009 finish, 2026-09-05 — was a dated TODO) ───────

@@ -216,6 +216,20 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
     (f) Moved to `apps/api/src/emergency/CLAUDE.md` — the emergency tier, large files only.
     Incident: `docs/incidents/2026-09-26-4k-cache-fill.md`
 
+18. **The device play log records what was on glass, and can never cost playback or an alert
+    (2026-11-09)** (`playLog.ts`, pure core + thin glue, `__tests__/playLog.test.ts`). One entry
+    per playlist item shown: playlist / item / asset ids, start on the server-corrected clock
+    (`serverClockOffsetRef`), duration on the monotonic clock, `completed`. Ids and times only —
+    never content text, never anything typed. Emergency alerts and drills (any raised hold) are
+    NOT logged: the audit log is their record of truth; a content item an alert cut short is
+    logged `completed: false`. Every entry point swallows its failure and drops the entry; the
+    queue is capped (2,000, oldest dropped) and persisted to localStorage at most every 30 s and
+    on pagehide; uploads go to `POST /api/v1/screens/:id/play-log` every 10 min (backlog: 90 s),
+    never while an alert is on glass, never in preview mode, through `fetchJsonBounded`. A server
+    `stop` (kill switch `PLAY_LOG_DISABLED`) drops the queue and stands the log down across
+    reloads. The page hook is two effects beside the native website-overlay effect; keep it that
+    small.
+
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 
 Screens whose playlist has **Sync playback** on (`Playlist.syncPlayback` — the ONLY

@@ -203,6 +203,7 @@ import {
   type TelemetryResponse,
   type TelemetrySyncReport,
 } from './telemetry';
+import { playLogShown, startPlayLog, type PlayLogHandle } from './playLog';
 import { rememberVideoDigest, videoQualityTracker } from './videoQuality';
 // The WebView's declared decode capability, once per boot (2026-10-11).
 import { probeMediaCaps } from './mediaCapsProbe';
@@ -11833,6 +11834,18 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // readiness flag existed.
     if (nativeFire('showUrlOverlay', url)) setMediaReady(true);
   }, [nativeFirstHoldRaised, currentIndex, isItemValid, phase, playbackStopped, softBlank, sorted]);
+
+  // Device play log (2026-11-09): one entry per item on glass; never in preview, never an alert. Rules: playLog.ts.
+  const playLogRef = useRef<PlayLogHandle | null>(null);
+  useEffect(() => {
+    if (isPreviewMode() || !screenId) return;
+    const h = startPlayLog({ screenId, getToken: getDeviceToken, apiRoot: getApiRoot, clockOffsetMs: () => serverClockOffsetRef.current });
+    playLogRef.current = h;
+    return () => { playLogRef.current = null; h.stop(); };
+  }, [screenId]);
+  useEffect(() => {
+    playLogRef.current?.observe(playLogShown(displayIndex === null ? null : sorted[displayIndex], playlist, { emergency: !!activeEmergency || nativeFirstHoldRaised, blanked: playbackStopped || softBlank, playing: phase === 'playing' }), !!activeEmergency || nativeFirstHoldRaised);
+  }, [displayIndex, sorted, playlist, activeEmergency, nativeFirstHoldRaised, playbackStopped, softBlank, phase, screenId]);
 
   // 2026-09-28 — Website Tabs' native site view is a TOP-LEVEL Android
   // WebView laid over this page, so an alert or the operator's Stop surface
