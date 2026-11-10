@@ -91,5 +91,21 @@ export function createDeviceTokenSession<T>(options: Options<T>) {
   // Only the local teardown owner starts a fresh React-only pairing cycle.
   // A native unpair reloads the document and creates its own new session.
   const resume = () => { paused = false; };
-  return { read, register, invalidate, resume };
+
+  // 2026-11-09 — screen PIN (unpairPin.ts). The on-screen Unpair invalidates
+  // FIRST (R-P0-02) and only then asks the server. When the server REFUSES
+  // (the tenant set a PIN this page had not heard of yet), nothing was torn
+  // down and the screen is still paired: put back exactly the credential that
+  // was retired, so the page keeps its identity without a reload. Only while
+  // paused (i.e. straight after `invalidate`); a retired flight stays retired
+  // (the generation is not rolled back). Never mints, never upgrades.
+  const restore = (token: string): boolean => {
+    if (!paused || !isPlausibleDeviceToken(token)) return false;
+    acceptedToken = token.trim();
+    allowBootstrap = true;
+    paused = false;
+    try { storage()?.setItem(STORAGE_KEY, acceptedToken); } catch { /* the live credential still serves this document */ }
+    return true;
+  };
+  return { read, register, invalidate, resume, restore };
 }

@@ -117,3 +117,40 @@ it('rejects malformed server response tokens without persisting or granting succ
   expect(f.session.read()).toBe('stored-old');
   expect(f.native).not.toHaveBeenCalled();
 });
+
+describe('restore (2026-11-09, screen PIN): a refused unpair keeps the credential', () => {
+  it('puts back the retired token after invalidate, durable and live', async () => {
+    const f = fixture();
+    f.session.invalidate();
+    expect(f.session.read()).toBeNull();
+    expect(f.session.restore('stored-old')).toBe(true);
+    expect(f.session.read()).toBe('stored-old');
+    expect(f.saved()).toBe('stored-old');
+    // Registration works again (invalidate had paused it).
+    const next = jest.fn(async (_prior: string | null) => ({ token: 'server-renewed' }));
+    await f.session.register(next);
+    expect(next).toHaveBeenCalledWith('stored-old');
+    expect(f.session.read()).toBe('server-renewed');
+  });
+
+  it('a flight retired by invalidate stays retired after restore', async () => {
+    const f = fixture();
+    const d = deferred<Reply>();
+    const flight = f.session.register(() => d.promise);
+    await Promise.resolve();
+    f.session.invalidate();
+    f.session.restore('stored-old');
+    d.resolve({ token: 'late-from-old-generation' });
+    expect(await flight).toBeNull();
+    expect(f.session.read()).toBe('stored-old');
+  });
+
+  it('does nothing unless the session was just invalidated, or for an implausible token', () => {
+    const f = fixture();
+    expect(f.session.restore('other')).toBe(false);
+    expect(f.session.read()).toBe('stored-old');
+    f.session.invalidate();
+    expect(f.session.restore('<bad token>')).toBe(false);
+    expect(f.session.read()).toBeNull();
+  });
+});

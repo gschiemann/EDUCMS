@@ -321,6 +321,9 @@ import { bootCheck as loopGuardBootCheck, isBlocked as loopIsBlocked } from './l
 // `__tests__/remoteDialogWiring.test.ts` keeps it out of the player route.
 import { remoteSurfaceStillUp, type RemoteDialogKind, type RemoteDialogOutcome } from './remoteConfirm';
 import { RemoteDialog, REMOTE_DIALOG_COPY, useRemoteDialog } from './RemoteDialog';
+// 2026-11-09 — screen PIN for the on-screen Unpair (unpairPin.ts).
+import { decideUnpairAnswer, readManifestUnpairPin, readStoredUnpairPin, requestServerUnpair, writeStoredUnpairPin } from './unpairPin';
+import { UnpairPinPad, usePinPad } from './UnpairPinPad';
 import { RemoteOptions } from './RemoteOptions';
 import { nativeStoreDiscoveryAllowed } from './nativeStoreDiscovery';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
@@ -3658,12 +3661,29 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     stateRef: remoteDialogRef,
     dispatch: dispatchRemoteDialog,
   } = useRemoteDialog((outcome) => remoteDialogAnswerRef.current(outcome));
+  // ── Screen PIN for the on-screen Unpair (2026-11-09, unpairPin.ts) ──────
+  // Known from the last non-emergency manifest (`unpairPinRequired`), seeded
+  // from storage for an offline boot. The SERVER verifies; this only decides
+  // whether to ask first. False (no PIN) = Unpair behaves exactly as before.
+  const unpairPinRequiredRef = useRef<boolean>(
+    typeof window === 'undefined' ? false : readStoredUnpairPin(window.localStorage),
+  );
+  const {
+    state: pinPad,
+    stateRef: pinPadRef,
+    dispatch: dispatchPinPad,
+  } = usePinPad({ onSubmit: (pin) => { void handleUnpair(pin); }, onCancel: () => {} });
   // The surface that opened it went away (Resume, the menu toggled closed, or
   // the idle card turned into the menu): the question goes with it.
   useEffect(() => {
     const s = remoteDialogRef.current;
     if (s.open && !remoteSurfaceStillUp(s, playbackStopped)) dispatchRemoteDialog({ type: 'surface-closed' });
   }, [playbackStopped, dispatchRemoteDialog, remoteDialogRef]);
+  // The PIN pad belongs to the Back menu / idle card that asked: any change
+  // of that surface closes it (a cancel — nothing was torn down).
+  useEffect(() => {
+    dispatchPinPad({ type: 'close' });
+  }, [playbackStopped, dispatchPinPad]);
   // ── Off-hours background update (2026-10-10) ────────────────────────────
   // What the 15-min build-info check found, and how far the background
   // preparation got. Read by the apply tick (the bundle-drift effect below)
@@ -4649,6 +4669,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         dispatchRemoteDialog({ type: 'back' });
         return;
       }
+      // 2026-11-09 — the screen-PIN keypad: Back cancels it, and only it.
+      if (pinPadRef.current.open) {
+        dispatchPinPad({ type: 'back' });
+        return;
+      }
       // 2026-10-11 — Back from the on-screen LED canvas editor returns to
       // the Screen options menu it was opened from (rule 15: Back always
       // reaches an actionable escape, never a silent state change). Checked
@@ -4689,6 +4714,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         return;
       }
       if (e.repeat) return;
+      // On the screen-PIN keypad a keyboard's Backspace deletes a digit (the
+      // pad handles it); Escape / GoBack / Back still cancel it below.
+      if (key === 'Backspace' && pinPadRef.current.open) return;
       // Universal "go back / dismiss" keys.
       if (key === 'Escape' || key === 'Backspace' || key === 'GoBack' || key === 'Back') {
         e.preventDefault();
@@ -4702,7 +4730,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       window.removeEventListener('edu-show-stop-overlay', onShowStop as EventListener);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [playbackStopped, dispatchRemoteDialog, remoteDialogRef]);
+  }, [playbackStopped, dispatchRemoteDialog, remoteDialogRef, dispatchPinPad, pinPadRef]);
 
   // Latest published APK version — fetched once at boot, used by the
   // post-pair splash to show "Update available" + Install button.
@@ -4901,7 +4929,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     || phase === 'emergency' || playlist?.isEmergency === true;
   useEffect(() => {
     if (remoteDialogBlockedByAlert) dispatchRemoteDialog({ type: 'emergency' });
-  }, [remoteDialogBlockedByAlert, dispatchRemoteDialog]);
+    // The screen-PIN keypad too: an alert always wins (it is a cancel).
+    if (remoteDialogBlockedByAlert) dispatchPinPad({ type: 'close' });
+  }, [remoteDialogBlockedByAlert, dispatchRemoteDialog, dispatchPinPad]);
   /** Ask a question from the paired card. `opener` gets the remote back after a cancel. */
   const openRemoteDialog = (kind: RemoteDialogKind, opener: HTMLElement | null) => {
     if (remoteDialogBlockedByAlert || remoteDialogRef.current.open) return;
@@ -7350,6 +7380,17 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           setScreenTimeZone(nextZone);
         }
       } catch { /* a zone is a nicety; the manifest apply is the point */ }
+
+      // 2026-11-09 — does this tenant protect the on-screen Unpair with a
+      // PIN (unpairPin.ts)? An emergency manifest never moves it. Persisted
+      // so an offline boot still refuses a local-only unpair.
+      try {
+        const nextPin = readManifestUnpairPin(unpairPinRequiredRef.current, manifest);
+        if (nextPin !== unpairPinRequiredRef.current) {
+          unpairPinRequiredRef.current = nextPin;
+          writeStoredUnpairPin(typeof window === 'undefined' ? null : window.localStorage, nextPin);
+        }
+      } catch { /* the server enforces the PIN regardless */ }
 
       // 2026-05-26 — LED canvas override from manifest. Operator sets
       // canvasW/canvasH on the dashboard /screens UI per-screen; the
@@ -12004,6 +12045,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // MainActivity's onExitToDeviceHome lambda calls
     // LockTaskController.disengage() before it does anything else. Do not
     // "simplify" this button away.
+    // 2026-11-09 — and it is deliberately NOT behind the screen PIN
+    // (unpairPin.ts): without device owner the hardware Home key leaves the
+    // app anyway, so a gate adds no security and could strand a technician
+    // who must reach Wi-Fi settings on an offline screen. Owner decision.
     if (nativeFire('exitToDeviceHome')) return;
     try { window.close(); } catch { /* ignore */ }
     setPlaybackStopped(true);
@@ -12030,25 +12075,39 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
    * if the network is slow / the API is down — better to have a kiosk
    * stuck on the pairing splash than one that "looks paired but isn't").
    */
-  const handleUnpair = async () => {
-    // R-P0-02: gate ALL token writers FIRST — before any await gives an
-    // in-flight register response the chance to land mid-teardown.
+  const handleUnpair = async (pin?: string) => {
     const fp = getDeviceFingerprint();
     const token = getDeviceToken() || '';
-    deviceTokenSession.invalidate();
+    // 2026-11-09 — SCREEN PIN (unpairPin.ts). With a PIN known the keypad asks
+    // FIRST and nothing is torn down until the server accepts it; offline is
+    // a refusal (a local-only teardown would drop the screen off the alert
+    // channel). With NO PIN known everything below runs in today's order.
+    const pinKnown = unpairPinRequiredRef.current;
+    if (pinKnown && pin === undefined) {
+      dispatchPinPad({ type: 'open' });
+      return;
+    }
+    // R-P0-02: gate ALL token writers FIRST — before any await gives an
+    // in-flight register response the chance to land mid-teardown. (With a
+    // PIN this waits for the server's yes: nothing is torn down before it.)
+    if (!pinKnown) deviceTokenSession.invalidate();
 
-    // 1. Server: clear tenantId + regenerate pairingCode. 4s budget,
-    //    swallow errors so a flaky network can't trap the kiosk.
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 4000);
-      await fetch(`${getApiRoot()}/api/v1/screens/unpair/${encodeURIComponent(fp)}`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        signal: controller.signal,
-      }).catch(() => { /* tolerate — local teardown still proceeds */ });
-      clearTimeout(timer);
-    } catch { /* ignore */ }
+    // 1. Server: clear tenantId + regenerate pairingCode. 4s budget; with no
+    //    PIN known the answer never blocks the local teardown (as before).
+    const answer = await requestServerUnpair({ apiRoot: getApiRoot(), fingerprint: fp, token, pin });
+    const decision = decideUnpairAnswer(answer, pinKnown);
+    if (decision.kind !== 'proceed') {
+      // Refused: the screen is still paired. Keep its credential (no PIN was
+      // known, so it was retired above), learn that a PIN is set, and ask.
+      if (!pinKnown) deviceTokenSession.restore(token);
+      unpairPinRequiredRef.current = true;
+      writeStoredUnpairPin(typeof window === 'undefined' ? null : window.localStorage, true);
+      if (pinPadRef.current.open) dispatchPinPad({ type: 'refused', decision });
+      else dispatchPinPad({ type: 'open', message: decision.kind === 'pin-required' ? 'required' : decision.kind === 'pin-locked' ? 'locked' : decision.kind === 'pin-wrong' ? 'wrong' : 'unreachable' });
+      return;
+    }
+    if (pinKnown) deviceTokenSession.invalidate();
+    dispatchPinPad({ type: 'close' });
 
     // 2. Local state + caches.
     try { localStorage.removeItem('edu_device_token'); } catch { /* ignore */ }
@@ -15816,6 +15875,25 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               {...REMOTE_DIALOG_COPY[remoteDialog.kind]}
               focus={remoteDialog.focus}
               onEvent={dispatchRemoteDialog}
+            />
+          ) : null}
+          {/* 2026-11-09 — the screen-PIN keypad (unpairPin.ts), same rules. */}
+          {pinPad.open && !remoteDialogBlockedByAlert ? (
+            <UnpairPinPad
+              state={pinPad}
+              onEvent={dispatchPinPad}
+              copy={{
+                title: tPlayerMenu('unpairPin.title'),
+                body: tPlayerMenu('unpairPin.body'),
+                hint: tPlayerMenu('unpairPin.hint'),
+                deleteLabel: tPlayerMenu('unpairPin.delete'),
+                okLabel: tPlayerMenu('unpairPin.ok'),
+                wrong: tPlayerMenu('unpairPin.wrong'),
+                locked: tPlayerMenu('unpairPin.locked'),
+                unreachable: tPlayerMenu('unpairPin.unreachable'),
+                required: tPlayerMenu('unpairPin.required'),
+                checking: tPlayerMenu('unpairPin.checking'),
+              }}
             />
           ) : null}
         </div>

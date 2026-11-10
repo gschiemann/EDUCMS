@@ -1497,6 +1497,8 @@ describe('SEC-009 — two-tenant × every-role isolation matrix', () => {
     //    and each entry says which assertion covers it instead.
     'super-license.controller.ts':
       'CROSS-TENANT BY DESIGN (the owner\'s /super console). A matrix row would assert the opposite of the product. Covered instead by the "deliberately cross-tenant surface is SUPER_ADMIN-gated" describe in this file — class gate + guards + no per-route decorator that re-opens it to a lesser role.',
+    'screen-pin.controller.ts':
+      'NO FOREIGN ID TO AIM AT (2026-11-09). All three routes are `api/v1/tenants/me/screen-pin`: the tenant comes from the session (`req.user.tenantId`) and never from the request, and every query is keyed by it. The two-tenant proof ("touches only the caller\'s tenant") and the role gates (writes SUPER/DISTRICT only) are asserted in screens/screen-pin.spec.ts.',
     'import-jobs.controller.ts':
       'PARTLY COVERED BY REAL ROWS ABOVE (getJob, commit). What is left is `prepare`, a multipart upload whose tenant comes from the session and never from the request — there is no foreign id to aim at it, and a stubbed file would prove nothing about the query. The 2026-09-05 TODO on the old imports.controller.ts is retired: that controller is gone.',
   };

@@ -8422,7 +8422,19 @@
     "empty": "此处暂无文件。请上传文件或选择其他文件夹。"
   },
   "playerMenu": {
-    "importFromUsb": "从 U 盘导入"
+    "importFromUsb": "从 U 盘导入",
+    "unpairPin": {
+      "title": "输入屏幕 PIN 码",
+      "body": "您的组织使用 PIN 码保护此屏幕。输入后即可在此解除配对，也可以在控制台中解除配对。",
+      "hint": "方向键和确定键，或直接输入数字 · 返回键取消",
+      "delete": "删除",
+      "ok": "确定",
+      "wrong": "PIN 码错误，请重试。",
+      "locked": "PIN 码错误次数过多。请稍后再试，或在控制台中解除此屏幕的配对。",
+      "unreachable": "无法连接服务器验证 PIN 码。屏幕保持配对状态。请在控制台中解除配对。",
+      "required": "在此解除配对需要此屏幕的 PIN 码。",
+      "checking": "正在验证…"
+    }
   },
   "ui": {
     "filter": "筛选",
@@ -8597,5 +8609,23 @@
       "tenant-cap": "已达到今晚的上限",
       "other": "原因未知"
     }
+  },
+  "screenPin": {
+    "title": "屏幕 PIN 码",
+    "desc": "屏幕菜单解除配对前需要输入此 PIN 码。4 到 8 位数字。在控制台中移除屏幕始终不需要。",
+    "statusSet": "已设置屏幕 PIN 码。",
+    "statusUnset": "未设置屏幕 PIN 码。任何人都可以通过屏幕菜单解除配对。",
+    "pinLabel": "新 PIN 码",
+    "confirmLabel": "再次输入 PIN 码",
+    "save": "设置 PIN 码",
+    "change": "更改 PIN 码",
+    "clear": "移除 PIN 码",
+    "saved": "PIN 码已保存。屏幕将在下次更新时（约一分钟）开始要求输入。",
+    "cleared": "PIN 码已移除。",
+    "mismatch": "两次输入的 PIN 码不一致。",
+    "invalid": "请使用 4 到 8 位数字。",
+    "saveFailed": "保存失败，请重试。",
+    "readOnly": "只有组织管理员可以更改屏幕 PIN 码。",
+    "recovery": "忘记 PIN 码？在“屏幕”中移除该屏幕并重新配对，或在此设置新的 PIN 码。"
   }
 }

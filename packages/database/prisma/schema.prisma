@@ -230,6 +230,13 @@ model Tenant {
   usbIngestEnabled                Boolean            @default(false) @map("usb_ingest_enabled")
   usbIngestKey                    String?            @map("usb_ingest_key") // 64-char hex (HMAC-SHA256 secret)
   usbIngestKeyRotatedAt           DateTime?          @map("usb_ingest_key_rotated_at")
+  // Screen PIN for an ON-DEVICE unpair (2026-11-09, player stability gap 6).
+  // NOT the PIN and NOT its hash: those live in `tenant_screen_pins`, a table
+  // no existing tenant read can reach. This is only "a PIN is set, since
+  // when". The manifest turns it into the static `unpairPinRequired: true`
+  // (key ABSENT when null, so a tenant that never sets a PIN is served
+  // byte-identical manifests). Written in the same transaction as the hash.
+  screenPinSetAt                  DateTime?          @map("screen_pin_set_at")
   usbIngestEvents                 UsbIngestEvent[]
   games                           Game[]
   sponsors                        Sponsor[]
@@ -5187,4 +5194,21 @@ model ScreenStorageHealth {
 
   @@index([tenantId])
   @@map("screen_storage_health")
+}
+
+// Screen PIN (2026-11-09, player stability gap 6): the slow salted hash
+// (Argon2id, platform parameters) of the optional 4-8 digit PIN a tenant sets
+// so that somebody standing at a screen cannot unpair it from the on-screen
+// menu. Verified on the server, on POST /screens/unpair/:fp only; the
+// dashboard's own remove is never gated. One row per tenant; no row = no PIN =
+// today's behaviour. Kept OUT of `tenants` on purpose so no tenant read can
+// ever return it. No foreign key (tenants is hot; tenants are soft-archived).
+model TenantScreenPin {
+  tenantId    String   @id @map("tenant_id")
+  pinHash     String   @map("pin_hash")
+  setByUserId String?  @map("set_by_user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("tenant_screen_pins")
 }
