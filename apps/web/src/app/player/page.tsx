@@ -16,7 +16,7 @@ import { useTranslations } from 'next-intl';
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useSyncExternalStore, Component, Suspense, ReactNode } from 'react';
 import { PlaylistVideoDeck } from './PlaylistVideoDeck';
 import { DEFAULT_PLAYLIST_MEDIA_FIT, mediaFitClass, mediaFitStyle, playlistItemFit, playlistMediaFit, type MediaFit } from './mediaFit';
-import { readPlayerStorageEstimate, storageEstimateText, type PlayerStorageEstimate } from './storageEstimate';
+import { readPlayerStorageEstimate, requestPersistentStorage, storageEstimateText, type PlayerStorageEstimate } from './storageEstimate';
 import { DIAGNOSTICS_WS_TYPE, onLiveManifestApplied, onPushedDiagnosticsRequest } from './screenDiagnostics';
 import { fitSplashK } from './splashFit';
 import { healPatternCss } from '@/lib/pattern-css';
@@ -75,6 +75,7 @@ import {
   type ApiOriginState,
 } from './apiOrigin';
 import { checkSensitivePush, isTenantChangeForThisScreen, rememberEventId } from './pushGate';
+import { createStaleDropState, planStaleDropRecovery, relearnServerClockOffset } from './staleDropRecovery';
 // 2026-08-30 — player reliability program (docs/research/2026-08-30-player-
 // reliability-program/). Pure modules, unit-tested without mounting this page:
 //   deviceCredential — proactive token renewal + controlled 401 recovery
@@ -3527,6 +3528,20 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     void readPlayerStorageEstimate(typeof navigator === 'undefined' ? undefined : navigator.storage)
       .then(value => { if (active) setStorageEstimate(value); });
     return () => { active = false; };
+  }, []);
+
+  // Ask the browser, once per page load, to keep this origin's storage out of
+  // its automatic clean-up under disk pressure ("the emergency tier never
+  // evicts" is otherwise only our own rule). No prompt, no UI; a refusal
+  // changes nothing. Never from the dashboard's preview iframe.
+  useEffect(() => {
+    if (isPreviewMode()) return;
+    void requestPersistentStorage(
+      typeof navigator === 'undefined' ? undefined : navigator.storage,
+      typeof navigator === 'undefined' ? '' : navigator.userAgent,
+    ).then((outcome) => {
+      console.log(`[Player] persistent storage: ${outcome}`);
+    });
   }, []);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [screenId, setScreenId] = useState<string | null>(null);
@@ -8513,6 +8528,35 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     return fetchContent();
   }, [fetchContent]);
 
+  // A signed life-safety push refused as "stale" used to trigger nothing: on
+  // a box whose wall clock stepped after sign-in (first NTP sync, a manual
+  // fix) every OVERRIDE and broadcast waited for the next poll. The refused
+  // frame is still never applied. Instead the authenticated manifest is asked
+  // (the server of record decides), and the clock offset is measured again
+  // from the API's own clock so the next push is judged against real time.
+  // Both are rate-limited in `staleDropRecovery.ts`; a failure of either
+  // leaves the player exactly where it was (frame dropped, polls catch up).
+  const staleDropStateRef = useRef(createStaleDropState());
+  const recoverFromStaleDrop = useCallback((transport: 'WS' | 'SSE') => {
+    try {
+      const plan = planStaleDropRecovery(staleDropStateRef.current, performance.now(), Date.now());
+      if (plan.reconcile !== 'none') {
+        console.warn(`[Player ${transport}] stale drop: asking the manifest (${plan.reconcile})`);
+        void Promise.resolve(plan.reconcile === 'preempt' ? preemptReconcile() : fetchContent()).catch(() => { /* fetchContent reports its own failures */ });
+      }
+      if (plan.relearn) {
+        void relearnServerClockOffset({ apiRoot: getApiRoot() }).then((offset) => {
+          if (offset === null) return;
+          const previous = serverClockOffsetRef.current;
+          serverClockOffsetRef.current = offset;
+          if (Math.abs(offset - previous) > 5_000) {
+            console.warn(`[Player ${transport}] server clock offset re-learned after a stale drop: ${previous} ms -> ${offset} ms`);
+          }
+        });
+      }
+    } catch { /* recovery is best-effort; the polls remain the backstop */ }
+  }, [preemptReconcile, fetchContent]);
+
   // F2b — STABLE identity for the EmergencyOverlay hint. An inline arrow
   // at the mount site re-created the prop every render, and the overlay's
   // poll effect (which lists it as a dep) tore down + re-armed its
@@ -9683,6 +9727,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             name, data?.eventId, 'ts=', data?.timestamp,
             'offset=', serverClockOffsetRef.current,
           );
+          if (verdict.reason === 'stale') recoverFromStaleDrop('SSE');
           return false;
         }
         return true;
@@ -10052,6 +10097,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 msg.type, msg.eventId, 'ts=', msg.timestamp,
                 'offset=', serverClockOffsetRef.current,
               );
+              if (wsVerdict.reason === 'stale') recoverFromStaleDrop('WS');
               return;
             }
             // SECURITY (life-safety): ALL_CLEAR no longer optimistically drops

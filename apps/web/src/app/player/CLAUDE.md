@@ -31,6 +31,12 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
    200-then-stalled-body proxy wedge the chain (deep-audit F1: the first fix bounded only
    headers and its own test codified the hole). Emergency triggers (OVERRIDE/ALL_CLEAR) use the
    preempt lane (`preemptReconcile`) so a slow normal fetch can never queue an alert.
+   A sensitive push the gate refuses as **stale** is still never applied, but it is no longer a
+   dead end (`staleDropRecovery.ts`, 2026-11-09): it asks the manifest (pre-empt at most once per
+   25 s — longer than the 20 s manifest deadline, so refused frames cannot starve the manifest —
+   and plain coalescing in between) and re-measures the server clock offset from
+   `GET /api/v1/realtime/time`, the same `TimeSyncService` clock that stamps AUTH_OK. A wall clock
+   that stepped after sign-in used to refuse every push until the socket reconnected.
 5. **Never equate signals:** TCP `open` ≠ realtime connected (only AUTH_OK resets the WS failure
    counter / stands down SSE-HTTP fallbacks); `onPageFinished` ≠ page success (error documents
    don't count — `LoadOutcomeTracker`); a bridge heartbeat ≠ content health (`heartbeatV2`

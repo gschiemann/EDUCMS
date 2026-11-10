@@ -7,6 +7,7 @@ History of `CLAUDE.md`, newest first, one entry per stamp. It moved here on 2026
 ## 2026-11-09
 
 `apps/player/CLAUDE.md` gains the page-proof latch on the every-frame bridge (branch `claude/emergency-hold-release-nonce`, life safety CHANGE class — unmerged until a different-vendor review and the on-glass drill): once the player's page has authenticated in a document, an un-authenticated emergency-hold RELEASE on the legacy bridge object is refused and an un-authenticated `heartbeatV2` is a bare liveness tick; a raise is never refused, and a page that cannot authenticate keeps today's behaviour. No environment variable; the web half is a no-op on every APK that lacks the two `*Auth` methods.
+`apps/web/src/app/player/CLAUDE.md` rule 4 gains the stale-push recovery (branch `claude/push-stale-reconcile`, player audit findings C and D — web player, deploys fleet-wide on merge): a signed life-safety push refused as stale is still never applied, but now asks the authenticated manifest (pre-empt at most once per 25 s, coalesced in between) and re-measures the server clock offset from `/api/v1/realtime/time`, so a device whose wall clock stepped after sign-in stops refusing every push until its socket reconnects (`staleDropRecovery.ts`). The player also asks the browser once per page load to keep its storage out of automatic clean-up (`requestPersistentStorage` in `storageEstimate.ts`; a request, not a guarantee; Firefox is not asked because it would show a prompt). No environment variable; the gate itself is unchanged.
 
 ## 2026-11-08
 
