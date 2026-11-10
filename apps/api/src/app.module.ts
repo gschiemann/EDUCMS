@@ -27,6 +27,7 @@ import { AssetArchivesController } from './assets/asset-archives.controller';
 import { AssetArchivesService } from './assets/asset-archives.service';
 import { TemplatesController } from './templates/templates.controller';
 import { TenantsController } from './tenants/tenants.controller';
+import { ScreenPinController } from './tenants/screen-pin.controller';
 import { ProxyController } from './proxy/proxy.controller';
 import { RendererService } from './proxy/renderer.service';
 import { HealthController } from './health/health.controller';
@@ -327,6 +328,7 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     AssetArchivesController,
     TemplatesController,
     TenantsController,
+    ScreenPinController,
     ProxyController,
     HealthController,
     IntegrationsHealthController,

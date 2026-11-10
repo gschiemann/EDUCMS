@@ -4791,6 +4791,34 @@ export function useSetMfaEnforced() {
   });
 }
 
+// ─── Screen PIN for the on-screen Unpair (2026-11-09) ───
+// GET says whether a PIN is set — never the PIN. PUT / DELETE are org-admin
+// only, server-enforced. No optimistic success: the card shows "set" only
+// after the server says so.
+export function useScreenPin(enabled = true) {
+  return useQuery<{ set: boolean; setAt: string | null }>({
+    queryKey: ['screen-pin'],
+    queryFn: () => apiFetch('/tenants/me/screen-pin'),
+    enabled,
+  });
+}
+
+export function useSetScreenPin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pin: string) => apiFetch('/tenants/me/screen-pin', { method: 'PUT', body: JSON.stringify({ pin }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['screen-pin'] }),
+  });
+}
+
+export function useClearScreenPin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch('/tenants/me/screen-pin', { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['screen-pin'] }),
+  });
+}
+
 // ─── USB sneakernet ingest (Sprint 7B) ───
 export function useUsbIngestConfig() {
   return useQuery<{ enabled: boolean; hasKey: boolean; keyRotatedAt: string | null }>({

@@ -216,6 +216,24 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
     (f) Moved to `apps/api/src/emergency/CLAUDE.md` — the emergency tier, large files only.
     Incident: `docs/incidents/2026-09-26-4k-cache-fill.md`
 
+18. **The on-screen Unpair is gated by the tenant's screen PIN on the SERVER, never on the
+    device (2026-11-09)** — `unpairPin.ts` (player), `apps/api/src/screens/screen-pin.ts` (API).
+    An unpair takes a screen off the alert channel, and the player's unpair is server-first, so
+    the gate is the device-initiated `POST /screens/unpair/:fp`: with a PIN set it refuses
+    without the correct PIN (403 `SCREEN_UNPAIR_PIN_REQUIRED` / `_WRONG`, 429 `_LOCKED` after
+    five wrong, doubling to 24 h). The manifest carries only the static `unpairPinRequired:
+    true`, ABSENT when unset (never the hash; nothing brute-forceable on the device); an
+    emergency manifest never moves the player's copy. With a PIN known the player asks on its
+    own keypad (`UnpairPinPad.tsx`, rule 15) and tears nothing down until the server says yes;
+    OFFLINE it refuses (a local-only teardown would leave a bootstrap credential every device
+    route refuses — off the channel all the same). With no PIN known `handleUnpair` keeps its
+    old order and ignores the answer, except a PIN refusal, after which
+    `deviceTokenSession.restore` puts the retired credential back. Never gated: the dashboard's
+    `DELETE /screens/:id` (the forgotten-PIN recovery), TENANT_CHANGED, and "Exit to device
+    home" (without device owner the Home key leaves the app anyway). Do not re-attach
+    `OperatorPinGate.kt` to the native bridge. Report:
+    `docs/handoffs/2026-11-09-player-stability/05-screen-pin.md`.
+
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 
 Screens whose playlist has **Sync playback** on (`Playlist.syncPlayback` — the ONLY

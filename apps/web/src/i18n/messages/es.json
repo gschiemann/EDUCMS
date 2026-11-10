@@ -8422,7 +8422,19 @@
     "empty": "Aún no hay archivos aquí. Sube un archivo o elige otra carpeta."
   },
   "playerMenu": {
-    "importFromUsb": "Importar desde USB"
+    "importFromUsb": "Importar desde USB",
+    "unpairPin": {
+      "title": "Introduce el PIN de la pantalla",
+      "body": "Tu organización protege esta pantalla con un PIN. Introdúcelo para desvincularla aquí, o desvincúlala desde el panel.",
+      "hint": "Flechas y OK, o escribe los dígitos · Atrás para cancelar",
+      "delete": "Borrar",
+      "ok": "OK",
+      "wrong": "PIN incorrecto. Inténtalo de nuevo.",
+      "locked": "Demasiados PIN incorrectos. Inténtalo más tarde o desvincula esta pantalla desde el panel.",
+      "unreachable": "No se puede contactar con el servidor para comprobar el PIN. La pantalla sigue vinculada. Desvincúlala desde el panel.",
+      "required": "Esta pantalla necesita su PIN para desvincularla aquí.",
+      "checking": "Comprobando…"
+    }
   },
   "ui": {
     "filter": "Filtrar",
@@ -8597,5 +8609,23 @@
       "tenant-cap": "se alcanzó el límite de esta noche",
       "other": "motivo desconocido"
     }
+  },
+  "screenPin": {
+    "title": "PIN de pantalla",
+    "desc": "Se pide en una pantalla antes de que su menú en pantalla pueda desvincularla. De 4 a 8 dígitos. Quitar una pantalla desde el panel nunca lo necesita.",
+    "statusSet": "Hay un PIN de pantalla configurado.",
+    "statusUnset": "Sin PIN de pantalla. Cualquiera frente a una pantalla puede desvincularla desde su menú.",
+    "pinLabel": "PIN nuevo",
+    "confirmLabel": "Repite el PIN",
+    "save": "Configurar PIN",
+    "change": "Cambiar PIN",
+    "clear": "Quitar PIN",
+    "saved": "PIN guardado. Las pantallas lo pedirán desde su próxima actualización (alrededor de un minuto).",
+    "cleared": "PIN quitado.",
+    "mismatch": "Los dos PIN no coinciden.",
+    "invalid": "Usa de 4 a 8 dígitos.",
+    "saveFailed": "No se pudo guardar. Inténtalo de nuevo.",
+    "readOnly": "Solo los administradores de la organización pueden cambiar el PIN de pantalla.",
+    "recovery": "¿Olvidaste el PIN? Quita la pantalla desde Pantallas y vuelve a vincularla, o configura un PIN nuevo aquí."
   }
 }

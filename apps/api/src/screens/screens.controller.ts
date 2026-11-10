@@ -105,6 +105,7 @@ import {
   setManifestPreamble,
 } from './manifest-hot-cache';
 import type { ManifestScreenRow } from './manifest-hot-cache';
+import { enforceDeviceUnpairPin, manifestUnpairPin } from './screen-pin';
 // 2026-09-02 (efficiency P0-2/P0-3) — the cheap emergency-revision token
 // served by GET /:id/emergency-rev. The manifest handler RECORDS what it
 // decided (zero extra queries — every input was already read); the revision
@@ -3861,6 +3862,7 @@ export class ScreensController {
   async deviceInitiatedUnpair(
     @Param('deviceFingerprint') fingerprint: string,
     @Req() req: ExpressReq,
+    @Body() body?: { pin?: unknown },
   ) {
     if (fingerprint.startsWith('preview-')) {
       return { ok: true, ignored: 'preview' };
@@ -3887,6 +3889,13 @@ export class ScreensController {
     if (!verified.ok) {
       throw new HttpException({ code: 'SCREEN_UNPAIR_UNAUTHORIZED', message: `Unauthorized: ${verified.reason}` }, HttpStatus.UNAUTHORIZED);
     }
+
+    // 2026-11-09 — SCREEN PIN (player stability gap 6, screen-pin.ts). When
+    // the screen's tenant has set one, this DEVICE-initiated route refuses
+    // without it: 403 SCREEN_UNPAIR_PIN_REQUIRED / _WRONG, 429 _LOCKED. No PIN
+    // set (no row) = exactly the old behaviour. The dashboard's DELETE
+    // /screens/:id is never gated — it is the forgotten-PIN recovery path.
+    await enforceDeviceUnpairPin(this.prisma as any, { id: screen.id, tenantId: screen.tenantId ?? null }, body?.pin, { ip: (req as any)?.ip ?? null });
 
     const previousTenantId = screen.tenantId;
 
@@ -6354,6 +6363,10 @@ export class ScreensController {
     timezone: true,
     latitude: true,
     longitude: true,
+    // 2026-11-09 — "a screen PIN is set" (screen-pin.ts). The timestamp only,
+    // never the hash (that lives in tenant_screen_pins, never read here).
+    // Becomes the static `unpairPinRequired: true`, ABSENT when unset.
+    screenPinSetAt: true,
   } as const;
 
   /**
@@ -7154,6 +7167,8 @@ export class ScreensController {
           // 2026-10-24 — the screen's effective time zone (static columns
           // only; see the full-manifest copy below for the contract).
           timeZone: manifestTimeZone(screen as any, (screen as any).screenGroup, (screen as any).tenant),
+          // 2026-11-09 — screen PIN flag (screen-pin.ts); absent when unset.
+          ...manifestUnpairPin((screen as any).tenant),
           repeats: (screen as any).repeats ?? 1,
           // 2026-05-27 — EP6N GPIO output state (status lamp / horn).
           // Same shape across every manifest branch.
@@ -7470,6 +7485,8 @@ export class ScreensController {
         // 2026-10-24 — a screen waiting for content still shows a clock on its
         // splash and still has an update window: same zone as the full body.
         timeZone: manifestTimeZone(screen as any, (screen as any).screenGroup, (screen as any).tenant),
+        // 2026-11-09 — screen PIN flag (screen-pin.ts); absent when unset.
+        ...manifestUnpairPin((screen as any).tenant),
         repeats: (screen as any).repeats ?? 1,
         hardwareModel: (screen as any).hardwareModel ?? null,
         // 2026-08-30 (reliability W1-11) — durable REFRESH_WEB. A stable
@@ -7935,6 +7952,12 @@ export class ScreensController {
       // emergency manifest, an older API) means "keep the last known zone" —
       // the player persists it, so a boot straight into an alert still has it.
       timeZone: manifestTimeZone(screen as any, (screen as any).screenGroup, (screen as any).tenant),
+      // 2026-11-09 — SCREEN PIN (screen-pin.ts): `unpairPinRequired: true`
+      // when the tenant set a PIN, so the on-screen Unpair asks for it first.
+      // A static column-derived boolean (no clock, sync rule 4); the key is
+      // ABSENT when unset, so a tenant without a PIN keeps its exact payload
+      // and ETag. Never the hash: the device verifies nothing, the server does.
+      ...manifestUnpairPin((screen as any).tenant),
       playlists: dynamicPlaylists
     };
 

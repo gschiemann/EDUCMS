@@ -8422,7 +8422,19 @@
     "empty": "No files here yet. Upload a file or choose another folder."
   },
   "playerMenu": {
-    "importFromUsb": "Import from USB"
+    "importFromUsb": "Import from USB",
+    "unpairPin": {
+      "title": "Enter the screen PIN",
+      "body": "Your organization protects this screen with a PIN. Enter it to unpair here, or unpair from the dashboard.",
+      "hint": "Arrows and OK, or type the digits · Back to cancel",
+      "delete": "Delete",
+      "ok": "OK",
+      "wrong": "Wrong PIN. Try again.",
+      "locked": "Too many wrong PINs. Try again later, or unpair this screen from the dashboard.",
+      "unreachable": "Cannot reach the server to check the PIN. The screen stays paired. Unpair it from the dashboard.",
+      "required": "This screen needs its PIN to be unpaired here.",
+      "checking": "Checking…"
+    }
   },
   "ui": {
     "filter": "Filter",
@@ -8597,5 +8609,23 @@
       "tenant-cap": "tonight's limit was reached",
       "other": "unknown reason"
     }
+  },
+  "screenPin": {
+    "title": "Screen PIN",
+    "desc": "Asked on a screen before its on-screen menu can unpair it. 4 to 8 digits. Removing a screen from the dashboard never needs it.",
+    "statusSet": "A screen PIN is set.",
+    "statusUnset": "No screen PIN. Anyone at a screen can unpair it from its on-screen menu.",
+    "pinLabel": "New PIN",
+    "confirmLabel": "Repeat PIN",
+    "save": "Set PIN",
+    "change": "Change PIN",
+    "clear": "Remove PIN",
+    "saved": "PIN saved. Screens ask for it from their next update (about a minute).",
+    "cleared": "PIN removed.",
+    "mismatch": "The two PINs do not match.",
+    "invalid": "Use 4 to 8 digits.",
+    "saveFailed": "Could not save. Try again.",
+    "readOnly": "Only organization admins can change the screen PIN.",
+    "recovery": "Forgot the PIN? Remove the screen from Screens and pair it again, or set a new PIN here."
   }
 }

@@ -4,6 +4,10 @@ History of `CLAUDE.md`, newest first, one entry per stamp. It moved here on 2026
 
 **Keep it current.** When you change `CLAUDE.md`, a nested `CLAUDE.md` or one of the rulebook documents, add an entry here — `CLAUDE.md` carries no footer stamp since 2026-11-01; the entry is the stamp. A stale footer is not cosmetic: `AGENTS.md` carried the IDENTICAL `2026-05-30` stamp while drifting 361 lines from `CLAUDE.md`, which is exactly why nobody noticed it was telling agents to use a forbidden `DATABASE_URL` for three months.
 
+## 2026-11-09
+
+`apps/web/src/app/player/CLAUDE.md` gains rule 18, the screen PIN for the on-screen Unpair (player stability gap 6, branch `claude/operator-pin-gate`, unmerged): a tenant may set an optional 4–8 digit PIN (Settings → Organization); the device-initiated `POST /screens/unpair/:fp` refuses without it (server-verified Argon2id hash in `tenant_screen_pins`, per-screen lockout, rate-limited audit rows); the manifest carries only the static `unpairPinRequired: true`, absent when unset; with a PIN known the player refuses an offline local-only unpair; the dashboard's "Remove screen", TENANT_CHANGED and "Exit to device home" are never gated. No PIN set = today's behaviour on every path. The native `OperatorPinGate.kt` stays detached. Report: `docs/handoffs/2026-11-09-player-stability/05-screen-pin.md`.
+
 ## 2026-11-08
 
 `apps/player/CLAUDE.md` gains the companion Manager's alert-watch watchdog (Manager wave 5, branch `fable/alert-watch-watchdog`, life safety CHANGE class — unmerged until a different-vendor review and the on-glass drill in `docs/player/ALERT-WATCH-WATCHDOG-DRILL.md`): the native alert watch stamps the Manager's provider after every pass, the Manager judges the stamp while the panel is dark and can only START the watch (re-arm, then restart its host), never the Activity, the hold or a reboot; bounded, persisted, one ladder per device. `docs/ENVIRONMENT.md` gains `MANAGER_ALERT_WATCH_WATCHDOG` (unset = today; `observe` / `on` per screen) by hand and in the generated section.
