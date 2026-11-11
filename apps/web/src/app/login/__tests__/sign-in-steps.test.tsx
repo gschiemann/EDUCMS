@@ -690,7 +690,7 @@ describe('passkeys — from the email field, never in the way', () => {
     return { pick: (v: unknown) => resolve(v), abort: () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })) };
   }
 
-  it('where the browser has passkey autofill: a pending conditional request, and NO passkey control on the page', async () => {
+  it('where the browser has passkey autofill: a pending conditional request AND the passkey button — for ONE options request', async () => {
     browserSupportsWebAuthnAutofill.mockResolvedValue(true);
     pendingAutofill();
     const calls = mockFetchByPath({
@@ -702,7 +702,11 @@ describe('passkeys — from the email field, never in the way', () => {
     // The discoverable request — no email, so it cannot say who has a passkey.
     expect(passkeyOptionCalls(calls)).toEqual([{ url: `${API_URL}/auth/passkeys/login/options`, body: {} }]);
     expect(startAuthentication).toHaveBeenCalledWith({ optionsJSON: GET_OPTIONS, useBrowserAutofill: true });
-    expect(screen.queryByRole('button', { name: /passkey/i })).not.toBeInTheDocument();
+    // 2026-11-11 — the button is there too: on a phone the autofill is a
+    // suggestion above the keyboard that people do not see. It rides the
+    // autofill's own options, so the page still asked the server once.
+    expect(screen.getByRole('button', { name: 'Sign in with a passkey' })).toBeInTheDocument();
+    expect(passkeyOptionCalls(calls)).toHaveLength(1);
     // Nothing was submitted on anyone's behalf.
     expect(calls.some((c) => c.url.endsWith('/auth/passkeys/login/verify'))).toBe(false);
     expect(useUIStore.getState().token).toBeNull();
@@ -855,14 +859,16 @@ describe('passkeys — from the email field, never in the way', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('where the browser has NO passkey autofill: one quiet link, and no pending request', async () => {
+  it('where the browser has NO passkey autofill: the passkey button, and no pending request', async () => {
     browserSupportsWebAuthnAutofill.mockResolvedValue(false);
     const calls = mockFetchByPath({});
     await renderPage();
     const link = await screen.findByRole('button', { name: 'Sign in with a passkey' });
     expect(link).toHaveAttribute('type', 'button');
-    // Low emphasis: a text link, not a second boxed button — and no explainer.
-    expect(link.className).not.toMatch(/\bborder\b|bg-indigo-600/);
+    // A real button (2026-11-11), but the SECOND one: outlined, never the
+    // filled primary — and no explainer.
+    expect(link.className).toMatch(/\bborder\b/);
+    expect(link.className).not.toMatch(/bg-indigo-600/);
     expect(screen.queryByText(/No passkey on this device/i)).not.toBeInTheDocument();
     // The link's options are fetched ahead of the tap (Safari user gesture,
     // 2026-10-11) — ONE request, and NO ceremony pending.
@@ -987,5 +993,139 @@ describe('remember me survives leaving the browser', () => {
     useUIStore.setState({ token: 'restored-token', user: { id: 'u1', tenantSlug: 'lincoln', tenantId: 't1' } as never });
     await renderPage();
     await waitFor(() => { expect(replace).toHaveBeenCalledWith('/lincoln/dashboard'); });
+  });
+});
+
+// ─── "Sign in with a passkey" is a button you can see (2026-11-11) ─────────
+describe('the passkey button — no password needed', () => {
+  const GET_OPTIONS = { challenge: 'Y2hhbGw', rpId: 'venue-os.app' };
+  const ASSERTION = { id: 'cred-1', rawId: 'cred-1', type: 'public-key', response: { userHandle: userHandle('u1') } };
+  const optionCalls = (calls: Call[]) => calls.filter((c) => c.url.endsWith('/auth/passkeys/login/options'));
+  const verifyCalls = (calls: Call[]) => calls.filter((c) => c.url.endsWith('/auth/passkeys/login/verify'));
+  const ROUTES = {
+    '/auth/sign-in-options': NO_SSO,
+    '/auth/passkeys/login/options': { body: { options: GET_OPTIONS, challengeId: 'ch-1' } },
+    '/auth/passkeys/login/verify': { body: SESSION },
+  };
+  /** The autofill request stays pending; the button's own sheet answers. */
+  function autofillPendingThenButton(answer: () => Promise<unknown>) {
+    startAuthentication.mockImplementation((arg: { useBrowserAutofill?: boolean }) =>
+      arg?.useBrowserAutofill ? new Promise(() => undefined) : answer(),
+    );
+  }
+
+  it('iPhone-like browser (autofill available): the button signs in with NO password and NO second options request', async () => {
+    browserSupportsWebAuthnAutofill.mockResolvedValue(true);
+    autofillPendingThenButton(async () => ASSERTION);
+    const calls = mockFetchByPath(ROUTES);
+    await renderPage();
+    await waitFor(() => { expect(startAuthentication).toHaveBeenCalledTimes(1); });
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Sign in with a passkey' })); });
+    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-1'); });
+    // The sheet opened with the options already in hand (the autofill's set).
+    expect(startAuthentication).toHaveBeenLastCalledWith({ optionsJSON: GET_OPTIONS });
+    expect(optionCalls(calls)).toHaveLength(1);
+    expect(verifyCalls(calls)).toHaveLength(1);
+    expect(verifyCalls(calls)[0].body.challengeId).toBe('ch-1');
+    // No password was ever asked for or sent.
+    expect(calls.some((c) => c.url.endsWith('/auth/login'))).toBe(false);
+    expect(screen.queryByLabelText('Password')).not.toBeInTheDocument();
+    await waitFor(() => { expect(push).toHaveBeenCalledWith('/lincoln/dashboard'); });
+  });
+
+  it('a cancelled sheet is not an error, and the autofill is armed again with a fresh request', async () => {
+    browserSupportsWebAuthnAutofill.mockResolvedValue(true);
+    autofillPendingThenButton(async () => { throw Object.assign(new Error('cancelled'), { name: 'NotAllowedError' }); });
+    const calls = mockFetchByPath(ROUTES);
+    const { container } = await (async () => { await renderPage(); return { container: document.body }; })();
+    await waitFor(() => { expect(startAuthentication).toHaveBeenCalledTimes(1); });
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Sign in with a passkey' })); });
+    await waitFor(() => { expect(startAuthentication).toHaveBeenCalledTimes(3); });
+    expect(startAuthentication.mock.calls[2][0]).toEqual({ optionsJSON: GET_OPTIONS, useBrowserAutofill: true });
+    expect(optionCalls(calls)).toHaveLength(2);
+    expect(container.querySelector('.bg-rose-50')).toBeNull();
+    expect(useUIStore.getState().token).toBeNull();
+    expect(screen.getByRole('button', { name: 'Sign in with a passkey' })).toBeEnabled();
+  });
+
+  it('on the password step too: typed the email, pressed Continue, then the passkey — following the "Keep me signed in" box', async () => {
+    browserSupportsWebAuthnAutofill.mockResolvedValue(true);
+    autofillPendingThenButton(async () => ASSERTION);
+    const calls = mockFetchByPath(ROUTES);
+    await renderPage();
+    await waitFor(() => { expect(startAuthentication).toHaveBeenCalledTimes(1); });
+    await continueWith('pat@elsewhere.example');
+    await screen.findByLabelText('Password');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Keep me signed in' }));
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Sign in with a passkey' })); });
+    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-1'); });
+    // The autofill's unspent options again — the password step asked for none.
+    expect(optionCalls(calls)).toHaveLength(1);
+    expect(verifyCalls(calls)[0].body).toMatchObject({ challengeId: 'ch-1', rememberMe: true });
+    expect(adoptRememberedSession).toHaveBeenCalledWith('tok-1');
+    expect(calls.some((c) => c.url.endsWith('/auth/login'))).toBe(false);
+  });
+
+  it('…and with the box left unticked the session is a normal one, whatever this account chose before', async () => {
+    localStorage.setItem(KEEP_KEY, JSON.stringify([userHandle('u1')]));
+    browserSupportsWebAuthnAutofill.mockResolvedValue(false);
+    startAuthentication.mockResolvedValue(ASSERTION);
+    const calls = mockFetchByPath(ROUTES);
+    await renderPage();
+    await continueWith('pat@elsewhere.example');
+    await screen.findByLabelText('Password');
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Sign in with a passkey' })); });
+    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-1'); });
+    expect(verifyCalls(calls)[0].body.rememberMe).toBe(false);
+    expect(adoptRememberedSession).not.toHaveBeenCalled();
+    // No autofill here, so the button brought its own options — once, kept across Continue.
+    expect(optionCalls(calls)).toHaveLength(1);
+  });
+
+  it('the password step still has exactly one primary action, and the password form works as before', async () => {
+    browserSupportsWebAuthnAutofill.mockResolvedValue(false);
+    const calls = mockFetchByPath({ ...ROUTES, '/auth/login': { body: SESSION } });
+    await renderPage();
+    await continueWith('pat@elsewhere.example');
+    fireEvent.change(await screen.findByLabelText('Password'), { target: { value: 'hunter2hunter2' } });
+    expect(document.querySelectorAll('button[type="submit"]')).toHaveLength(1);
+    const passkey = screen.getByRole('button', { name: 'Sign in with a passkey' });
+    expect(passkey).toHaveAttribute('type', 'button');
+    expect(passkey.className).not.toMatch(/bg-indigo-600/);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^Sign in$/ })); });
+    await waitFor(() => { expect(useUIStore.getState().token).toBe('tok-1'); });
+    expect(loginCalls(calls)).toHaveLength(1);
+    expect(startAuthentication).not.toHaveBeenCalled();
+  });
+
+  it('FIRST-TIME browser on the password step: the passkey button will not go around the agreement', async () => {
+    localStorage.removeItem(EULA_KEY);
+    browserSupportsWebAuthnAutofill.mockResolvedValue(false);
+    startAuthentication.mockResolvedValue(ASSERTION);
+    const calls = mockFetchByPath(ROUTES);
+    await renderPage();
+    // Step 1 has no checkbox to tick, so no passkey button there.
+    expect(screen.queryByRole('button', { name: 'Sign in with a passkey' })).not.toBeInTheDocument();
+    await continueWith('pat@elsewhere.example');
+    await screen.findByLabelText('Password');
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Sign in with a passkey' })); });
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(startAuthentication).not.toHaveBeenCalled();
+    expect(verifyCalls(calls)).toHaveLength(0);
+    expect(useUIStore.getState().token).toBeNull();
+  });
+
+  it('a browser that cannot do passkeys sees no button on either step', async () => {
+    browserSupportsWebAuthn.mockReturnValue(false);
+    mockFetchByPath(ROUTES);
+    await renderPage();
+    expect(screen.queryByRole('button', { name: /passkey/i })).not.toBeInTheDocument();
+    await continueWith('pat@elsewhere.example');
+    await screen.findByLabelText('Password');
+    expect(screen.queryByRole('button', { name: /passkey/i })).not.toBeInTheDocument();
   });
 });

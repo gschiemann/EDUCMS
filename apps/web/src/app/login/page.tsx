@@ -39,6 +39,7 @@ import {
 } from '@/lib/passkeys';
 import { passkeyRememberedOnDevice, rememberPasskeyOnDevice } from '@/lib/passkey-on-device';
 import {
+  PASSKEY_OPTIONS_MAX_AGE_MS,
   createPasskeyOptionsCache,
   isLikelyExpiredActivation,
   type PasskeyOptionsCache,
@@ -94,6 +95,11 @@ const PRIMARY_BTN_CLS =
  * link; the padding (cancelled by the negative margin) only enlarges the
  * area a thumb can hit.
  */
+/** The second way in on a sign-in step: full width, outlined, 44px tall — the passkey button. */
+const SECONDARY_BTN_CLS =
+  'w-full min-h-[44px] flex items-center justify-center border border-slate-300 bg-white hover:bg-slate-50 ' +
+  'disabled:opacity-50 disabled:cursor-not-allowed text-slate-800 text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors';
+
 const LINK_BTN_CLS =
   'px-3 py-2 -my-2 rounded text-xs font-semibold text-indigo-600 hover:text-indigo-700 ' +
   'disabled:opacity-50 disabled:cursor-not-allowed';
@@ -267,6 +273,8 @@ function LoginContent() {
   // "use the checkbox". A ref, not state: the value is decided and consumed
   // inside one async sign-in, across renders.
   const signInKeepRef = useRef<boolean | null>(null);
+  /** Is the email field's passkey-autofill request armed right now? (For handlers declared above it.) */
+  const conditionalArmedRef = useRef(false);
   // EULA acceptance (`lib/eula-acceptance.ts` — per browser, per version).
   //
   // The click-through is exactly as binding as it has always been for a
@@ -1428,12 +1436,15 @@ function LoginContent() {
   const verifyPasswordlessAssertion = async (
     challengeId: unknown,
     assertion: unknown,
+    keepChoice?: boolean,
   ): Promise<boolean> => {
     // Step 1 has no "Keep me signed in" checkbox. The assertion carries the
     // account's opaque user handle, so the choice that account last made on
     // this browser can travel WITH the verify request (the server stamps the
     // session class there). Default: off — exactly an unticked box.
-    const keepSignedIn = keepSignedInForPasskey(assertion);
+    // On the password step the checkbox IS on screen, so the passkey button
+    // there follows it (`keepChoice`) — what the person sees is what they get.
+    const keepSignedIn = typeof keepChoice === 'boolean' ? keepChoice : keepSignedInForPasskey(assertion);
     signInKeepRef.current = keepSignedIn;
     try {
       const res = await fetch(`${API_URL}/auth/passkeys/login/verify`, {
@@ -1458,18 +1469,32 @@ function LoginContent() {
   };
 
   /**
-   * PASSWORDLESS — the "Sign in with a passkey" link (step 1).
+   * PASSWORDLESS — the "Sign in with a passkey" button (step 1 and the
+   * password step).
    *
-   * Shown ONLY where the browser cannot offer passkeys from the email field's
-   * own autofill; where it can, the autofill request below is the way in and
-   * there is no link at all.
+   * ALWAYS VISIBLE where the browser can do passkeys (2026-11-11, the owner:
+   * "most other apps ask you for your email and then you can select a button
+   * that says sign in with passkey and you never have to enter a password").
+   * Until now it was shown only where the browser could NOT list passkeys in
+   * the email field's autofill; where it could — every iPhone — the autofill
+   * suggestion above the keyboard was the only passwordless way in, nobody
+   * saw it, and people typed their password and then used the passkey as a
+   * second step. The autofill stays (it is the fastest path for those who
+   * notice it); the button is the one nobody can miss.
+   *
+   * It is the SAME discoverable request for every visitor on both steps — no
+   * email is sent with it — so showing it says nothing about whether an
+   * account exists or has a passkey.
    *
    * Honours the SAME gate the password path does: the EULA (a second way in
    * must not be a way around the agreement). Step 1 has no checkbox, so the
-   * link is only rendered once this browser has accepted — the guard here is
-   * the belt to that.
+   * button is only rendered there once this browser has accepted; the
+   * password step has the checkbox, and the guard here refuses without it.
+   *
+   * `keepChoice`: the "Keep me signed in" checkbox when the button is pressed
+   * on the password step; undefined on step 1 (the account's remembered choice).
    */
-  const handlePasswordlessPasskey = async () => {
+  const handlePasswordlessPasskey = async (keepChoice?: boolean) => {
     if (!eulaAccepted) {
       setError(t('eulaRequired'));
       return;
@@ -1480,7 +1505,13 @@ function LoginContent() {
     warnIfMisconfigured();
     // SAFARI USER GESTURE (2026-10-11): prefetched options → the ceremony
     // starts now, synchronously, inside the tap. See handlePasskeyChallenge.
-    const ready = passwordlessPasskeyOpts.take(PASSWORDLESS_KEY);
+    // First choice: the set the email field's autofill request was armed with
+    // (unspent, and fresh enough for the server's 5-minute challenge) — taken,
+    // so it is never used twice. Else the button's own prefetched set.
+    const armed = conditionalOptsRef.current;
+    conditionalOptsRef.current = null;
+    const fromAutofill = armed && Date.now() - armed.at < PASSKEY_OPTIONS_MAX_AGE_MS && armed.data?.options ? { data: armed.data } : null;
+    const ready = fromAutofill ?? passwordlessPasskeyOpts.take(PASSWORDLESS_KEY);
     const ticket = passwordlessPasskeyOpts.begin();
     let ceremony: Promise<Awaited<ReturnType<typeof getPasskey>>> | null = null;
     if (ready) {
@@ -1540,15 +1571,23 @@ function LoginContent() {
         return;
       }
 
-      advanced = await verifyPasswordlessAssertion(optData.challengeId, assertion);
+      advanced = await verifyPasswordlessAssertion(optData.challengeId, assertion, keepChoice);
     } catch {
       setError(
         isLikelyMisconfigured() ? t('serverMissingApiUrl') : t('serverUnreachableAt', { url: API_URL }),
       );
     } finally {
       setPasskeyBusy(false);
-      // Still on step 1 with no session: fresh options for the next tap.
-      if (passwordlessPasskeyOpts.end(ticket) && !advanced && !sessionStartedRef.current) passwordlessPasskeyOpts.prefetch(PASSWORDLESS_KEY);
+      // Still on the form with no session: options for the next tap. Where
+      // the autofill is armed, re-arming it IS the refetch (the sheet this
+      // button opened ended the pending autofill request — one ceremony at a
+      // time — and the fresh request brings a fresh set). Elsewhere the
+      // button fetches its own.
+      const unlocked = passwordlessPasskeyOpts.end(ticket);
+      if (!advanced && !sessionStartedRef.current) {
+        if (conditionalArmedRef.current) setConditionalEpoch((n) => n + 1);
+        else if (unlocked) passwordlessPasskeyOpts.prefetch(PASSWORDLESS_KEY);
+      }
     }
   };
 
@@ -1556,7 +1595,9 @@ function LoginContent() {
   // While step 1 is on screen, a pending `navigator.credentials.get({
   // mediation: 'conditional' })` lets the BROWSER list this device's passkey
   // in the email field's own suggestions. Someone who has one picks it and is
-  // signed in; everyone else sees nothing extra — no button, no explainer.
+  // signed in. Since 2026-11-11 the "Sign in with a passkey" button is on the
+  // page as well (on a phone the suggestion sits above the keyboard and goes
+  // unseen); it shares this request's options — see handlePasswordlessPasskey.
   //
   // What makes this safe to leave pending:
   //  • It shows nothing and submits nothing by itself. The promise settles
@@ -1576,6 +1617,14 @@ function LoginContent() {
   const [conditionalEpoch, setConditionalEpoch] = useState(0);
   /** A conditional request started by the effect below is still pending. */
   const conditionalPendingRef = useRef(false);
+  /**
+   * The options the autofill request was armed with, and when. Its challenge
+   * is spent only if a passkey is PICKED from the autofill; until then the
+   * passkey button may use the same set (the button's sheet ends the pending
+   * autofill request first — one ceremony at a time). Kept across Continue so
+   * the password step's button has them too.
+   */
+  const conditionalOptsRef = useRef<{ data: PasskeyOptionsReply['data']; at: number } | null>(null);
   // The latest verify handler, for an effect whose request can outlive renders.
   const verifyPasswordlessRef = useRef(verifyPasswordlessAssertion);
   useEffect(() => { verifyPasswordlessRef.current = verifyPasswordlessAssertion; });
@@ -1596,12 +1645,28 @@ function LoginContent() {
   // set-up that hung on the required 2-step screen (2026-10-05).
   const autofillOff = searchParams.get('autofill') === 'off';
   const conditionalArmed = onEmailStep && conditionalAvailable === true && eulaOnDevice && !autofillOff;
-  // The "Sign in with a passkey" link (shown only where the autofill is not
-  // available) keeps its options ready while it is on screen — same Safari
-  // user-gesture rule as the second-factor button.
+  useEffect(() => { conditionalArmedRef.current = conditionalArmed; });
+  /** The password form of step 2 is on screen (not the single-sign-on choice). */
+  const onPasswordStep = step.name === 'method' && (!step.sso || step.passwordOpen) && !manualSso && signInFormShowing;
+  /** Step 1 shows the passkey button: a capable browser that has accepted the agreement. */
+  const passkeyButtonOnEmailStep = onEmailStep && passkeyCapable && eulaOnDevice;
+  /** The password step shows it too (its own EULA checkbox is the gate there). */
+  const passkeyButtonOnPasswordStep = onPasswordStep && passkeyCapable;
+  // The "Sign in with a passkey" button needs its options IN HAND when it is
+  // tapped (the Safari user-gesture rule, as for the second-factor button).
+  //  • Where the browser has passkey autofill, the email field's pending
+  //    request already fetched a set (`conditionalOptsRef`) and the button
+  //    uses THAT one — so showing the button costs no extra request. The
+  //    options route is rate-limited per network address; a school signing in
+  //    at 8 a.m. shares one.
+  //  • Where it has none, the button prefetches its own, and keeps them across
+  //    Continue (`checking`) so the password step does not ask again.
+  const emailOrChecking = (step.name === 'email' || step.name === 'checking') && !manualSso && signInFormShowing;
   usePasskeyOptionsPrefetch(
     passwordlessPasskeyOpts,
-    onEmailStep && passkeyCapable && conditionalAvailable === false && eulaOnDevice ? PASSWORDLESS_KEY : null,
+    passkeyCapable && conditionalAvailable === false && ((emailOrChecking && eulaOnDevice) || passkeyButtonOnPasswordStep)
+      ? PASSWORDLESS_KEY
+      : null,
   );
 
   useEffect(() => {
@@ -1623,6 +1688,7 @@ function LoginContent() {
         return;
       }
       if (cancelled || !optData.options) return;
+      conditionalOptsRef.current = { data: optData as PasskeyOptionsReply['data'], at: Date.now() };
 
       let assertion;
       conditionalPendingRef.current = true;
@@ -1655,6 +1721,8 @@ function LoginContent() {
       } finally {
         conditionalPendingRef.current = false;
       }
+      // A passkey was picked: this set's challenge is about to be spent.
+      conditionalOptsRef.current = null;
       if (cancelled) return;
 
       // The operator picked a passkey in the browser's own UI.
@@ -3088,22 +3156,22 @@ function LoginContent() {
                 {t('continue')}
               </button>
 
-              {/* Only where the browser CANNOT offer passkeys from the field's
-                  autofill. One quiet link, same handler as before; no
+              {/* The passkey button — visible on every browser that can do
+                  passkeys, whether or not it also lists them in the email
+                  field's autofill (see handlePasswordlessPasskey). No
                   explainer box — the post-sign-in offer is what teaches
                   people to set a passkey up. Not rendered until this browser
                   has accepted the EULA (step 1 has no checkbox to tick). */}
-              {passkeyCapable && conditionalAvailable === false && eulaOnDevice && (
-                <div className="text-center">
-                  <button
-                    type="button"
-                    onClick={handlePasswordlessPasskey}
-                    disabled={passkeyBusy || step.name === 'checking'}
-                    className={LINK_BTN_CLS}
-                  >
-                    {t('signInWithPasskey')}
-                  </button>
-                </div>
+              {passkeyCapable && eulaOnDevice && (
+                <button
+                  type="button"
+                  onClick={() => void handlePasswordlessPasskey()}
+                  disabled={passkeyBusy || step.name === 'checking'}
+                  className={SECONDARY_BTN_CLS}
+                >
+                  <Fingerprint className="w-4 h-4 mr-2 text-indigo-600" aria-hidden />
+                  {t('signInWithPasskey')}
+                </button>
               )}
               {/* "Your passkey may be on another device" — a calm pointer
                   after the device sheet closes with no credential, from the
@@ -3248,6 +3316,34 @@ function LoginContent() {
                   t('signIn')
                 )}
               </button>
+
+              {/* No password needed: the same passkey button as step 1, for
+                  the person who typed their email and pressed Continue. It
+                  follows the "Keep me signed in" box above and the EULA box
+                  (the handler refuses without it). */}
+              {passkeyCapable && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handlePasswordlessPasskey(rememberMe)}
+                    disabled={passkeyBusy || loading}
+                    aria-busy={passkeyBusy}
+                    className={SECONDARY_BTN_CLS}
+                  >
+                    {passkeyBusy
+                      ? <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden />
+                      : <Fingerprint className="w-4 h-4 mr-2 text-indigo-600" aria-hidden />}
+                    {t('signInWithPasskey')}
+                  </button>
+                  <div aria-live="polite" className="text-center">
+                    {passkeyHint && !error && (
+                      <p data-testid="passkey-none-hint-password" className="text-xs text-slate-700 leading-relaxed">
+                        {t('passkeyNoneOnPasswordStep')}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
 
               {eulaNote}
             </form>

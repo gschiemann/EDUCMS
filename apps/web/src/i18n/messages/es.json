@@ -491,6 +491,7 @@
     "emailCodeSendFailed": "No pudimos enviar el código en este momento. Inténtalo de nuevo o usa otro método.",
     "emailCodeUnreachable": "No se puede contactar con el servidor para enviar el código. Inténtalo en un momento.",
     "passkeyUseEmailInstead": "Continuar con tu correo y tu contraseña",
+    "passkeyNoneOnPasswordStep": "No se usó ninguna clave de acceso. Escribe tu contraseña arriba o vuelve a intentarlo con la clave de acceso.",
     "passkeyNoneHintOffer": "Después de iniciar sesión, te ayudaremos a configurar {method} en este dispositivo.",
     "passkeyOfferExists": "Este dispositivo ya tiene una clave de acceso para tu cuenta. La próxima vez, elige tu clave de acceso al iniciar sesión.",
     "phoneChoiceSub": "{device, select, iphone {¿Tu clave de acceso está en este iPhone?} ipad {¿Tu clave de acceso está en este iPad?} android {¿Tu clave de acceso está en este teléfono Android?} other {¿Tu clave de acceso está en este dispositivo?}}",
