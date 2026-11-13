@@ -17,7 +17,7 @@
 # (the API's Dockerfile moved for the same reason on 2026-09-08). This is the
 # SAME pinned multi-arch index digest the API uses, so both services roll
 # forward together (docker buildx imagetools inspect node:22-alpine).
-ARG NODE_IMAGE=node:22.23.4-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914
+ARG NODE_IMAGE=node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
 
 # ═══════════════════════════════════════════════════════════════════════
 # Stage 1 — builder: compile TypeScript. Nothing from here but dist/ ships.
