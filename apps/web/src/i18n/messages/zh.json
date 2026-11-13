@@ -491,6 +491,7 @@
     "emailCodeSendFailed": "暂时无法发送验证码。请重试，或使用其他方式。",
     "emailCodeUnreachable": "无法连接服务器发送验证码，请稍后重试。",
     "passkeyUseEmailInstead": "使用邮箱和密码继续",
+    "passkeyNoneOnPasswordStep": "未使用通行密钥。请在上方输入密码，或再次尝试通行密钥。",
     "passkeyNoneHintOffer": "登录后，我们会帮你在这台设备上设置{method}。",
     "passkeyOfferExists": "这台设备上已有你账户的通行密钥。下次登录时，请选择你的通行密钥。",
     "phoneChoiceSub": "{device, select, iphone {你的通行密钥在这台 iPhone 上吗？} ipad {你的通行密钥在这台 iPad 上吗？} android {你的通行密钥在这台 Android 手机上吗？} other {你的通行密钥在这台设备上吗？}}",

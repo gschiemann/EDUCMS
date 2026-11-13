@@ -491,6 +491,7 @@
     "emailCodeSendFailed": "We couldn't send the code right now. Try again, or use another way.",
     "emailCodeUnreachable": "Can't reach the server to send the code. Try again in a moment.",
     "passkeyUseEmailInstead": "Continue with your email and password",
+    "passkeyNoneOnPasswordStep": "No passkey was used. Enter your password above, or try the passkey again.",
     "passkeyNoneHintOffer": "After you sign in, we'll help you set up {method} on this device.",
     "passkeyOfferExists": "This device already has a passkey for your account. Next time, choose your passkey when you sign in.",
     "phoneChoiceSub": "{device, select, iphone {Is your passkey on this iPhone?} ipad {Is your passkey on this iPad?} android {Is your passkey on this Android phone?} other {Is your passkey on this device?}}",
