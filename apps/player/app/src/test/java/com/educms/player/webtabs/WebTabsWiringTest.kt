@@ -159,7 +159,10 @@ class WebTabsWiringTest {
         }
         // The only document-start script is the legacy-engine layer, through its installer.
         assertEquals(1, Regex("""LegacyEngineCompat\.install\(""").findAll(block).count())
-        // …and the only script we evaluate into it is our own remote-control shim.
+        // …and the only script the configuration evaluates into it is our own
+        // remote-control shim. (2026-11-13: the plain URL asset's draw proof
+        // evaluates ONE constant, read-only script into this view, outside this
+        // block; `UrlOverlayDrawProofWiringTest` pins that it is the only one.)
         val evals = Regex("""evaluateJavascript\(""").findAll(block).count()
         assertEquals("unexpected script injection into the overlay WebView", 0, evals)
         assertTrue(block.contains("SpatialNavigation.inject("))

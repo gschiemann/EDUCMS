@@ -149,6 +149,18 @@ export const NATIVE_VOID_METHODS = [
   'setDeviceToken',
   'showUrlOverlay',
   'hideUrlOverlay',
+  // 2026-11-13 — the website view proves what it drew (nativeWebsiteProof.ts).
+  // `urlOverlayReport(url)` asks the APK what the website slide's view is
+  // doing; the answer is an `edu-url-overlay-state` window event (loading /
+  // drawn / blank / failed / unknown). Its NAME is also the capability: an APK
+  // that has it reports the view's state, an APK that lacks it never will, so
+  // the page keeps today's "handed over" reading there. THREE-FILE ATOMIC
+  // CHANGE with the Kotlin METHODS array + dispatch arm and the drift-guard
+  // canary count. Deliberately EXCLUDED from KNOWN_METHODS below (rule 9) and
+  // given NO METHOD_FLOORS entry yet: the APK that carries it has no version
+  // number until it is released, so a manifest-less channel WebView answers
+  // false and keeps the old behaviour. Add the floor in the release PR.
+  'urlOverlayReport',
   'openSettingsForManager',
   // 2026-08-25 (v1.1.6) — raises the first-boot setup checklist ON the
   // panel, from the dashboard. The operator's *"i … have no way to know how
@@ -307,6 +319,10 @@ const KNOWN_METHODS: readonly string[] = [
   //
   // 2026-11-08 — `clearUpdateQuarantine` likewise (first APK: 1.1.66). Remove it from
   // this filter only when the fleet floor is ≥1.1.66.
+  //
+  // 2026-11-13 — `urlOverlayReport` likewise (first APK: the release after this
+  // change; no number yet, so no METHOD_FLOORS entry either). Remove it from
+  // this filter only when the fleet floor includes that APK.
 ].filter(
   (m) =>
     m !== 'heartbeatV2' &&
@@ -318,6 +334,7 @@ const KNOWN_METHODS: readonly string[] = [
     m !== 'openNetworkScreen' &&
     m !== 'importFromUsb' &&
     m !== 'clearUpdateQuarantine' &&
+    m !== 'urlOverlayReport' &&
     m !== 'sharedVideoPrepare' && m !== 'sharedVideoCommit' && m !== 'sharedVideoStop' && m !== 'sharedVideoState',
 );
 

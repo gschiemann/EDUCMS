@@ -123,6 +123,31 @@ class MainActivity : ComponentActivity() {
     private var urlOverlayNetworkCallback: ConnectivityManager.NetworkCallback? = null
     private var urlOverlayConnectivityManager: ConnectivityManager? = null
 
+    // ── Draw proof for the plain URL overlay (2026-11-13) ───────────────────
+    // "The website loaded" is not "the website drew something". Every rule is
+    // in UrlOverlayDrawProofPolicy; these are the Activity's notes. All of it
+    // is main-thread state, like the recovery fields above.
+    /**
+     * The player page asked for this URL's state (`urlOverlayReport`). Until it
+     * does, nothing below runs: no probe, no reload, no event — a page that
+     * does not ask (an older web bundle, or the server's kill switch
+     * `PLAYER_WEBSITE_PROOF=off`) gets this view exactly as it was before.
+     */
+    private var urlOverlayProofArmed = false
+    /** A web main frame of the URL on glass has finished and is still the document. */
+    private var urlOverlayProofDocumentFinished = false
+    /** The state of the plain URL asset on glass; null while none is showing. */
+    private var urlOverlayProofState: String? = null
+    /** Bumped whenever the document under test changes, so a late probe reply is dropped. */
+    private var urlOverlayProofGeneration = 0
+    private var urlOverlayProofFinishedAtMs = 0L
+    private var urlOverlayProofProbes = 0
+    private var urlOverlayProofPrevious: UrlOverlayDrawProofPolicy.Sample? = null
+    /** Reloads spent on a blank document for the URL on glass; cleared when it draws or leaves. */
+    private var urlOverlayBlankReloads = 0
+    private var urlOverlayProbeRunnable: Runnable? = null
+    private var urlOverlayBlankReloadRunnable: Runnable? = null
+
     // ── Website Tabs (2026-09-28) — the overlay WebView's second OWNER ──────
     // While `webTabsActive`, `urlOverlayView` belongs to the Website Tabs
     // widget: it is laid out over the site area the widget measured, locked
@@ -788,6 +813,8 @@ class MainActivity : ComponentActivity() {
          */
         private const val BACK_WEB_ANSWER_GRACE_MS = 1_500L
         private const val URL_OVERLAY_LOAD_TIMEOUT_MS = 30_000L
+        /** A draw-proof probe with no reply in this long is unreadable (never a reload). */
+        private const val URL_OVERLAY_PROBE_REPLY_TIMEOUT_MS = 5_000L
 
         /**
          * 2026-09-01 — is THIS Activity resumed right now?
@@ -3164,6 +3191,11 @@ class MainActivity : ComponentActivity() {
                 onHideUrlOverlay = {
                     runOnUiThread { hideUrlOverlay() }
                 },
+                // 2026-11-13 — the page asks what the website view is doing
+                // (the answer is an event into the player page, never a value).
+                onUrlOverlayReport = { url ->
+                    runOnUiThread { answerUrlOverlayReport(url) }
+                },
                 // Website Tabs (2026-09-28). The JSON is parsed and validated
                 // on the UI thread by WebTabsPolicy; a payload this build does
                 // not understand is refused loudly, never guessed at.
@@ -3828,6 +3860,12 @@ class MainActivity : ComponentActivity() {
                 if (view === urlOverlayView) runCatching {
                     val previousVisibility = view.visibility
                     val previousUrl = overlayLastStartedUrl
+                    // The document under test is gone with its renderer: stop
+                    // probing it. The reload below is a fresh load to prove.
+                    cancelUrlOverlayProof(forget = false)
+                    if (!webTabsActive && urlOverlayCurrentUrl != null) {
+                        reportUrlOverlayState(UrlOverlayDrawProofPolicy.STATE_LOADING)
+                    }
                     // P2-6 — D-pad input followed the old view; it must follow the fresh one.
                     val hadFocus = runCatching { view.hasFocus() }.getOrDefault(false)
                     val (fresh, delayMs) = overlayRendererRecovery.replace(view, detail.didCrash())
@@ -3853,6 +3891,8 @@ class MainActivity : ComponentActivity() {
                         // show of this URL is a real load instead of an early
                         // return over an empty overlay.
                         PlayerLogger.w("MainActivity", "URL overlay renderer replaced — nothing restorable; hiding it until the next show")
+                        if (!webTabsActive) reportUrlOverlayState(UrlOverlayDrawProofPolicy.STATE_FAILED)
+                        cancelUrlOverlayProof(forget = true)
                         urlOverlayCurrentUrl = null
                         fresh.visibility = View.GONE
                         // The remote goes back to the player page (its tab bar
@@ -3869,6 +3909,10 @@ class MainActivity : ComponentActivity() {
                     Unit
                 }.onFailure { t ->
                     PlayerLogger.e("MainActivity", "PLAYER_RENDERER_REPLACE_FAILED overlay ${t.javaClass.simpleName}")
+                    runCatching {
+                        if (!webTabsActive) reportUrlOverlayState(UrlOverlayDrawProofPolicy.STATE_FAILED)
+                        cancelUrlOverlayProof(forget = true)
+                    }
                     urlOverlayCurrentUrl = null
                     runCatching { urlOverlayView.visibility = View.GONE }
                 }
@@ -3941,6 +3985,26 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // 2026-11-13 — a refused TLS certificate used to be SILENT here: the
+            // platform default cancels the load and writes no log line. The
+            // decision is unchanged (cancel — never proceed); it is now written
+            // down, and — only once the page has asked for this view's state —
+            // a refused MAIN frame of the plain URL asset takes the existing
+            // failed-load path.
+            override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
+                handler.cancel()
+                val failing = runCatching { error.url }.getOrNull()
+                PlayerLogger.w(
+                    "MainActivity",
+                    "URL overlay TLS certificate refused (primaryError=${error.primaryError}) for ${HostAllowlist.describe(failing)}",
+                )
+                if (urlOverlayProofArmed && !webTabsActive && view === urlOverlayView && urlOverlayCurrentUrl != null &&
+                    failing != null && failing == overlayLastStartedUrl
+                ) {
+                    failUrlOverlayLoad("TLS certificate refused (${error.primaryError})")
+                }
+            }
+
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 PlayerLogger.i("MainActivity", "URL overlay page started: ${url ?: "(unknown)"}")
                 legacyLate?.onDocumentStarted(view, url)
@@ -3973,6 +4037,16 @@ class MainActivity : ComponentActivity() {
                     HostAllowlist.isSafeWebUrl(url)
                 ) {
                     clearUrlOverlayRecovery()
+                }
+                // 2026-11-13 — a finished main frame is not a drawn page (player
+                // rule 5). Ask the document what it holds, a little later; never
+                // for Website Tabs, the offline card or a cleared view.
+                if (view === urlOverlayView && !webTabsActive && urlOverlayCurrentUrl != null &&
+                    !urlOverlayRecoveryFailed && url != null && url == overlayLastStartedUrl &&
+                    UrlOverlayDrawProofPolicy.isProbeableUrl(url)
+                ) {
+                    urlOverlayProofDocumentFinished = true
+                    if (urlOverlayProofArmed) startUrlOverlayProof()
                 }
                 // The local offline document is intentionally inert; never run the site
                 // navigation shim against it or against a failed navigation's error page.
@@ -4034,6 +4108,9 @@ class MainActivity : ComponentActivity() {
         urlOverlayLoadTimeoutRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
         urlOverlayLoadTimeoutRunnable = null
         urlOverlayRecoveryFailures += 1
+        // The document under test is being replaced by the offline card.
+        cancelUrlOverlayProof(forget = false)
+        reportUrlOverlayState(UrlOverlayDrawProofPolicy.STATE_FAILED)
         // Local, bridge-free document replaces Chromium's generic error page. The assigned target remains
         // in urlOverlayCurrentUrl and is the only destination the retry path will load.
         urlOverlayView.loadDataWithBaseURL(
@@ -4127,10 +4204,20 @@ class MainActivity : ComponentActivity() {
         // layout back before the asset loads into it.
         if (webTabsActive) endWebTabsSession(wipe = webTabsIncognito)
         if (urlOverlayCurrentUrl == cleanUrl && urlOverlayView.visibility == View.VISIBLE) {
+            // Already on glass: a page that asked hears where it stands; nothing reloads.
+            if (urlOverlayProofArmed) {
+                emitUrlOverlayState(
+                    cleanUrl,
+                    urlOverlayProofState ?: UrlOverlayDrawProofPolicy.STATE_LOADING,
+                    urlOverlayBlankReloads,
+                )
+            }
             return
         }
         cancelUrlOverlayRecovery()
+        cancelUrlOverlayProof(forget = true)
         urlOverlayCurrentUrl = cleanUrl
+        reportUrlOverlayState(UrlOverlayDrawProofPolicy.STATE_LOADING)
         sharedVideoHost?.yieldToUi()
         PlayerLogger.i("MainActivity", "Showing URL overlay: $cleanUrl")
         urlOverlayView.loadUrl(cleanUrl)
@@ -4182,6 +4269,7 @@ class MainActivity : ComponentActivity() {
         if (urlOverlayView.visibility != View.VISIBLE && urlOverlayCurrentUrl == null) return
         PlayerLogger.i("MainActivity", "Hiding URL overlay")
         cancelUrlOverlayRecovery()
+        cancelUrlOverlayProof(forget = true)
         urlOverlayCurrentUrl = null
         urlOverlayView.visibility = View.GONE
         urlOverlayView.loadUrl("about:blank")
@@ -4195,6 +4283,271 @@ class MainActivity : ComponentActivity() {
             PlayerLogger.i("MainActivity", "Recovery still active — re-showing overlay after URL dismissed")
             binding.recoveryOverlay.visibility = View.VISIBLE
         }
+    }
+
+    // ─── Draw proof (2026-11-13) — rules: UrlOverlayDrawProofPolicy ──────────
+    //
+    // Deliberately AFTER showUrlOverlay / hideUrlOverlay: `configureUrlOverlay`
+    // up to `showUrlOverlay` is the block the wiring tests scan to prove the
+    // site view is CONFIGURED with no bridge and no injected script. The one
+    // probe below is pinned by its own test (UrlOverlayDrawProofWiringTest).
+
+    /**
+     * Tell the PLAYER page what the website view is doing. The event goes into
+     * the trusted player WebView only — the site's own view is given nothing.
+     */
+    private fun emitUrlOverlayState(url: String, state: String, attempts: Int) {
+        if (isDestroyed || !::webView.isInitialized) return
+        try {
+            webView.evaluateJavascript(UrlOverlayDrawProofPolicy.stateEventJs(url, state, attempts), null)
+        } catch (t: Throwable) {
+            PlayerLogger.w("MainActivity", "URL overlay state '$state' could not be told to the player page: ${t.message}")
+        }
+    }
+
+    /**
+     * Record the state of the plain URL asset on glass, and tell a page that
+     * asked. A no-op for Website Tabs.
+     */
+    private fun reportUrlOverlayState(state: String) {
+        val target = urlOverlayCurrentUrl ?: return
+        if (webTabsActive) return
+        urlOverlayProofState = state
+        if (urlOverlayProofArmed) emitUrlOverlayState(target, state, urlOverlayBlankReloads)
+    }
+
+    /**
+     * `urlOverlayReport(url)` — the page asks what the view is doing with the
+     * URL it handed over. Asking is what ARMS the proof for that URL (see
+     * [urlOverlayProofArmed]); the literal `off` stands it down again (the
+     * server's kill switch, thrown while a site is on glass). A URL this build
+     * would never load is answered `failed`; any other mismatch is not answered.
+     */
+    private fun answerUrlOverlayReport(askedUrl: String) {
+        val asked = askedUrl.trim().take(2048)
+        if (asked == UrlOverlayDrawProofPolicy.STAND_DOWN) {
+            if (urlOverlayProofArmed) PlayerLogger.i("MainActivity", "PLAYER_URL_OVERLAY_PROOF stood down by the player page")
+            urlOverlayProofArmed = false
+            val finished = urlOverlayProofDocumentFinished
+            cancelUrlOverlayProof(forget = false)
+            urlOverlayProofDocumentFinished = finished
+            urlOverlayBlankReloads = 0
+            return
+        }
+        val current = urlOverlayCurrentUrl
+        if (!webTabsActive && current != null && asked == current) {
+            if (!urlOverlayProofArmed) {
+                urlOverlayProofArmed = true
+                // The main frame may have finished before the page asked.
+                if (urlOverlayProofDocumentFinished && !urlOverlayRecoveryFailed) startUrlOverlayProof()
+            }
+            emitUrlOverlayState(
+                current,
+                urlOverlayProofState ?: UrlOverlayDrawProofPolicy.STATE_LOADING,
+                urlOverlayBlankReloads,
+            )
+            return
+        }
+        if (asked.isNotEmpty() && !HostAllowlist.isSafeWebUrl(asked)) {
+            emitUrlOverlayState(asked, UrlOverlayDrawProofPolicy.STATE_FAILED, 0)
+        }
+    }
+
+    /**
+     * Stop probing the current document. `forget` also drops the reload count
+     * and the reported state — the URL is leaving the glass.
+     */
+    private fun cancelUrlOverlayProof(forget: Boolean) {
+        urlOverlayProbeRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+        urlOverlayBlankReloadRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+        urlOverlayProbeRunnable = null
+        urlOverlayBlankReloadRunnable = null
+        urlOverlayProofGeneration += 1
+        urlOverlayProofProbes = 0
+        urlOverlayProofPrevious = null
+        urlOverlayProofDocumentFinished = false
+        if (forget) {
+            urlOverlayBlankReloads = 0
+            urlOverlayProofState = null
+            urlOverlayProofArmed = false
+        }
+    }
+
+    /** A main frame of the plain URL asset finished: prove it drew. */
+    private fun startUrlOverlayProof() {
+        urlOverlayProbeRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+        urlOverlayProbeRunnable = null
+        urlOverlayProofGeneration += 1
+        urlOverlayProofFinishedAtMs = android.os.SystemClock.elapsedRealtime()
+        urlOverlayProofProbes = 0
+        urlOverlayProofPrevious = null
+        scheduleUrlOverlayProbe(
+            UrlOverlayDrawProofPolicy.nextProbeDelayMs(0, null, UrlOverlayDrawProofPolicy.Verdict.UNKNOWN),
+        )
+    }
+
+    private fun scheduleUrlOverlayProbe(delayMs: Long) {
+        urlOverlayProbeRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+        val generation = urlOverlayProofGeneration
+        val probe = Runnable {
+            urlOverlayProbeRunnable = null
+            if (generation == urlOverlayProofGeneration) runUrlOverlayProbe(generation)
+        }
+        urlOverlayProbeRunnable = probe
+        urlOverlayRecoveryHandler.postDelayed(probe, delayMs)
+    }
+
+    private fun runUrlOverlayProbe(generation: Int) {
+        if (isDestroyed || !urlOverlayProofArmed || urlOverlayCurrentUrl == null || webTabsActive || urlOverlayRecoveryFailed ||
+            urlOverlayView.visibility != View.VISIBLE
+        ) return
+        // ⚠️ Never touch the site view under an alert. An unreadable hold counts
+        // as held. The page hides this view for an alert anyway; this is the
+        // native half of the same rule. Look again later, having read nothing.
+        if (runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(true)) {
+            scheduleUrlOverlayProbe(UrlOverlayDrawProofPolicy.WATCH_INTERVAL_MS)
+            return
+        }
+        val view = urlOverlayView
+        var answered = false
+        // A renderer that never answers must not end the watch: no reply in
+        // 5 s is an unreadable probe (UNKNOWN — never a reload).
+        val noReply = Runnable {
+            if (!answered && generation == urlOverlayProofGeneration) {
+                answered = true
+                onUrlOverlayProbeResult(null)
+            }
+        }
+        urlOverlayRecoveryHandler.postDelayed(noReply, URL_OVERLAY_PROBE_REPLY_TIMEOUT_MS)
+        try {
+            // Read-only, on the overlay's own document; nothing is injected
+            // that stays, and the view still has no bridge of any kind.
+            view.evaluateJavascript(UrlOverlayDrawProofPolicy.PROBE_JS) { raw ->
+                if (answered) return@evaluateJavascript
+                answered = true
+                urlOverlayRecoveryHandler.removeCallbacks(noReply)
+                if (generation == urlOverlayProofGeneration && view === urlOverlayView) onUrlOverlayProbeResult(raw)
+            }
+        } catch (t: Throwable) {
+            PlayerLogger.w("MainActivity", "URL overlay draw probe could not run: ${t.message}")
+            if (!answered) {
+                answered = true
+                urlOverlayRecoveryHandler.removeCallbacks(noReply)
+                onUrlOverlayProbeResult(null)
+            }
+        }
+    }
+
+    private fun onUrlOverlayProbeResult(raw: String?) {
+        val target = urlOverlayCurrentUrl ?: return
+        if (isDestroyed || !urlOverlayProofArmed || webTabsActive || urlOverlayRecoveryFailed) return
+        val evidence = UrlOverlayDrawProofPolicy.parse(raw)
+        val reading = UrlOverlayDrawProofPolicy.read(evidence)
+        val sample = UrlOverlayDrawProofPolicy.Sample(
+            android.os.SystemClock.elapsedRealtime() - urlOverlayProofFinishedAtMs,
+            reading,
+        )
+        val verdict = UrlOverlayDrawProofPolicy.classify(urlOverlayProofPrevious, sample)
+        urlOverlayProofPrevious = sample
+        urlOverlayProofProbes += 1
+        val facts = evidence?.let {
+            "elements=${it.elements} text=${it.textChars} media=${it.media} painted=${it.painted} " +
+                "opaque=${it.opaque} body=${it.hasBody} readyState=${it.readyState.filter(Char::isLetter)}"
+        } ?: "no readable reply"
+        when (verdict) {
+            UrlOverlayDrawProofPolicy.Verdict.DRAWN -> {
+                urlOverlayBlankReloadRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+                urlOverlayBlankReloadRunnable = null
+                if (urlOverlayProofState != UrlOverlayDrawProofPolicy.STATE_DRAWN) {
+                    PlayerLogger.i(
+                        "MainActivity",
+                        "PLAYER_URL_OVERLAY_PROOF drawn host=${HostAllowlist.describe(target)} " +
+                            "after=${sample.sinceFinishedMs}ms reloads=$urlOverlayBlankReloads $facts",
+                    )
+                    urlOverlayBlankReloads = 0
+                    reportUrlOverlayState(UrlOverlayDrawProofPolicy.STATE_DRAWN)
+                }
+            }
+            UrlOverlayDrawProofPolicy.Verdict.BLANK -> {
+                if (urlOverlayProofState != UrlOverlayDrawProofPolicy.STATE_BLANK) {
+                    PlayerLogger.w(
+                        "MainActivity",
+                        "PLAYER_URL_OVERLAY_PROOF blank host=${HostAllowlist.describe(target)} " +
+                            "after=${sample.sinceFinishedMs}ms reloads=$urlOverlayBlankReloads $facts",
+                    )
+                    reportUrlOverlayState(UrlOverlayDrawProofPolicy.STATE_BLANK)
+                }
+                scheduleUrlOverlayBlankReload(target)
+            }
+            UrlOverlayDrawProofPolicy.Verdict.UNKNOWN -> {
+                val undecided = urlOverlayProofState == UrlOverlayDrawProofPolicy.STATE_LOADING ||
+                    urlOverlayProofState == UrlOverlayDrawProofPolicy.STATE_FAILED
+                if (undecided && UrlOverlayDrawProofPolicy.settledUnknown(urlOverlayProofProbes, reading, verdict)) {
+                    PlayerLogger.i(
+                        "MainActivity",
+                        "PLAYER_URL_OVERLAY_PROOF unknown host=${HostAllowlist.describe(target)} " +
+                            "after=${sample.sinceFinishedMs}ms $facts",
+                    )
+                    reportUrlOverlayState(UrlOverlayDrawProofPolicy.STATE_UNKNOWN)
+                }
+            }
+        }
+        scheduleUrlOverlayProbe(UrlOverlayDrawProofPolicy.nextProbeDelayMs(urlOverlayProofProbes, reading, verdict))
+    }
+
+    /**
+     * A blank document gets a bounded number of reloads of the SAVED target,
+     * on the existing backoff table; after the last one it is left alone and
+     * keeps reporting blank.
+     */
+    private fun scheduleUrlOverlayBlankReload(target: String) {
+        if (urlOverlayBlankReloadRunnable != null) return
+        val mayReload = { held: Boolean ->
+            UrlOverlayDrawProofPolicy.shouldReloadBlank(
+                UrlOverlayDrawProofPolicy.Verdict.BLANK,
+                urlOverlayBlankReloads,
+                urlOverlayView.visibility == View.VISIBLE,
+                webTabsActive,
+                urlOverlayCurrentUrl,
+                urlOverlayRecoveryFailed,
+                held,
+            )
+        }
+        if (!mayReload(false)) return
+        val reload = Runnable {
+            urlOverlayBlankReloadRunnable = null
+            // ⚠️ Looked at again at the moment of the reload: never under an alert.
+            val held = runCatching { DisplayEmergency.isHeld(applicationContext) }.getOrDefault(true)
+            if (isDestroyed || !urlOverlayProofArmed || urlOverlayCurrentUrl != target ||
+                urlOverlayProofState != UrlOverlayDrawProofPolicy.STATE_BLANK ||
+                !HostAllowlist.isSafeWebUrl(target) || !mayReload(held)
+            ) return@Runnable
+            urlOverlayBlankReloads += 1
+            PlayerLogger.w(
+                "MainActivity",
+                "PLAYER_URL_OVERLAY_PROOF reload $urlOverlayBlankReloads/${UrlOverlayDrawProofPolicy.MAX_BLANK_RELOADS} " +
+                    "host=${HostAllowlist.describe(target)}",
+            )
+            // The blank document's probes end here; the reloaded one starts its own.
+            urlOverlayProbeRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+            urlOverlayProbeRunnable = null
+            urlOverlayProofGeneration += 1
+            reportUrlOverlayState(UrlOverlayDrawProofPolicy.STATE_BLANK)
+            // Same shape as retryUrlOverlayNow: a reload that never finishes
+            // becomes a failed load, which the existing recovery owns.
+            urlOverlayLoadTimeoutRunnable?.let(urlOverlayRecoveryHandler::removeCallbacks)
+            urlOverlayRecoveryInFlight = true
+            urlOverlayView.loadUrl(target)
+            val timeout = Runnable {
+                if (urlOverlayRecoveryInFlight && urlOverlayCurrentUrl == target) {
+                    failUrlOverlayLoad("reload of a blank page timed out")
+                }
+            }
+            urlOverlayLoadTimeoutRunnable = timeout
+            urlOverlayRecoveryHandler.postDelayed(timeout, URL_OVERLAY_LOAD_TIMEOUT_MS)
+        }
+        urlOverlayBlankReloadRunnable = reload
+        urlOverlayRecoveryHandler.postDelayed(reload, UrlOverlayDrawProofPolicy.blankReloadDelayMs(urlOverlayBlankReloads))
     }
 
     // ─── Website Tabs (2026-09-28) ───────────────────────────────────────
@@ -4216,6 +4569,8 @@ class MainActivity : ComponentActivity() {
         val wasActive = webTabsActive
         val urlChanged = urlOverlayCurrentUrl != req.url
         cancelUrlOverlayRecovery()
+        // Website Tabs owns the view now: the plain URL asset's draw proof stops.
+        cancelUrlOverlayProof(forget = true)
         // A NEW session starts with no remembered sign-in hosts.
         if (!wasActive) webTabsLearnedHosts.clear()
         webTabsActive = true

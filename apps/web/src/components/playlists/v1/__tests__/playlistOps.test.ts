@@ -276,6 +276,14 @@ describe('degradation: grading targets from the screens payload', () => {
     expect(unavailable.tone).toBe('bad');
   });
 
+  it('a website slide that drew nothing or did not load is a playback problem, never a delivered picture', () => {
+    for (const hash of ['idle:website-blank', 'idle:website-failed']) {
+      const s = deriveDeliveryFromScreens([screen({ lastRenderedHash: hash })], NOW_MS);
+      expect(s.state).toBe('playback-issue');
+      expect(s.tone).toBe('bad');
+    }
+  });
+
   it('with no push on record, a fresh picture is reported without claiming confirmation', () => {
     const s = deriveDeliveryFromScreens([screen({ id: 'a' }), screen({ id: 'b', name: 'Cafe' })], NOW_MS);
     expect(s.tone).toBe('muted');

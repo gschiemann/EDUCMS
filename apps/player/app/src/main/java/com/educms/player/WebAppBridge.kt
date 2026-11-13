@@ -218,6 +218,13 @@ class WebAppBridge(
      */
     private val onImportFromUsb: () -> Unit = {},
     /**
+     * 2026-11-13 — the page asks what the website view (the plain URL asset
+     * overlay) is doing right now. The answer is an `edu-url-overlay-state`
+     * event dispatched into the PLAYER page; nothing is returned here.
+     * Defaulted to a no-op: a face never owns that view.
+     */
+    private val onUrlOverlayReport: (url: String) -> Unit = {},
+    /**
      * 2026-09-02 (P0-2) — FACT 1: the web bundle's client JS is running.
      *
      * Fired from the same mount effect that stamps `data-edu-booted="1"`.
@@ -1345,6 +1352,33 @@ class WebAppBridge(
             onShowUrlOverlay(cleanUrl)
         } catch (ex: Exception) {
             PlayerLogger.w("WebAppBridge", "showUrlOverlay failed: ${ex.message}")
+        }
+    }
+
+    /**
+     * 2026-11-13 — "what is the website view doing?" The page calls it when it
+     * hands a website slide to [showUrlOverlay] and listens for the
+     * `edu-url-overlay-state` event the Activity dispatches into the player
+     * page (loading / drawn / blank / failed / unknown — the rules are in
+     * `UrlOverlayDrawProofPolicy`). Its NAME is also how the page knows this
+     * APK proves what the website drew: `nativeHas('urlOverlayReport')`.
+     * Asking is what arms the proof for that URL — a page that never asks gets
+     * the view exactly as it was before — and the literal `off` stands it down.
+     *
+     * Not nonce-gated, class 3 of [BridgeNonce.GATED_METHODS]' split (read-only
+     * diagnostic): it changes nothing on the glass, returns nothing to the
+     * caller, and the event it causes carries only the state of a URL the
+     * caller already had to name. THREE-FILE ATOMIC CHANGE: the channel's
+     * METHODS + dispatch arm, the web's NATIVE_VOID_METHODS (excluded from
+     * KNOWN_METHODS until the fleet floor includes this APK), and the
+     * drift-guard canary count.
+     */
+    @JavascriptInterface
+    fun urlOverlayReport(url: String) {
+        try {
+            onUrlOverlayReport(url.take(2048))
+        } catch (ex: Exception) {
+            PlayerLogger.w("WebAppBridge", "urlOverlayReport failed: ${ex.message}")
         }
     }
 

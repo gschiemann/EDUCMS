@@ -824,7 +824,7 @@ export function deriveCurrentPictureState(screen: OpsScreenRef, nowMs: number): 
   // 'content-loading' were one 'idle' grade until 2026-09-27; they keep its
   // reading here, and "Content unavailable" is exactly a playback problem.
   if (
-    grade === 'content-unavailable' ||
+    grade === 'content-unavailable' || grade === 'website-blank' || grade === 'website-failed' ||
     grade === 'paused' || grade === 'repair-required' || grade === 'media-stalled' || grade === 'alert-unconfirmed'
   ) {
     return 'issue';

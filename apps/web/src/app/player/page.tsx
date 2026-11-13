@@ -306,6 +306,11 @@ import { itemContentSigInput } from './contentSig';
 import { isTemplateBoard, persistStagedBoards, readPersistedStagedBoards, readStagedBoardsResponse, selectStagedBoard, stagedBoardImageUrls, type PushBoardFacts, type StagedBoards } from './emergencyBoards';
 import { systemEmergencyBoardColor, systemEmergencyBoardText } from '@cms/api-types';
 import { nativeWebsiteTarget, publishDisplayBlank } from './displayBlankSignal';
+import {
+  URL_OVERLAY_REPORT_METHOD, URL_OVERLAY_STATE_EVENT, WEBSITE_PROOF_STAND_DOWN, acceptWebsiteViewReport,
+  websiteCountsAsShown, websiteProofFor, websiteProofSig, websiteProofSwitchedOff,
+  type WebsiteProof, type WebsiteViewReport,
+} from './nativeWebsiteProof';
 import { loopBoundaryTracker, NativeWrapDetector, type FrameMeta, type RvfcVideoElement } from './loopBoundary';
 // Seamless file swaps under the same items (2026-10-12, video guarantee):
 // a demotion to the 1080p copy, or "Try full quality again", never shows.
@@ -3750,6 +3755,13 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // A live carousel is not evidence that its current media loaded. This only
   // becomes true after <video> fires onPlaying or an image/iframe fires onLoad.
   const [mediaReady, setMediaReady] = useState(false);
+  // Website draw proof (2026-11-13, nativeWebsiteProof.ts): what the APK's own
+  // website view reports for the slide on glass. Stays 'none' in a browser and
+  // on an APK that does not report.
+  const [websiteProof, setWebsiteProof] = useState<WebsiteProof>('none');
+  // The server's kill switch (`PLAYER_WEBSITE_PROOF=off`, manifest `playback.websiteProof`).
+  const [websiteProofOff, setWebsiteProofOff] = useState(false);
+  const websiteViewRef = useRef<{ target: string | null; report: WebsiteViewReport | null }>({ target: null, report: null });
   // Pure tracking logic lives in a small, independently unit-tested class
   // (see all-assets-failed-tracker.test.ts) so the "every item has failed"
   // detection doesn't need the full ~8000-line page component mounted to
@@ -6156,7 +6168,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // `allItemsUnplayable` (2026-10-05): every item failed on this screen or
     // is a type it cannot show — the same card, the same proof.
     const contentUnavailable = allAssetsFailed || normalFilesSetAside || allItemsUnplayable;
-    const playingContent = phase === 'playing' && !!playlist && !playbackStopped && !contentUnavailable &&
+    // Website draw proof (2026-11-13): the APK's website view said the slide on
+    // glass is still loading, drew nothing, or failed to load. Never `pl:` then.
+    const websiteSig = !emergencyOn && !playbackStopped && phase === 'playing' && !!playlist
+      ? websiteProofSig(websiteProof) : null;
+    const playingContent = phase === 'playing' && !!playlist && !playbackStopped && !contentUnavailable && !websiteSig &&
       (mediaReady || !!(playlist as any)?.template);
     const rendering = emergencyOn || playingContent;
     // Short content signature so lastRenderedHash is meaningful for
@@ -6192,6 +6208,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // not playing, and the dashboard must not read it as content proven.
       kind = 'idle';
       sig = 'idle:content-downloading';
+    } else if (websiteSig) {
+      // `idle:website-blank` / `idle:website-failed` (or `idle:content-loading`
+      // while the site's main frame is still unproven).
+      kind = 'idle';
+      sig = websiteSig;
     } else if (!emergencyOn && !!playlist && !playbackStopped && !mediaReady && !(playlist as any)?.template) {
       sig = 'idle:content-loading';
     }
@@ -6225,7 +6246,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         }
       } catch { /* cover bookkeeping must never touch playback */ }
     }
-  }, [phase, playlist, playbackStopped, activeEmergency, pushedEmergencyMessage, emergencyRenderHold, polledEmergencyHeld, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, activeSlot.waitingForDownload, displayIndex, sorted]);
+  }, [phase, playlist, playbackStopped, activeEmergency, pushedEmergencyMessage, emergencyRenderHold, polledEmergencyHeld, allAssetsFailed, normalFilesSetAside, allItemsUnplayable, mediaReady, websiteProof, activeSlot.waitingForDownload, displayIndex, sorted]);
   // An alert is never behind a cover or the quiet-boot mark (2026-10-11).
   // `rendering` above already counts an active emergency; a PUSHED message
   // (SOS / broadcast) is drawn by EmergencyOverlay, outside that proof — take
@@ -7543,6 +7564,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       }
       // 2026-09-29 — per-screen playback switches. Absent on an older API
       // and on the emergency branch → keep what we have (default: native).
+      const proofOff = websiteProofSwitchedOff(manifest.playback);
+      if (proofOff !== null) setWebsiteProofOff(proofOff);
       if (manifest.playback && typeof manifest.playback === 'object') {
         const lm = (manifest.playback as { loopMode?: unknown }).loopMode;
         setPlaybackLoopMode(lm === 'twodeck' || lm === 'native' || lm === 'continuous' ? lm : null);
@@ -11907,20 +11930,63 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       itemValid: !!current && isItemValid(current),
       apiRoot: getApiRoot(),
     });
+    // Website draw proof (2026-11-13): does THIS APK report what its website
+    // view drew? The method's presence is the answer (nativeWebsiteProof.ts).
+    const canReport = nativeHas(URL_OVERLAY_REPORT_METHOD);
+    const reports = canReport && !websiteProofOff;
+    // Drop what this page held for a website slide. A no-op on every browser
+    // and on an APK that does not report: nothing is ever held there.
+    const forget = () => {
+      if (websiteViewRef.current.target === null) return;
+      websiteViewRef.current = { target: null, report: null };
+      setWebsiteProof('none');
+    };
     if (!url) {
       hide();
+      forget();
       return;
     }
 
     // A website slide on the APK's native viewer renders only a black
     // placeholder here, so nothing on this page ever fires `load` for it and
     // `mediaReady` stayed false for as long as the site was on glass — "Loading
-    // content" on the dashboard (2026-09-28). What this page CAN honestly say is
-    // that the slide was handed to the viewer; the viewer does not report page
-    // load back yet, so this is "requested", exactly as `pl:` was before the
+    // content" on the dashboard (2026-09-28). On an APK whose viewer reports
+    // nothing back, what this page CAN honestly say is that the slide was
+    // handed to the viewer: "requested", exactly as `pl:` was before the
     // readiness flag existed.
-    if (nativeFire('showUrlOverlay', url)) setMediaReady(true);
-  }, [nativeFirstHoldRaised, currentIndex, isItemValid, phase, playbackStopped, softBlank, sorted]);
+    if (!nativeFire('showUrlOverlay', url)) return;
+    if (!reports) {
+      // The kill switch was thrown while a reporting viewer had this slide:
+      // stand the viewer's proof down too, then read as before.
+      if (canReport && websiteViewRef.current.target !== null) nativeFire(URL_OVERLAY_REPORT_METHOD, WEBSITE_PROOF_STAND_DOWN);
+      forget();
+      setMediaReady(true);
+      return;
+    }
+    // A reporting viewer: the slide is ready when the viewer says the page drew
+    // (or that it cannot tell) — never merely because it was handed over.
+    const view = websiteViewRef.current;
+    view.target = url;
+    const proof = websiteProofFor(url, view.report);
+    setWebsiteProof(proof);
+    if (websiteCountsAsShown(proof)) setMediaReady(true);
+    nativeFire(URL_OVERLAY_REPORT_METHOD, url);
+  }, [nativeFirstHoldRaised, currentIndex, isItemValid, phase, playbackStopped, softBlank, sorted, websiteProofOff]);
+  // The viewer's reports for the website slide on glass. Mount-once; a report
+  // about any other URL (a late one from the previous slide) is dropped.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !nativeHas(URL_OVERLAY_REPORT_METHOD)) return;
+    const onState = (e: Event) => {
+      const view = websiteViewRef.current;
+      const report = acceptWebsiteViewReport(view.target, (e as CustomEvent).detail);
+      if (!report) return;
+      view.report = report;
+      setWebsiteProof(report.state);
+      if (websiteCountsAsShown(report.state)) setMediaReady(true);
+    };
+    window.addEventListener(URL_OVERLAY_STATE_EVENT, onState);
+    return () => window.removeEventListener(URL_OVERLAY_STATE_EVENT, onState);
+  }, []);
 
   // Device play log (2026-11-09): one entry per item on glass; never in preview, never an alert. Rules: playLog.ts.
   const playLogRef = useRef<PlayLogHandle | null>(null);

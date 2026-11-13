@@ -507,6 +507,9 @@ describe('idleProofKind + the idle grades (2026-09-27)', () => {
       expect(idleProofKind(`idle:${phase}`)).toBe('connecting');
     }
     expect(idleProofKind('idle:playing')).toBe('nothing-scheduled');
+    // 2026-11-13 — the website slide's own states, from the screen's app.
+    expect(idleProofKind('idle:website-blank')).toBe('website-blank');
+    expect(idleProofKind('idle:website-failed')).toBe('website-failed');
   });
 
   it('an unknown suffix keeps the old reading; a non-idle proof is not idle at all', () => {
@@ -524,10 +527,12 @@ describe('idleProofKind + the idle grades (2026-09-27)', () => {
     expect(fresh('idle:connecting')).toBe('connecting');
     expect(fresh('idle:playing')).toBe('idle');
     expect(fresh('idle:boot')).toBe('idle');
+    expect(fresh('idle:website-blank')).toBe('website-blank');
+    expect(fresh('idle:website-failed')).toBe('website-failed');
   });
 
   it('a STALE one still grades through the staleness ladder — a wedged splash is still wedged', () => {
-    for (const hash of ['idle:content-downloading', 'idle:content-unavailable', 'idle:content-loading', 'idle:connecting']) {
+    for (const hash of ['idle:content-downloading', 'idle:content-unavailable', 'idle:content-loading', 'idle:connecting', 'idle:website-blank', 'idle:website-failed']) {
       const wedged = (ageMs: number) => ({
         status: 'ONLINE', renderHealth: 'STALE' as const, renderStale: true,
         lastRenderedHash: hash, lastRenderedAtMs: NOW - ageMs, nowMs: NOW,

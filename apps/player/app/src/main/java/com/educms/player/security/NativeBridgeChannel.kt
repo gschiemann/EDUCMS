@@ -160,6 +160,14 @@ object NativeBridgeChannel {
         "sharedVideoPrepare", "sharedVideoCommit", "sharedVideoStop", "sharedVideoState",
         "showUrlOverlay",
         "hideUrlOverlay",
+        // 2026-11-13 — the page asks what the website view is doing; the answer
+        // is an `edu-url-overlay-state` event into the player page. Its name is
+        // also the capability the page tests (`nativeHas`). Changes nothing on
+        // the glass. THREE-FILE ATOMIC CHANGE: this array, the dispatch arm
+        // below, the web's NATIVE_VOID_METHODS (kept OUT of the web's
+        // KNOWN_METHODS until the fleet floor includes this APK) and the
+        // drift-guard canary count.
+        "urlOverlayReport",
         "openSettingsForManager",
         // 2026-08-25 (v1.1.6) — raises the setup checklist on this panel,
         // driven from the dashboard via a signed OPEN_SETUP frame. Touches
@@ -663,6 +671,7 @@ object NativeBridgeChannel {
             "setDeviceToken" -> { bridge.setDeviceToken(bridge.channelNonce(), strAt(args, 0)); null }
             "showUrlOverlay" -> { bridge.showUrlOverlay(bridge.channelNonce(), strAt(args, 0)); null }
             "hideUrlOverlay" -> { bridge.hideUrlOverlay(); null }
+            "urlOverlayReport" -> { bridge.urlOverlayReport(strAt(args, 0)); null }
             "openSettingsForManager" -> { bridge.openSettingsForManager(bridge.channelNonce()); null }
             "openSetupChecklist" -> { bridge.openSetupChecklist(); null }
             "openNetworkScreen" -> { bridge.openNetworkScreen(); null }

@@ -101,7 +101,9 @@ class FaceBridgeIsolationTest {
             // same full contract, kept out of KNOWN_METHODS until the fleet floor is 1.1.55.
             // 38 -> 39 (2026-11-08): clearUpdateQuarantine, the dashboard's Clear quarantine -
             // the same full contract, kept out of KNOWN_METHODS until the fleet floor is 1.1.66.
-            39, // Native media has face-bound closures, not face-selecting public methods.
+            // 39 -> 40 (2026-11-13): urlOverlayReport, the website view's draw-proof question -
+            // the same full contract, kept out of KNOWN_METHODS until the fleet floor includes it.
+            40, // Native media has face-bound closures, not face-selecting public methods.
             names.size,
         )
         assertFalse("a face-specific bridge method appeared", names.any { it.startsWith("face") })

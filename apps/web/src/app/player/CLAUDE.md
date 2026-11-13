@@ -253,6 +253,25 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
     `OperatorPinGate.kt` to the native bridge. Report:
     `docs/handoffs/2026-11-09-player-stability/05-screen-pin.md`.
 
+20. **A website slide on the APK is "shown" only when the APK's website view says it drew
+    (2026-11-13)** — `nativeWebsiteProof.ts` (pure, `__tests__/nativeWebsiteProof.test.ts`); the
+    native half is in `apps/player/CLAUDE.md`. On the APK a website item is drawn by a second
+    Android WebView, not by this page, and the page used to mark the slide ready the moment it
+    handed the URL over — `pl:` over a white sheet (rule 5; incident 2026-11-11). Now, when the APK
+    has the `urlOverlayReport` bridge method (`nativeHas`, never a version guess), the page asks
+    for the view's state and listens for `edu-url-overlay-state`: `drawn` and `unknown` count as
+    shown; `loading` proves `idle:content-loading`; `blank` proves `idle:website-blank` and
+    `failed` proves `idle:website-failed` — never `pl:`. A report is believed only for the URL the
+    page handed over. The dashboard grades the two new signatures as `website-blank` /
+    `website-failed` (`renderTrust.ts`, mirrored in the API's `render-trust-grade.ts`; rose, in
+    Needs attention, copy in en + es + zh that says only "loaded but nothing was drawn" / "did not
+    load"). They do NOT send a customer email — `noContentVerdict` is unchanged; adding one is the
+    owner's decision. An APK without the method and every browser keep the old behaviour, and so
+    does the whole fleet with `PLAYER_WEBSITE_PROOF=off` (manifest `playback.websiteProof: 'off'`,
+    absent otherwise; the page then stops asking and tells an armed view `off`). Rotation is
+    untouched: `mediaReady` never gates an advance. The page hook is the existing overlay effect
+    plus one mount-once listener; keep it that small.
+
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 
 Screens whose playlist has **Sync playback** on (`Playlist.syncPlayback` — the ONLY

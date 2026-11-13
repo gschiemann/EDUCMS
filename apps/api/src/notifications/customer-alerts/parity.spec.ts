@@ -32,6 +32,8 @@ describe('render-trust grade — API port ⇄ web chip', () => {
     'idle:content-unavailable',
     'idle:content-downloading',
     'idle:content-loading',
+    'idle:website-blank',
+    'idle:website-failed',
     'idle:connecting',
     'paused:x',
     'stall|abc',
@@ -60,7 +62,7 @@ describe('render-trust grade — API port ⇄ web chip', () => {
                 expect([apiGrade(input), input]).toEqual([web.deriveRenderTrustGrade(input), input]);
                 n++;
               }
-    expect(n).toBe(3 * 4 * 3 * 5 * 11 * 3);
+    expect(n).toBe(3 * 4 * 3 * 5 * 13 * 3);
   });
 });
 

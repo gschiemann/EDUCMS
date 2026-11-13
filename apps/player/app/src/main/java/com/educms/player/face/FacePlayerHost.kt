@@ -418,6 +418,29 @@ class FacePlayerHost(
             PlayerLogger.w(TAG, "face $faceIndex showUrlOverlay() — refused; the overlay is face-0 only")
         },
         onHideUrlOverlay = { /* nothing of this face's is showing */ },
+        // 2026-11-13 — a face never gets the website view, so its page is told
+        // so (`failed`) instead of waiting on a report that will never come:
+        // its website slide is a black placeholder, and it must not prove as
+        // content. The event goes to THIS face's page only.
+        onUrlOverlayReport = { url ->
+            val asked = url.trim()
+            if (asked.isNotEmpty() && asked != com.educms.player.UrlOverlayDrawProofPolicy.STAND_DOWN) {
+                activity.runOnUiThread {
+                    if (destroyed || nonce !== faceNonce) return@runOnUiThread
+                    val wv = webView ?: return@runOnUiThread
+                    runCatching {
+                        wv.evaluateJavascript(
+                            com.educms.player.UrlOverlayDrawProofPolicy.stateEventJs(
+                                asked,
+                                com.educms.player.UrlOverlayDrawProofPolicy.STATE_FAILED,
+                                0,
+                            ),
+                            null,
+                        )
+                    }
+                }
+            }
+        },
         onOpenSettingsForManager = {
             PlayerLogger.w(TAG, "face $faceIndex openSettingsForManager() — refused; a box ceremony")
         },

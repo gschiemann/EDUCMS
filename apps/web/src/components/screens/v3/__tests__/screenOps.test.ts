@@ -1449,6 +1449,21 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
       expect(STATUS_ORDER.indexOf('content-unavailable')).toBeGreaterThan(STATUS_ORDER.indexOf('media-stalled'));
     });
 
+    it('a website slide that drew nothing or did not load is a problem, named for what was proved', () => {
+      const b = status({ lastRenderedHash: 'idle:website-blank' });
+      expect(b).toMatchObject({ key: 'website-blank', label: 'Website loaded · nothing drawn', tone: 'bad', needsAttention: true, action: 'Troubleshoot' });
+      expect(b.messages?.label).toEqual({ key: 'screens.contentState.websiteBlank' });
+      expect(b.detail).toMatch(/loaded but nothing was drawn/);
+      const f = status({ lastRenderedHash: 'idle:website-failed' });
+      expect(f).toMatchObject({ key: 'website-failed', label: 'Website did not load', tone: 'bad', needsAttention: true });
+      for (const key of ['website-blank', 'website-failed'] as const) {
+        expect(STATUS_ORDER.indexOf(key)).toBeLessThan(STATUS_ORDER.indexOf('offline'));
+        expect(STATUS_ORDER.indexOf(key)).toBeGreaterThan(STATUS_ORDER.indexOf('media-stalled'));
+      }
+      // Never the old reading of an unknown idle suffix.
+      expect(b.label).not.toMatch(/nothing scheduled/);
+    });
+
     it('connecting and loading say what they are, calmly', () => {
       const c = status({ lastRenderedHash: 'idle:connecting' });
       expect(c).toMatchObject({ key: 'connecting', label: 'Screen on · connecting', tone: 'neutral', needsAttention: false });
@@ -1494,6 +1509,8 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
     it('unavailable and loading are named for what they are', () => {
       expect(reported({ lastRenderedHash: 'idle:content-unavailable' })).toMatchObject({ state: 'unavailable', line: 'Content unavailable' });
       expect(reported({ lastRenderedHash: 'idle:content-loading' })).toMatchObject({ state: 'loading', line: 'Loading content' });
+      expect(reported({ lastRenderedHash: 'idle:website-blank' })).toMatchObject({ state: 'unavailable', line: 'Website loaded · nothing drawn' });
+      expect(reported({ lastRenderedHash: 'idle:website-failed' })).toMatchObject({ state: 'unavailable', line: 'Website did not load' });
     });
 
     it('a file downloading behind content that plays: the content line stands, the download rides beside it', () => {
@@ -1526,6 +1543,8 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
       expect(u.state).toBe('unknown');
       expect(u.line).toBe('Content unavailable');
       expect(u.message).toEqual({ key: 'screens.contentState.unavailable' });
+      const w = delivery({ lastRenderedHash: 'idle:website-blank' });
+      expect(w).toMatchObject({ state: 'unknown', line: 'Website loaded · nothing drawn' });
       for (const hash of ['idle:connecting', 'idle:content-loading']) {
         expect(delivery({ lastRenderedHash: hash }).line).toBe('Waiting for the screen to confirm its picture.');
       }

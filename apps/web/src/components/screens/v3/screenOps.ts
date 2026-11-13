@@ -246,6 +246,8 @@ export const STATUS_ORDER = [
   'not-painting', // reachable, no confirmed picture
   'media-stalled', // video frame frozen, watchdog recovering
   'content-unavailable', // reachable, but none of the scheduled files would load
+  'website-blank', // reachable; the website slide loaded and drew nothing
+  'website-failed', // reachable; the website slide's address did not load
   'offline', // heartbeat stale
   'revoked', // access removed — cannot be told anything
   'repair-required', // repair credentials before asking for delivery proof
@@ -528,6 +530,25 @@ export function deriveScreenStatus({
     // would only say where in that cycle we are — not how long it has failed.
     return {
       key: 'content-unavailable',
+      tone: 'bad',
+      label: label.en,
+      action: 'Troubleshoot',
+      needsAttention: true,
+      detail: detail.en,
+      messages: { label: label.message, detail: detail.message },
+    };
+  }
+
+  // 2026-11-13 — the website slide's own states (`idle:website-blank` /
+  // `idle:website-failed`), reported by the screen's app after it looked at
+  // the page. The same rank and tone as "Content unavailable": the operator's
+  // content is not on the glass. No age, for the same reason.
+  if (grade === 'website-blank' || grade === 'website-failed') {
+    const blank = grade === 'website-blank';
+    const label = copy(blank ? 'screens.contentState.websiteBlank' : 'screens.contentState.websiteFailed');
+    const detail = copy(blank ? 'screens.contentState.websiteBlankDetail' : 'screens.contentState.websiteFailedDetail');
+    return {
+      key: grade,
       tone: 'bad',
       label: label.en,
       action: 'Troubleshoot',
@@ -1345,6 +1366,13 @@ export function deriveReportedContent(
   if (idleKind === 'unavailable') {
     return said('unavailable', copy('screens.contentState.unavailable'), copy('screens.contentState.unavailableDetail'));
   }
+  // 2026-11-13 — the website slide loaded and drew nothing, or did not load.
+  if (idleKind === 'website-blank') {
+    return said('unavailable', copy('screens.contentState.websiteBlank'), copy('screens.contentState.websiteBlankDetail'));
+  }
+  if (idleKind === 'website-failed') {
+    return said('unavailable', copy('screens.contentState.websiteFailed'), copy('screens.contentState.websiteFailedDetail'));
+  }
   // A fresh snapshot outranks an idle proof (a minute old at most, against up
   // to five), and a hold outranks the old content's own proof: the player is
   // saying the NEW content is waiting behind what is on glass.
@@ -1481,7 +1509,7 @@ export function deriveDelivery(screen: OpsScreen, status: StatusDescriptor, now:
   if (status.key === 'downloading' || status.key === 'showing-previous') {
     return { state: 'pending', line: status.label, ...(status.messages?.label ? { message: status.messages.label } : {}) };
   }
-  if (status.key === 'content-unavailable') {
+  if (status.key === 'content-unavailable' || status.key === 'website-blank' || status.key === 'website-failed') {
     // The short fact only — the content card above carries the explanation.
     return { state: 'unknown', line: status.label, ...(status.messages?.label ? { message: status.messages.label } : {}) };
   }

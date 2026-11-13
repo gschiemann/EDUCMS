@@ -409,7 +409,9 @@ class LegacyBridgeExposureTest {
                 "count in nativeBridge.test.ts in the SAME commit (apps/player/CLAUDE.md rule 9).",
             // 38 -> 39 on 2026-11-08: `clearUpdateQuarantine` (Manager wave 3), the same full
             // contract; nonce-gated, kept out of KNOWN_METHODS until the fleet floor is 1.1.66.
-            39, // Four optional native media names (nativeBridge.ts >=1.1.25 floors) + openNetworkScreen + importFromUsb + clearUpdateQuarantine.
+            // 39 -> 40 on 2026-11-13: `urlOverlayReport` (the website view's draw proof), the same
+            // full contract; not gated (read-only), kept out of KNOWN_METHODS until the fleet floor includes it.
+            40, // Four optional native media names (nativeBridge.ts >=1.1.25 floors) + openNetworkScreen + importFromUsb + clearUpdateQuarantine + urlOverlayReport.
             names.size,
         )
     }

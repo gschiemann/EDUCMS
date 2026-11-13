@@ -54,6 +54,20 @@ export interface PlaybackConfig {
   loopMode: LoopMode;
   /** Keep the fitting decision explicit for already-running web bundles. */
   mediaFit: 'fill';
+  /**
+   * Kill switch for the website view's draw proof (2026-11-13,
+   * `PLAYER_WEBSITE_PROOF=off`). ABSENT unless the switch is thrown, so the
+   * manifest of every screen is byte-identical to before while it is on.
+   * `off`: the player stops asking the Android app what its website view
+   * drew — no probe, no reload of a blank page, and a website slide proves as
+   * it did before ("handed over"). See apps/web/src/app/player/nativeWebsiteProof.ts.
+   */
+  websiteProof?: 'off';
+}
+
+/** Exactly `off` (any case, trimmed) throws the switch; anything else, or unset, leaves the proof on. */
+export function websiteProofOff(env: Record<string, string | undefined> = process.env): boolean {
+  return String(env.PLAYER_WEBSITE_PROOF ?? '').trim().toLowerCase() === 'off';
 }
 
 export function resolveLoopMode(
@@ -89,5 +103,9 @@ export function resolvePlaybackConfig(
 ): PlaybackConfig {
   // API and web deploy independently. Older running pages read this field;
   // omitting it would reset their fit before the new default bundle loads.
-  return { loopMode: resolveLoopMode(screenId, env), mediaFit: 'fill' };
+  return {
+    loopMode: resolveLoopMode(screenId, env),
+    mediaFit: 'fill',
+    ...(websiteProofOff(env) ? { websiteProof: 'off' as const } : {}),
+  };
 }

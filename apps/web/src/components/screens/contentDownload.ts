@@ -215,6 +215,12 @@ export const DOWNLOAD_COPY_EN = {
   'screens.contentState.unavailable': 'Content unavailable',
   'screens.contentState.unavailableDetail':
     "None of the scheduled files would load. It keeps retrying; if this lasts, check the playlist's files.",
+  'screens.contentState.websiteBlank': 'Website loaded · nothing drawn',
+  'screens.contentState.websiteBlankDetail':
+    'The website loaded but nothing was drawn. The screen reloads it a few times and keeps checking; if this lasts, check that the address still works.',
+  'screens.contentState.websiteFailed': 'Website did not load',
+  'screens.contentState.websiteFailedDetail':
+    "The screen did not load the website's address. If this lasts, check the address and the screen's network.",
   'screens.contentState.loading': 'Loading content',
   'screens.contentState.loadingDetail': 'The screen picked up its schedule and is opening the first item.',
   'screens.contentState.connecting': 'Screen on · connecting',

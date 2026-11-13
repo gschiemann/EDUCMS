@@ -29,6 +29,8 @@
  *   downloading          — calm sky: the new file is downloading, with its
  *                          progress when a fresh snapshot is passed in
  *   content-unavailable  — rose: every scheduled file failed to load
+ *   website-blank / website-failed (2026-11-13) — rose: the website slide
+ *                          loaded and drew nothing, or its address did not load
  *   content-loading / connecting — calm sky, nothing claimed beyond that
  * and a painting screen whose NEW content is held behind the old while it
  * downloads says so instead of the unqualified green.
@@ -202,6 +204,21 @@ export function RenderTrustChip({
       >
         <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
         {say(copy('screens.contentState.unavailable'))}{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+  // 2026-11-13 — the website slide's own states, reported by the screen's app:
+  // the page loaded and drew nothing, or its address did not load. Rose like
+  // "Content unavailable": the operator's content is not on the glass.
+  if (variant === 'website-blank' || variant === 'website-failed') {
+    const blank = variant === 'website-blank';
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700"
+        title={say(copy(blank ? 'screens.contentState.websiteBlankDetail' : 'screens.contentState.websiteFailedDetail'))}
+      >
+        <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+        {say(copy(blank ? 'screens.contentState.websiteBlank' : 'screens.contentState.websiteFailed'))}{verifiedAgo ? ` · ${verifiedAgo}` : ''}
       </span>
     );
   }

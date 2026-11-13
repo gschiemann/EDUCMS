@@ -98,6 +98,18 @@ describe('RenderTrustChip — downloads and the player\'s own states (2026-09-27
     noGreen(el.closest('span')!);
   });
 
+  it('a website that loaded and drew nothing, or did not load: rose, never green, and only what was proved', () => {
+    chip('idle:website-blank');
+    const blank = rtl.getByText('Website loaded · nothing drawn');
+    expect(blank.closest('span')!.className).toMatch(/rose/);
+    expect(blank.closest('span')!.getAttribute('title')).toMatch(/loaded but nothing was drawn/);
+    noGreen(blank.closest('span')!);
+    chip('idle:website-failed');
+    const failed = rtl.getByText('Website did not load');
+    expect(failed.closest('span')!.className).toMatch(/rose/);
+    noGreen(failed.closest('span')!);
+  });
+
   it('connecting and loading say exactly that', () => {
     chip('idle:connecting');
     expect(rtl.getByText('Screen on · connecting')).toBeInTheDocument();

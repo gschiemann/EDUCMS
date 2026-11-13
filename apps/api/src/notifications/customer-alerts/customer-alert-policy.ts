@@ -512,6 +512,9 @@ export type NoContentVerdict =
  *                         unavailable" card: every scheduled file failed.
  * Everything else is NOT a blank for email: unknown (an older player that
  * never posts proof), stale-chronic (> 48 h — a build that stopped posting),
+ * website-blank / website-failed (2026-11-13: a website slide that drew nothing
+ * or did not load — shown on the dashboard; whether it should also email the
+ * customer is the owner's decision and is NOT made here),
  * downloading / loading / connecting (in progress), idle (nothing scheduled),
  * paused (an operator paused it), repair-required (a credential, not a
  * picture), media-stalled (painting), and every alert grade.

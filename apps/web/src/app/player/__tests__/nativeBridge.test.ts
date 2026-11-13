@@ -832,7 +832,9 @@ describe('method tables stay in sync with the APK', () => {
     // drive again and shows the APK's USB card.
     // → 39 on 2026-11-08 (APK ≥ 1.1.66): `clearUpdateQuarantine`, the dashboard's Clear
     // quarantine relayed to the companion Manager.
-    expect(all).toHaveLength(39);
+    // → 40 on 2026-11-13 (the APK after this change): `urlOverlayReport`, the website
+    // view's draw proof — the page asks, the APK answers with a window event.
+    expect(all).toHaveLength(40);
   });
 
   /**

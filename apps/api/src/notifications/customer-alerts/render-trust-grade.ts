@@ -19,6 +19,8 @@ export type RenderTrustGrade =
   | 'idle'
   | 'downloading'
   | 'content-unavailable'
+  | 'website-blank'
+  | 'website-failed'
   | 'content-loading'
   | 'connecting'
   | 'paused'
@@ -51,6 +53,10 @@ function idleProofKind(hash: string | null | undefined) {
       return 'unavailable';
     case 'content-loading':
       return 'loading';
+    case 'website-blank':
+      return 'website-blank';
+    case 'website-failed':
+      return 'website-failed';
     case 'connecting':
     case 'registering':
     case 'pairing':
@@ -83,6 +89,10 @@ export function deriveRenderTrustGrade(input: RenderTrustInput): RenderTrustGrad
     switch (idleProofKind(hash)) {
       case 'unavailable':
         return 'content-unavailable';
+      case 'website-blank':
+        return 'website-blank';
+      case 'website-failed':
+        return 'website-failed';
       case 'downloading':
         return 'downloading';
       case 'loading':

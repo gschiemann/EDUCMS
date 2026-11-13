@@ -123,6 +123,11 @@ export const IDLE_PROOF_PREFIX = 'idle:';
  *                              every scheduled file failed to load
  *   idle:content-loading     → 'loading'      a playlist is applied and its
  *                              first item has not reported loaded yet
+ *   idle:website-blank       → 'website-blank'  (2026-11-13) the website slide's
+ *                              page loaded and its document held nothing visible
+ *                              on two looks; the screen's app reported it
+ *   idle:website-failed      → 'website-failed' (2026-11-13) the website slide's
+ *                              address did not load (network, HTTP error, certificate)
  *   idle:connecting (and the other pre-content phases: registering, pairing,
  *   offline)                 → 'connecting'   still fetching its schedule
  *   idle:playing             → 'nothing-scheduled'  applied a schedule with
@@ -131,7 +136,9 @@ export const IDLE_PROOF_PREFIX = 'idle:';
  * An unrecognised suffix keeps the pre-2026-09-27 reading, 'nothing-scheduled',
  * so a future player's new state degrades to exactly what it said before.
  */
-export type IdleProofKind = 'downloading' | 'unavailable' | 'loading' | 'connecting' | 'nothing-scheduled';
+export type IdleProofKind =
+  | 'downloading' | 'unavailable' | 'loading' | 'connecting' | 'nothing-scheduled'
+  | 'website-blank' | 'website-failed';
 
 export function idleProofKind(hash: string | null | undefined): IdleProofKind | null {
   if (typeof hash !== 'string' || !hash.startsWith(IDLE_PROOF_PREFIX)) return null;
@@ -142,6 +149,10 @@ export function idleProofKind(hash: string | null | undefined): IdleProofKind | 
       return 'unavailable';
     case 'content-loading':
       return 'loading';
+    case 'website-blank':
+      return 'website-blank';
+    case 'website-failed':
+      return 'website-failed';
     case 'connecting':
     case 'registering':
     case 'pairing':
@@ -241,6 +252,16 @@ export type RenderTrustGrade =
    * operator's content is NOT on the glass — a real problem, never green.
    */
   | 'content-unavailable'
+  /**
+   * The website slide on glass loaded and drew nothing (2026-11-13,
+   * `idle:website-blank`). Reported by the screen's own app, which looked at
+   * the page's document twice, 12 s apart. The operator's content is NOT on
+   * the glass. It says nothing about what the glass looks like — only that
+   * the page held nothing visible.
+   */
+  | 'website-blank'
+  /** The website slide's address did not load (2026-11-13, `idle:website-failed`). */
+  | 'website-failed'
   /** A playlist is applied and its first item is still opening (`idle:content-loading`). */
   | 'content-loading'
   /** Still fetching its schedule — `idle:connecting` and the other pre-content phases. */
@@ -346,6 +367,10 @@ export function deriveRenderTrustGrade(
     switch (idleProofKind(input.lastRenderedHash)) {
       case 'unavailable':
         return 'content-unavailable';
+      case 'website-blank':
+        return 'website-blank';
+      case 'website-failed':
+        return 'website-failed';
       case 'downloading':
         return 'downloading';
       case 'loading':

@@ -1,4 +1,22 @@
-import { resolveLoopMode, resolvePlaybackConfig } from './playback-config';
+import { resolveLoopMode, resolvePlaybackConfig, websiteProofOff } from './playback-config';
+
+describe('PLAYER_WEBSITE_PROOF — the website draw proof kill switch', () => {
+  it('is absent from the manifest unless the switch is thrown, so nothing changes for the fleet', () => {
+    for (const value of [undefined, '', ' ', 'on', 'ON', 'true', '1', 'offf', 'no']) {
+      const cfg = resolvePlaybackConfig('s1', { PLAYER_WEBSITE_PROOF: value });
+      expect(cfg).toEqual({ loopMode: 'continuous', mediaFit: 'fill' });
+      expect('websiteProof' in cfg).toBe(false);
+      expect(websiteProofOff({ PLAYER_WEBSITE_PROOF: value })).toBe(false);
+    }
+  });
+  it('exactly off, any case, throws it for every screen', () => {
+    for (const value of ['off', ' OFF ', 'Off']) {
+      expect(resolvePlaybackConfig('s1', { PLAYER_WEBSITE_PROOF: value })).toEqual({
+        loopMode: 'continuous', mediaFit: 'fill', websiteProof: 'off',
+      });
+    }
+  });
+});
 
 describe('resolveLoopMode', () => {
   it('pins only named screens to the same-file native backend without changing default enrollment', () => {
