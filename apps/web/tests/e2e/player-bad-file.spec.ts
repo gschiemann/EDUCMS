@@ -183,3 +183,87 @@ test.describe('a bad file never freezes the screen or leaves a black slot', () =
     expect(all[all.length - 1].proof).toBe('idle:content-unavailable');
   });
 });
+
+/**
+ * Playlist fallback (2026-11-13, playlistFallback.ts). The customer incident:
+ * two playlists scheduled all day on one screen; the one that outranked the
+ * other held a single file the box could not play, and the screen sat on
+ * "Content Unavailable" for hours with a good playlist in its manifest.
+ */
+test.describe('a playlist with nothing playable gives the screen to the next scheduled playlist', () => {
+  /** Two RANKED replace playlists, in the server's order: the broken one first. */
+  function rankedManifest(tag: string, second: 'good' | 'none' | 'broken') {
+    const m = manifestFor(tag, [{ key: 'item-bad-video', url: BROKEN_VIDEO, mime: 'video/mp4' }]);
+    const first = m.playlists[0] as unknown as Record<string, unknown>;
+    first.id = 'pl-4k';
+    first.name = '4k';
+    first.schedule = { mode: 'replace' };
+    if (second !== 'none') {
+      const other = manifestFor(tag, [second === 'good'
+        ? { key: 'item-good-image', url: GOOD_IMAGE, mime: 'image/png' }
+        : { key: 'item-bad-image', url: BROKEN_IMAGE, mime: 'image/jpeg' }]).playlists[0] as unknown as Record<string, unknown>;
+      other.id = 'pl-everyday';
+      other.name = 'Everyday';
+      other.schedule = { mode: 'replace' };
+      (m.playlists as unknown[]).push(other);
+    }
+    return m;
+  }
+
+  test('the incident: the card comes up, then the other playlist takes the screen and the proof says playing', async ({ page }) => {
+    test.setTimeout(150_000);
+    guardPageErrors(page);
+    const lines: string[] = [];
+    page.on('console', (msg) => { if (msg.text().includes('PLAYLIST_FALLBACK')) lines.push(msg.text()); });
+    const tag = 'fallback';
+    await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'good'), extraRoutes: brokenRoutes });
+    // The broken playlist wins first (the server's order) and ends on the card…
+    await expect(page.getByText('Content Unavailable')).toBeVisible({ timeout: 60_000 });
+    // …and within the dwell the good playlist is on the glass.
+    await expect(page.locator('img[data-slide-id]')).toHaveCount(1, { timeout: 40_000 });
+    await startSampler(page);
+    await page.waitForTimeout(10_000);
+
+    const all = await samples(page);
+    const good = all.filter((s) => shows(s, GOOD_IMAGE));
+    expect(good.length / all.length, 'the fallback playlist stays on glass').toBeGreaterThan(0.95);
+    expect(all.filter((s) => s.unavailable).length, 'no card once the fallback is up').toBe(0);
+    expect(all.filter((s) => shows(s, BROKEN_VIDEO)).length, 'the set-aside playlist is not retried within minutes').toBe(0);
+    expect(all[all.length - 1].proof.startsWith('pl:'), `proof: ${all[all.length - 1].proof}`).toBe(true);
+    // Said once, in words an operator can search for.
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('nothing in "4k" can be shown on this screen — showing "Everyday" instead');
+  });
+
+  test('no other playlist scheduled: nothing changes — the card stays, proven as such', async ({ page }) => {
+    test.setTimeout(120_000);
+    guardPageErrors(page);
+    const lines: string[] = [];
+    page.on('console', (msg) => { if (msg.text().includes('PLAYLIST_FALLBACK')) lines.push(msg.text()); });
+    const tag = 'fallback-none';
+    await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'none'), extraRoutes: brokenRoutes });
+    await expect(page.getByText('Content Unavailable')).toBeVisible({ timeout: 60_000 });
+    await startSampler(page);
+    await page.waitForTimeout(20_000);
+    const all = await samples(page);
+    expect(all.filter((s) => s.unavailable).length / all.length).toBeGreaterThan(0.95);
+    expect(all[all.length - 1].proof).toBe('idle:content-unavailable');
+    expect(lines).toEqual([]);
+  });
+
+  test('the other playlist is broken too: the card, honestly — never black, never a loop between the two', async ({ page }) => {
+    test.setTimeout(180_000);
+    guardPageErrors(page);
+    const tag = 'fallback-both';
+    await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'broken'), extraRoutes: brokenRoutes });
+    await expect(page.getByText('Content Unavailable')).toBeVisible({ timeout: 60_000 });
+    // Long enough for: dwell → fall back → the second fails → dwell → both set aside.
+    await page.waitForTimeout(45_000);
+    await startSampler(page);
+    await page.waitForTimeout(15_000);
+    const all = await samples(page);
+    expect(all.filter((s) => s.unavailable).length / all.length, 'settles on the card').toBeGreaterThan(0.95);
+    expect(all.filter((s) => s.proof.startsWith('pl:')).length).toBe(0);
+    expect(all[all.length - 1].proof).toBe('idle:content-unavailable');
+  });
+});
