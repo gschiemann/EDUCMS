@@ -55,7 +55,8 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
    native implementation (`heartbeat/NativePowerOnPolicy.kt`); a build without it — Player 1.1.23 was one when this rule was written — has no such unattended wake command transport.
 7. **Manifest schedule order is deterministic** (`effective-schedule.ts`: screen-pin > group,
    priority desc, newest startTime, stable id) and the player applies the first window-open
-   replace winner — "any template wins" must never come back. Template apply signatures include
+   replace winner — "any template wins" must never come back. (One exception, rule 20: a media
+   playlist this screen has proved it cannot show is stepped past, in the same order.) Template apply signatures include
    `contentRev`; template identity alone is not a content version.
 8. **Escalation math must be provably reachable**: any N-fires-in-window rule needs
    window ≥ (N-1)×cooldown + generous jitter slack, with a test using realistic sweep
@@ -252,6 +253,25 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
     home" (without device owner the Home key leaves the app anyway). Do not re-attach
     `OperatorPinGate.kt` to the native bridge. Report:
     `docs/handoffs/2026-11-09-player-stability/05-screen-pin.md`.
+
+20. **A playlist with nothing this screen can show gives the screen to the next scheduled
+    playlist — never the "Content unavailable" card while another playlist is scheduled
+    (2026-11-13)** (`playlistFallback.ts`, pure, `__tests__/playlistFallback.test.ts`;
+    `apps/web/tests/e2e/player-bad-file.spec.ts`). The order is still the server's (rule 7): the first
+    window-open replace playlist wins — unless the card has been up for 10 s on it, in which
+    case it is set aside and the NEXT one in the same order takes the screen. Keyed by the
+    playlist and its content signature, in memory: a re-publish is tried at once, a page reload
+    starts clean, and otherwise the first choice is tried again after 15, 30, 60, then 120
+    minutes (a retry puts it back on the glass until it fails again). With no other playlist
+    scheduled, or when every one is set aside, nothing changes: the card, proven as
+    `idle:content-unavailable`. A template is never set aside but may be the fallback. The
+    player logs one `PLAYLIST_FALLBACK` line per change. NEVER for an emergency: selection takes
+    the manifest's first choice whenever the manifest is an emergency one or an alert is raised,
+    held or staying on glass, neither effect runs under any alert state, and the re-apply is a
+    cached one (`fromCache`), so it can raise but never release (rule 11). The native-video
+    descriptor is the server winner's, and `committedNativeVideo` already refuses it for any
+    other items, so a fallback playlist plays on the web engine. Not covered: a playlist that
+    plays badly without ever reaching the card (constant stalls) stays on the glass.
 
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 

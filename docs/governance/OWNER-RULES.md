@@ -4,6 +4,7 @@ Article 32. The owner's binding corrections, written where **every** vendor can 
 
 | Date | Rule (the owner's intent) | Scope | Mechanism or GAP |
 |---|---|---|---|
+| 2026-11-12 | "I want my screens to work always": a screen with something scheduled that it can play shows it — an error card, a blank page or a white website is a product failure, not an operator's job to notice. | app | `apps/web/src/app/player/playlistFallback.ts` (falls back to the next scheduled playlist; player rule 20); GAP: a website slide that draws nothing, a file that plays badly without failing, alert emails still in shadow |
 | 2026-11-10 | No test alert runs on any screen — bench included — unless the owner gave permission for that test, every time; and never on a timer in the middle of the day. | app | Guard 0 in `apps/api/src/emergency/drill/synthetic-drill.runner.ts` (no schedule; one SUPER_ADMIN approval = one pass; no variable waives it); `synthetic-drill.runner.spec.ts`, `synthetic-drill-approval.controller.spec.ts` |
 | 2026-11-02 | Every menu, picker and control reuses the app's existing components and style — never a one-off look. | app | PROSE |
 | 2026-11-01 | The launch-week hold is lifted: finish all development; API restarts are acceptable; do not use the word "freeze" with the owner — say what is held and why, in plain words. | global | Phase 1 items proceed to merge |

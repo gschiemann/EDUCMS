@@ -295,6 +295,7 @@ import {
   playerCanShow,
   unplayableKey,
 } from './unplayableMedia';
+import { FALLBACK_DWELL_MS, PlaylistFallbackLedger, pickReplaceWinner, shouldSetAside, type FallbackKey } from './playlistFallback';
 import { findSlideImage, isImageLoaded } from './slideLoaded';
 import {
   markRefreshAckReported,
@@ -4109,6 +4110,19 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // and winner selection re-runs. ≤2 extra full bodies per screen per day.
   const lastAppliedManifestRef = useRef<any>(null);
   const appliedWindowSigRef = useRef<string>('');
+  // Playlist fallback (2026-11-13, playlistFallback.ts): a media playlist with
+  // nothing this screen can show is set aside so the NEXT scheduled playlist
+  // takes the screen instead of the "Content unavailable" card.
+  //  • `playlistFallbackRef` — what is set aside, and until when (in memory).
+  //  • `mediaWinnerRef` — the media playlist the last normal apply put on
+  //    glass, and whether another open playlist exists to fall back to.
+  //  • `applyManifestRef` — the manifest handler, so the two small effects
+  //    below can re-run winner selection (an unchanged poll is a 304 and
+  //    never re-enters it).
+  const playlistFallbackRef = useRef(new PlaylistFallbackLedger());
+  const mediaWinnerRef = useRef<{ key: FallbackKey; name: string; hasAlternative: boolean; fellBack: boolean } | null>(null);
+  const applyManifestRef = useRef<((manifest: any, fromCache?: boolean) => unknown) | null>(null);
+  const fallbackLoggedRef = useRef<string>('');
   // Credential recovery state: the SERVER said this device's credential is
   // unproven and a real re-pair is required (register `requiresRePair`).
   // Content keeps playing on renewed 1 h tokens; the dashboard + a local
@@ -5778,6 +5792,55 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     [playlist?.isEmergency, sorted, safetyClock]);
   const conservativeNormalPlayback = useMemo(() => !playlist?.isEmergency && playbackSafety().conservative(safetyClock),
     [playlist?.isEmergency, safetyClock]);
+
+  // ── Playlist fallback (2026-11-13, playlistFallback.ts) ──────────────────
+  // Two small effects; the rules and their tests live in the module.
+  //  1. The "Content unavailable" card has been up for FALLBACK_DWELL_MS and
+  //     another playlist is scheduled on this screen → set the one on glass
+  //     aside and re-run winner selection on the manifest already in hand.
+  //  2. A set-aside ran out → re-run selection so the manifest's own first
+  //     choice gets its next try.
+  // Both re-apply the manifest AS A CACHED ONE (`fromCache`): it is not the
+  // server of record, so it can never release an alert (rule 11) — and
+  // neither effect runs at all while any alert state is up.
+  const fallbackAlertUp = nativeFirstHoldRaised || emergencyRenderHold || !!playlist?.isEmergency || polledEmergencyHeld;
+  const fallbackCardUp = !playlist?.isEmergency && (allAssetsFailed || normalFilesSetAside || allItemsUnplayable);
+  const reapplyForFallback = useCallback((why: string) => {
+    const base = lastAppliedManifestRef.current ?? playbackManifestRef.current?.m;
+    if (!base || base.isEmergency === true || contentIsEmergencyRef.current || activeEmergencyRef.current) return;
+    try {
+      applyManifestRef.current?.(base, true);
+    } catch (e) {
+      console.warn(`[Player] playlist fallback (${why}) could not re-apply the manifest:`, e);
+    }
+  }, []);
+  useEffect(() => {
+    const onGlass = mediaWinnerRef.current;
+    if (!shouldSetAside({
+      contentUnavailable: fallbackCardUp,
+      playing: phase === 'playing' && !playbackStopped,
+      emergency: fallbackAlertUp,
+      onGlass: onGlass?.key ?? null,
+      hasAlternative: !!onGlass?.hasAlternative,
+    })) return;
+    const t = setTimeout(() => {
+      const still = mediaWinnerRef.current;
+      if (!still || still.key.id !== onGlass?.key.id || still.key.sig !== onGlass.key.sig || !still.hasAlternative) return;
+      if (contentIsEmergencyRef.current || activeEmergencyRef.current) return;
+      playlistFallbackRef.current.setAside(still.key, Date.now());
+      reapplyForFallback('set aside');
+    }, FALLBACK_DWELL_MS);
+    return () => clearTimeout(t);
+  }, [fallbackCardUp, fallbackAlertUp, phase, playbackStopped, reapplyForFallback]);
+  useEffect(() => {
+    if (fallbackAlertUp || phase !== 'playing' || playbackStopped) return;
+    if (playlistFallbackRef.current.takeDue(safetyClock)) reapplyForFallback('retry');
+  }, [safetyClock, fallbackAlertUp, phase, playbackStopped, reapplyForFallback]);
+  // The manifest's own first choice is playing: its back-off history is forgotten.
+  useEffect(() => {
+    const onGlass = mediaWinnerRef.current;
+    if (mediaReady && onGlass && !onGlass.fellBack && !fallbackCardUp) playlistFallbackRef.current.clear(onGlass.key.id);
+  }, [mediaReady, fallbackCardUp]);
   // Latch the two-decoder guard for this playlist session. A standby failure
   // falls back inside the deck; it must not restart the active file mid-play.
   const playlistDeckAllowed = useMemo(() => !playlist?.isEmergency && !syncLocked && !conservativeNormalPlayback &&
@@ -7202,6 +7265,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
      *   block below.
      */
     const applyManifest = (manifest: any, fromCache = false) => {
+      // The playlist-fallback effects re-run selection through this (see the refs).
+      applyManifestRef.current = applyManifest;
       // USB stick overlay (2026-10-22). Pure and total: an EMERGENCY manifest
       // comes back as the very same object, so the emergency block below sees
       // exactly what the server sent. A throw here can never block that block.
@@ -7869,12 +7934,41 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         const ranked = manifest.playlists.some((pl: any) => pl?.schedule?.mode != null);
         let templateWinner: any = null;
         let mediaSources: any[] = manifest.playlists;
+        // Reset every apply; set below only for a normal ranked media winner.
+        mediaWinnerRef.current = null;
         if (ranked) {
           const open = manifest.playlists.filter((pl: any) => windowOpenNow(pl.schedule));
-          const winner = open.find((pl: any) => pl?.schedule?.mode !== 'append') ?? null;
+          const openReplace = open.filter((pl: any) => pl?.schedule?.mode !== 'append');
+          // PLAYLIST FALLBACK (2026-11-13, playlistFallback.ts). The order is
+          // still the server's (rule 7): the first window-open replace
+          // playlist wins — unless this screen has PROVED it can show nothing
+          // of it, in which case the next one in the same order takes the
+          // screen. NEVER consulted for an emergency manifest, or while an
+          // alert is raised, held or staying on glass: those take the
+          // manifest's first choice exactly as before.
+          const alertInPlay = manifest.isEmergency === true || !!em || alertStaysOnGlass || !!activeEmergencyRef.current;
+          const fallbackKeyOf = (pl: any): FallbackKey | null =>
+            pl?.template ? null : { id: String(pl?.id ?? ''), sig: playlistSigOf(combinedItemsFromSources([pl])) };
+          const pick = alertInPlay
+            ? { winner: openReplace[0] ?? null, primary: openReplace[0] ?? null, fellBack: false, hasAlternative: false }
+            : pickReplaceWinner<any>(openReplace, fallbackKeyOf, playlistFallbackRef.current, Date.now());
+          const winner = pick.winner;
           const appends = open.filter((pl: any) => pl?.schedule?.mode === 'append' && !pl.template);
           templateWinner = winner?.template ? winner : null;
           mediaSources = winner && !winner.template ? [winner, ...appends] : appends;
+          if (!alertInPlay && winner && !winner.template) {
+            const key = fallbackKeyOf(winner);
+            if (key && key.id) mediaWinnerRef.current = { key, name: String(winner.name || ''), hasAlternative: pick.hasAlternative, fellBack: pick.fellBack };
+          }
+          // Say it once per change — an operator must be able to find out why
+          // a screen is on its second playlist.
+          const fallbackLine = pick.fellBack && pick.primary && winner
+            ? `[Player] PLAYLIST_FALLBACK nothing in "${String(pick.primary.name || pick.primary.id)}" can be shown on this screen — showing "${String(winner.name || winner.template?.name || winner.id)}" instead; the first is tried again later or as soon as its content changes`
+            : '';
+          if (fallbackLine !== fallbackLoggedRef.current) {
+            fallbackLoggedRef.current = fallbackLine;
+            if (fallbackLine) console.warn(fallbackLine);
+          }
         } else {
           templateWinner = manifest.playlists.find((pl: any) => pl.template) ?? null;
         }
