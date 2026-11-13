@@ -3532,6 +3532,8 @@ export interface FleetScreen {
    * payload from before the API sent it grades every snapshot stale.
    */
   lastCacheReportAt?: string | null;
+  /** `Screen.playlistFallback` — on its backup playlist (2026-11-13); read via `readBackupPlaylist`. */
+  playlistFallback?: unknown;
   /** Server-stamped credential verdict — 'REPAIR_REQUIRED' outranks green. */
   authState?: string | null;
   /**

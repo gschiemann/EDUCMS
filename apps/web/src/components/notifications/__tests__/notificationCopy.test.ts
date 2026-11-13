@@ -90,6 +90,16 @@ const ROWS = {
     body: '“Lobby TV” stutters on “promo.mp4” and there is no lighter copy to switch it to. It keeps playing.',
   },
   kioskDefault: { kind: 'INFO', title: 'Visitor needs assistance — Kiosk 1', body: 'A kiosk visitor tapped “request help.”' },
+  backupPlaylist: {
+    kind: 'INFO',
+    title: 'A screen is showing its backup playlist',
+    body: 'Lobby TV could not play anything in “4k”, so it is showing “Everyday”. Check the files in “4k”.',
+  },
+  backupPlaylistUnnamed: {
+    kind: 'INFO',
+    title: 'A screen is showing its backup playlist',
+    body: 'A screen could not play anything in “4k”, so it is showing “Everyday”. Check the files in “4k”.',
+  },
 };
 
 describe('contract — every sentence recognised here is still what the API writes', () => {
@@ -192,6 +202,14 @@ describe('contract — every sentence recognised here is still what the API writ
       ],
     ],
     [
+      'telemetry/playlist-fallback.ts',
+      [
+        "export const FALLBACK_NOTIFICATION_TITLE = 'A screen is showing its backup playlist';",
+        "|| 'A screen';",
+        'return `${screen} could not play anything in “${s.fromPlaylistName}”, so it is showing “${s.toPlaylistName}”. Check the files in “${s.fromPlaylistName}”.`;',
+      ],
+    ],
+    [
       'screen-diagnostics/storage-health.ts',
       [
         'title: `Storage almost full: ${screenName}`',
@@ -276,6 +294,17 @@ describe('Spanish and Chinese readers get their own language', () => {
     );
     expect(localizeNotification(storedAsk, ES).body).toContain('Ajustes → Avanzado → Soporte de VenueOS.');
     expect(localizeNotification(storedBreakGlass, ZH).body).toContain('设置 → 高级 → VenueOS 支持');
+  });
+
+  it('a screen on its backup playlist: both playlist names are carried through', () => {
+    expect(localizeNotification(ROWS.backupPlaylist, ES)).toMatchObject({
+      title: 'Una pantalla está mostrando su lista de respaldo',
+      body: 'Lobby TV no pudo reproducir nada de “4k”, así que muestra “Everyday”. Revisa los archivos de “4k”.',
+    });
+    expect(localizeNotification(ROWS.backupPlaylist, ZH).body).toBe('Lobby TV 无法播放“4k”中的任何内容，因此正在显示“Everyday”。请检查“4k”中的文件。');
+    // A playlist name with the same quote marks in it still splits correctly.
+    const tricky = { ...ROWS.backupPlaylist, body: 'Lobby TV could not play anything in “A”, so it is showing “B”, so it is showing “C”. Check the files in “A”, so it is showing “B”.' };
+    expect(localizeNotification(tricky, ES).body).toContain('Revisa los archivos de “A”, so it is showing “B”.');
   });
 
   it('plurals follow the language', () => {

@@ -192,6 +192,7 @@ import {
   mediaCapsRefused,
   updateReportRefused,
   softBlankRefused,
+  playlistFallbackRefused,
   softBlankOnGlass,
   videoExtrasRefused,
   LOOP_REPORT_RETRY_MS,
@@ -295,7 +296,16 @@ import {
   playerCanShow,
   unplayableKey,
 } from './unplayableMedia';
-import { FALLBACK_DWELL_MS, PlaylistFallbackLedger, pickReplaceWinner, shouldSetAside, type FallbackKey } from './playlistFallback';
+import {
+  FallbackDwell,
+  PlaylistFallbackLedger,
+  fallbackEligible,
+  fallbackReport,
+  pickReplaceWinner,
+  trackFallbackOnGlass,
+  type FallbackKey,
+  type FallbackOnGlass,
+} from './playlistFallback';
 import { findSlideImage, isImageLoaded } from './slideLoaded';
 import {
   markRefreshAckReported,
@@ -4123,6 +4133,18 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const mediaWinnerRef = useRef<{ key: FallbackKey; name: string; hasAlternative: boolean; fellBack: boolean } | null>(null);
   const applyManifestRef = useRef<((manifest: any, fromCache?: boolean) => unknown) | null>(null);
   const fallbackLoggedRef = useRef<string>('');
+  //  • `fallbackDwellRef` — how long the card has been up (the last-resort
+  //    clock; the rule is `FallbackDwell`'s).
+  //  • `fallbackOnGlassRef` — the backup playlist on glass and the one it
+  //    stands in for, which every routine report carries (ids only) so the
+  //    server can tell the admins. Null when the schedule's own choice plays.
+  const fallbackDwellRef = useRef(new FallbackDwell());
+  const fallbackOnGlassRef = useRef<FallbackOnGlass | null>(null);
+  // The card is up right now (the telemetry tick reads refs, not state). A
+  // backup playlist that itself ends on the card is not "showing" anything.
+  const fallbackCardUpRef = useRef(false);
+  // Held back for LOOP_REPORT_RETRY_MS after an older API refused the key.
+  const playlistFallbackBlockedUntilRef = useRef(0);
   // Credential recovery state: the SERVER said this device's credential is
   // unproven and a real re-pair is required (register `requiresRePair`).
   // Content keeps playing on renewed 1 h tokens; the dashboard + a local
@@ -5795,9 +5817,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
 
   // ── Playlist fallback (2026-11-13, playlistFallback.ts) ──────────────────
   // Two small effects; the rules and their tests live in the module.
-  //  1. The "Content unavailable" card has been up for FALLBACK_DWELL_MS and
-  //     another playlist is scheduled on this screen → set the one on glass
-  //     aside and re-run winner selection on the manifest already in hand.
+  //  1. LAST RESORT: the "Content unavailable" card has been on the glass for
+  //     two minutes (`FallbackDwell` — a short outage or the 30-second retry
+  //     never gets there) and another playlist is scheduled on this screen →
+  //     set the one on glass aside and re-run winner selection on the
+  //     manifest already in hand.
   //  2. A set-aside ran out → re-run selection so the manifest's own first
   //     choice gets its next try.
   // Both re-apply the manifest AS A CACHED ONE (`fromCache`): it is not the
@@ -5805,6 +5829,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // neither effect runs at all while any alert state is up.
   const fallbackAlertUp = nativeFirstHoldRaised || emergencyRenderHold || !!playlist?.isEmergency || polledEmergencyHeld;
   const fallbackCardUp = !playlist?.isEmergency && (allAssetsFailed || normalFilesSetAside || allItemsUnplayable);
+  fallbackCardUpRef.current = fallbackCardUp;
   const reapplyForFallback = useCallback((why: string) => {
     const base = lastAppliedManifestRef.current ?? playbackManifestRef.current?.m;
     if (!base || base.isEmergency === true || contentIsEmergencyRef.current || activeEmergencyRef.current) return;
@@ -5816,22 +5841,38 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   }, []);
   useEffect(() => {
     const onGlass = mediaWinnerRef.current;
-    if (!shouldSetAside({
-      contentUnavailable: fallbackCardUp,
-      playing: phase === 'playing' && !playbackStopped,
-      emergency: fallbackAlertUp,
-      onGlass: onGlass?.key ?? null,
-      hasAlternative: !!onGlass?.hasAlternative,
-    })) return;
+    const observe = () => {
+      const now = mediaWinnerRef.current;
+      return fallbackDwellRef.current.observe({
+        eligible: fallbackEligible({
+          playing: phase === 'playing' && !playbackStopped,
+          emergency: fallbackAlertUp || !!contentIsEmergencyRef.current || !!activeEmergencyRef.current,
+          onGlass: now?.key ?? null,
+          hasAlternative: !!now?.hasAlternative,
+        }),
+        key: now ? `${now.key.id}\n${now.key.sig}` : '',
+        cardUp: fallbackCardUp,
+        // A slide has PROVED it is showing (image loaded / video playing).
+        contentShowing: !fallbackCardUp && mediaReady,
+        // Monotonic: a device clock correction must not add card time.
+        nowMs: performance.now(),
+      });
+    };
+    const verdict = observe();
+    if (verdict.dueInMs === null) return;
     const t = setTimeout(() => {
       const still = mediaWinnerRef.current;
-      if (!still || still.key.id !== onGlass?.key.id || still.key.sig !== onGlass.key.sig || !still.hasAlternative) return;
-      if (contentIsEmergencyRef.current || activeEmergencyRef.current) return;
+      if (!still || still.key.id !== onGlass?.key.id || still.key.sig !== onGlass.key.sig) return;
+      // Asked again at the moment of acting; a timer that fired early waits
+      // for the next run of this effect (the minute `safetyClock` at the latest).
+      if (!observe().due) return;
+      fallbackDwellRef.current.reset();
       playlistFallbackRef.current.setAside(still.key, Date.now());
       reapplyForFallback('set aside');
-    }, FALLBACK_DWELL_MS);
+    }, verdict.dueInMs + 50);
     return () => clearTimeout(t);
-  }, [fallbackCardUp, fallbackAlertUp, phase, playbackStopped, reapplyForFallback]);
+    // safetyClock: the refs this reads change without a render; the minute tick re-asks.
+  }, [fallbackCardUp, mediaReady, fallbackAlertUp, phase, playbackStopped, safetyClock, reapplyForFallback]);
   useEffect(() => {
     if (fallbackAlertUp || phase !== 'playing' || playbackStopped) return;
     if (playlistFallbackRef.current.takeDue(safetyClock)) reapplyForFallback('retry');
@@ -7960,6 +8001,20 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             const key = fallbackKeyOf(winner);
             if (key && key.id) mediaWinnerRef.current = { key, name: String(winner.name || ''), hasAlternative: pick.hasAlternative, fellBack: pick.fellBack };
           }
+          // What the routine report says (ids only). Left as it was while an
+          // alert is in play: the alert has the glass, and nothing about the
+          // set-aside changed — the report must not flap around a drill.
+          if (!alertInPlay) {
+            fallbackOnGlassRef.current = trackFallbackOnGlass(
+              fallbackOnGlassRef.current,
+              {
+                fellBack: pick.fellBack,
+                fromId: pick.primary?.id != null ? String(pick.primary.id) : null,
+                toId: winner?.id != null ? String(winner.id) : null,
+              },
+              Date.now(),
+            );
+          }
           // Say it once per change — an operator must be able to find out why
           // a screen is on its second playlist.
           const fallbackLine = pick.fellBack && pick.primary && winner
@@ -7971,6 +8026,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           }
         } else {
           templateWinner = manifest.playlists.find((pl: any) => pl.template) ?? null;
+          fallbackOnGlassRef.current = null; // an unranked manifest has no order to fall back in
         }
         if (templateWinner) {
           // A cached normal template is not an all-clear, even when its
@@ -8913,6 +8969,15 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // DOM node, never the state flag — the dashboard's Sleep/Awake pair
         // confirms a soft Sleep from this.
         softBlank: nowMs >= softBlankBlockedUntilRef.current ? softBlankOnGlass(softBlankNodeRef.current) : null,
+        // On a BACKUP playlist (2026-11-13, playlistFallback.ts): the two
+        // playlist ids and for how long, on every report while it lasts, so
+        // the server can tell the admins. Absent when the schedule's own
+        // choice plays. Held back for a window after an older API refused it.
+        // Not while the card is up: a backup that cannot play either is the
+        // card, and the report must not say the backup is showing.
+        playlistFallback: nowMs >= playlistFallbackBlockedUntilRef.current && !fallbackCardUpRef.current
+          ? fallbackReport(fallbackOnGlassRef.current, nowMs)
+          : null,
       });
 
       let status: number | null = null;
@@ -8977,6 +9042,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       if (softBlankRefused(status, body)) {
         softBlankBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
         console.warn('[Player] the server refused the soft-blank report — holding it back for 10 minutes');
+      }
+      if (playlistFallbackRefused(status, body)) {
+        playlistFallbackBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
+        console.warn('[Player] the server refused the backup-playlist report — holding it back for 10 minutes');
       }
       if (updateReportRefused(status, body)) {
         updateReportBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;

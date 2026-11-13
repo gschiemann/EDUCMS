@@ -41,6 +41,20 @@ import {
   type StoredVideoSample,
 } from './file-playback';
 import { pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
+import { Prisma } from '@cms/database';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  FALLBACK_NOTIFICATION_TITLE,
+  PLAYER_PLAYLIST_FALLBACK,
+  PLAYER_PLAYLIST_FALLBACK_ENDED,
+  acceptFallbackChange,
+  fallbackDedupeKey,
+  fallbackNotificationBody,
+  planPlaylistFallback,
+  storedPlaylistFallback,
+  verifiedPlaylistFallback,
+  type StoredPlaylistFallback,
+} from './playlist-fallback';
 import { ScreenEventsService } from '../screens/events/screen-events.service';
 import {
   nativeEngineEvents,
@@ -114,6 +128,9 @@ export class TelemetryController {
     // start / stop / swap and applied bundle updates, as this report shows
     // them. Optional: hand-built specs record nothing.
     @Optional() private readonly ledger?: ScreenEventsService,
+    // Backup-playlist notice (2026-11-13). Global module; optional so a
+    // hand-built spec without it still records the state and the audit row.
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /**
@@ -354,6 +371,9 @@ export class TelemetryController {
             credentialEpochRotatedAt: true,
             // Only read to skip a no-op clear of the soft-blank stamp.
             softBlankAt: true,
+            // Only read to tell a CHANGE of the backup-playlist state from
+            // the steady state (which then costs no query and no write).
+            playlistFallback: true,
           },
         }),
       { label: 'screen.findUnique[telemetry]' },
@@ -573,6 +593,71 @@ export class TelemetryController {
       data.softBlankAt = null;
     }
 
+    // ── 7. BACKUP PLAYLIST (2026-11-13, playlist-fallback.ts) ────────────
+    // The screen says it is showing the next scheduled playlist because it
+    // can play nothing in the scheduled one. Compared with the row read
+    // above: the same pair again is the steady state — no query, no write.
+    // Only a CHANGE does work, and in this order: verify (both playlists
+    // inside the screen's OWN tenant, names read here — the device sends ids
+    // only), the immutable audit row, then the column rides the one write
+    // below. If the audit row cannot be written the state is left as it was,
+    // so the next report meets the same change and tries again — the state
+    // never moves without its record.
+    let fallbackNotice: StoredPlaylistFallback | null = null;
+    const fallbackPlan = planPlaylistFallback(
+      storedPlaylistFallback(screen.playlistFallback),
+      body.playlistFallback ?? null,
+      !!screen.tenantId,
+    );
+    if (fallbackPlan.kind !== 'none' && screen.tenantId && acceptFallbackChange(screenId, now.getTime())) {
+      const tenantId = screen.tenantId;
+      let next: StoredPlaylistFallback | null = null;
+      let decided = true;
+      if (fallbackPlan.kind === 'enter') {
+        const ids = [fallbackPlan.reported.fromPlaylistId, fallbackPlan.reported.toPlaylistId];
+        try {
+          const found = await this.prisma.client.playlist.findMany({
+            where: { tenantId, id: { in: ids } },
+            select: { id: true, name: true },
+            take: 2,
+          });
+          next = verifiedPlaylistFallback(fallbackPlan.reported, found, now);
+        } catch {
+          decided = false; // could not verify: change nothing, look again next report
+        }
+      }
+      const previous = fallbackPlan.previous;
+      // An unverifiable report with nothing stored is simply nothing.
+      if (decided && (next || previous)) {
+        try {
+          await this.prisma.client.auditLog.create({
+            data: {
+              tenantId,
+              userId: null,
+              action: next ? PLAYER_PLAYLIST_FALLBACK : PLAYER_PLAYLIST_FALLBACK_ENDED,
+              targetType: 'Screen',
+              targetId: screenId,
+              details: JSON.stringify(
+                next
+                  ? { screenName: screen.name ?? null, ...next, previous: previous ?? null }
+                  : {
+                      screenName: screen.name ?? null,
+                      ...previous,
+                      // The key stopped arriving, or it named something that is not this tenant's playlist.
+                      reason: fallbackPlan.kind === 'exit' ? 'no-longer-reported' : 'not-verifiable',
+                    },
+              ),
+            },
+            select: { id: true },
+          });
+          data.playlistFallback = next ? (next as unknown as Prisma.InputJsonValue) : Prisma.DbNull;
+          fallbackNotice = next;
+        } catch {
+          /* no record → no state change; the next report tries again */
+        }
+      }
+    }
+
     // ── ONE write (or none) ─────────────────────────────────────────────
     if (Object.keys(data).length > 0) {
       assertColumnsAllowed(data);
@@ -588,6 +673,21 @@ export class TelemetryController {
           }),
         { label: 'screen.update[telemetry]' },
       );
+    }
+
+    // Tell the organisation's admins — after the state is stored, at most once
+    // per screen + set-aside playlist per UTC day (the dedupe key). `notify`
+    // never throws; a lost notification leaves the audit row and the Screens
+    // page saying the same thing.
+    if (fallbackNotice && screen.tenantId) {
+      await this.notifications?.notify({
+        tenantId: screen.tenantId,
+        kind: 'INFO',
+        title: FALLBACK_NOTIFICATION_TITLE,
+        body: fallbackNotificationBody(screen.name, fallbackNotice),
+        link: '/screens',
+        dedupeKey: fallbackDedupeKey(screenId, fallbackNotice.fromPlaylistId, now),
+      });
     }
 
     // The ack is the only moment we can prove a refresh command completed —
@@ -862,6 +962,7 @@ export const TELEMETRY_COLUMNS: ReadonlySet<string> = new Set([
   'lastVideoReportAt',
   'pendingRefreshAt',
   'softBlankAt',
+  'playlistFallback',
 ]);
 
 function assertColumnsAllowed(data: Record<string, unknown>): void {

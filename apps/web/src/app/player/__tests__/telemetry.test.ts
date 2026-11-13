@@ -35,7 +35,7 @@ import {
   outcomeFromStatus,
   initialTelemetryDelayMs,
   shouldPostEarly, loopReportRefused, loopReportDue, LOOP_REPORT_RETRY_MS,
-  softBlankRefused, softBlankOnGlass } from '../telemetry';
+  softBlankRefused, softBlankOnGlass, playlistFallbackRefused } from '../telemetry';
 
 const NOW = 1_700_000_000_000;
 
@@ -709,5 +709,26 @@ describe('softBlank report (2026-11-02)', () => {
     expect(softBlankRefused(400, { softBlank: false })).toBe(true);
     expect(softBlankRefused(400, {})).toBe(false);
     expect(softBlankRefused(200, { softBlank: true })).toBe(false);
+  });
+});
+
+describe('playlistFallback report (2026-11-13)', () => {
+  const block = { fromPlaylistId: 'pl-4k', toPlaylistId: 'pl-everyday', forMs: 61_000 };
+
+  it('rides only while the screen is on a backup playlist; absent otherwise', () => {
+    expect(buildTelemetryBody({ playlistFallback: block }).playlistFallback).toEqual(block);
+    expect(buildTelemetryBody({ playlistFallback: null })).not.toHaveProperty('playlistFallback');
+    expect(buildTelemetryBody({})).not.toHaveProperty('playlistFallback');
+  });
+
+  it('carries exactly the three keys the strict server schema accepts', () => {
+    const sent = buildTelemetryBody({ playlistFallback: { ...block, name: 'Lunch menu' } as never }).playlistFallback;
+    expect(Object.keys(sent as object).sort()).toEqual(['forMs', 'fromPlaylistId', 'toPlaylistId']);
+  });
+
+  it('a 400 that carried it holds it back (an API from before the key)', () => {
+    expect(playlistFallbackRefused(400, { playlistFallback: block })).toBe(true);
+    expect(playlistFallbackRefused(400, {})).toBe(false);
+    expect(playlistFallbackRefused(200, { playlistFallback: block })).toBe(false);
   });
 });

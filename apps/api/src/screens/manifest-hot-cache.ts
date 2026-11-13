@@ -396,6 +396,11 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     // telemetry post on the fleet's minute cadence. A fact about the glass,
     // in no manifest branch; MUST stay here or every report busts the cache.
     'softBlankAt',
+    // playlistFallback (2026-11-13) — "this screen is showing a backup
+    // playlist", written by the telemetry post when that state changes. A
+    // fact the screen reported about itself, in no manifest branch; MUST stay
+    // here or a flapping screen busts its own manifest cache.
+    'playlistFallback',
     'lastSyncReport',
     'lastSyncReportAt',
     // Push-health stamp (2026-07-31) — written by the WS gateway on

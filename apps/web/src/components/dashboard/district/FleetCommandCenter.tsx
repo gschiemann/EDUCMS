@@ -984,6 +984,7 @@ export function FleetCommandCenter({
         authState: s.authState ?? null,
         lastCacheReport: s.lastCacheReport ?? null,
         lastCacheReportAt: s.lastCacheReportAt ?? null,
+        playlistFallback: s.playlistFallback ?? null,
         pendingRefreshAtMs: s.pendingRefreshAtMs ?? null,
         locationName: s.sourceTenant?.name ?? '',
       }));

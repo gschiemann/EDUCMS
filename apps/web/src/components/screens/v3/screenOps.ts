@@ -47,6 +47,8 @@ import {
   downloadLine,
   fmtBytes,
   liveDownload,
+  readBackupPlaylist,
+  type BackupPlaylist,
   type ContentDownload,
   type OpsMessage,
 } from '../contentDownload';
@@ -171,6 +173,14 @@ export interface OpsScreen {
   lastCrashVersion?: string | null;
   /** Native sleep report (`sleep.vb`, `interactive`) — read by the Sleeping status. */
   nativeRuntimeReport?: unknown;
+  /**
+   * `Screen.playlistFallback` (2026-11-13) — the screen reported it could play
+   * nothing in its scheduled playlist and is showing the next one. Written by
+   * the API only (both playlists verified in the screen's tenant, names read
+   * server-side); null when the schedule's own choice plays. Read only
+   * through `backupPlaylistOf`.
+   */
+  playlistFallback?: unknown;
   nativeRuntimeReportAt?: string | null;
 }
 
@@ -250,6 +260,7 @@ export const STATUS_ORDER = [
   'revoked', // access removed — cannot be told anything
   'repair-required', // repair credentials before asking for delivery proof
   'content-behind', // an update was SENT and the screen has not confirmed it
+  'backup-playlist', // playing — but the BACKUP playlist: the scheduled one cannot play on it
   'syncing', // an update was sent moments ago; inside the normal confirmation window
   'app-updating', // newer web build available; activation waits for idle/operator
   'pending', // paired but has never checked in
@@ -405,6 +416,18 @@ export function sleepingDescriptor(reason: SleepingReason): StatusDescriptor {
     detail: detail.en,
     messages: { label: label.message, detail: detail.message },
   };
+}
+
+/**
+ * The backup playlist this screen is on (`readBackupPlaylist`), only over a
+ * FRESH proof of content: every louder reading has its own status.
+ */
+export function backupPlaylistOf(screen: OpsScreen, grade: RenderTrustGrade): BackupPlaylist | null {
+  return grade === 'painting' ? storedBackupPlaylist(screen) : null;
+}
+
+function storedBackupPlaylist(screen: OpsScreen): BackupPlaylist | null {
+  return readBackupPlaylist(screen.playlistFallback, screen.lastRenderedHash);
 }
 
 /**
@@ -656,6 +679,29 @@ export function deriveScreenStatus({
       action: 'Resync',
       needsAttention: true,
       detail: `An update was sent ${wordyAge(pendingMs, now) ?? 'a moment'} ago and this screen has not confirmed it yet.`,
+    };
+  }
+  // 4b ── (2026-11-13) playing, but the BACKUP playlist. The screen could play
+  // nothing in the playlist the schedule put on it and — as its last resort —
+  // is showing the next scheduled one (player rule 20). Content is on the
+  // glass and it is NOT the content the operator chose, so this is amber and
+  // in Needs attention, never the green "Current" (owner: "no one wants the
+  // incorrect content to ever be playing on their screen"). Ahead of the
+  // web-build note below: which build draws the wrong playlist matters less.
+  const backup = backupPlaylistOf(screen, grade);
+  if (backup) {
+    const label = copy('screens.contentState.backupPlaylist');
+    const evidence = copy('screens.contentState.backupPlaylistEvidence', { from: backup.from });
+    const detail = copy('screens.contentState.backupPlaylistDetail', { from: backup.from, to: backup.to });
+    return {
+      key: 'backup-playlist',
+      tone: 'warn',
+      label: label.en,
+      evidence: evidence.en,
+      action: 'Troubleshoot',
+      needsAttention: true,
+      detail: detail.en,
+      messages: { label: label.message, evidence: evidence.message, detail: detail.message },
     };
   }
   if (cause === 'stale-bundle') {
@@ -1393,11 +1439,24 @@ export function deriveReportedContent(
       app,
     };
   }
+  // 2026-11-13 — on its BACKUP playlist (player rule 20). Only where the
+  // proof is NOT the scheduled content's own: a proof that matches says the
+  // first choice is back, whatever the stored state still reads for a tick.
+  const backup = storedBackupPlaylist(screen);
+  const backupSaid = (): ReportedContent =>
+    withBackground(
+      said(
+        'playing',
+        copy('screens.contentState.backupPlaylist'),
+        copy('screens.contentState.backupPlaylistDetail', { from: backup?.from ?? '', to: backup?.to ?? '' }),
+      ),
+    );
   if (proof.startsWith('tpl:')) {
     const boardId = proof.slice('tpl:'.length).split(':')[0];
     if (expected?.templateId && boardId === expected.templateId) {
       return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, app });
     }
+    if (backup) return backupSaid();
     return withBackground({
       state: 'playing',
       line: 'Playing a board',
@@ -1413,6 +1472,7 @@ export function deriveReportedContent(
     if (renderProofMatches(expected?.renderSignature ?? null, proof)) {
       return withBackground({ state: 'confirmed', line: `Playing ${scheduled}`, app });
     }
+    if (backup) return backupSaid();
     return withBackground({
       state: 'playing',
       line: 'Playing a playlist',
@@ -1497,7 +1557,9 @@ export function deriveDelivery(screen: OpsScreen, status: StatusDescriptor, now:
   // confirming pictures; the app updates itself, so that is not a delivery gap.
   const confirmed =
     renderedMs != null &&
-    (status.key === 'current' || status.key === 'idle' || status.key === 'paused' || status.key === 'app-updating');
+    // 'backup-playlist': the picture IS confirmed and nothing is waiting to be
+    // delivered — what is wrong is which playlist, and the status says that.
+    (status.key === 'current' || status.key === 'idle' || status.key === 'paused' || status.key === 'app-updating' || status.key === 'backup-playlist');
   if (confirmed) {
     return { state: 'ok', line: `Nothing waiting. The screen confirmed its picture ${wordyAge(renderedMs, now) ?? 'just now'} ago.` };
   }

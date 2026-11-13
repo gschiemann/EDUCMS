@@ -215,6 +215,10 @@ export const DOWNLOAD_COPY_EN = {
   'screens.contentState.unavailable': 'Content unavailable',
   'screens.contentState.unavailableDetail':
     "None of the scheduled files would load. It keeps retrying; if this lasts, check the playlist's files.",
+  'screens.contentState.backupPlaylist': 'Showing backup playlist',
+  'screens.contentState.backupPlaylistEvidence': 'Can’t play “{from}”',
+  'screens.contentState.backupPlaylistDetail':
+    'This screen reported that it could not play anything in “{from}”, so it is showing “{to}” instead. Check the files in “{from}”. The screen tries “{from}” again on its own, and right away when you change it.',
   'screens.contentState.loading': 'Loading content',
   'screens.contentState.loadingDetail': 'The screen picked up its schedule and is opening the first item.',
   'screens.contentState.connecting': 'Screen on · connecting',
@@ -289,4 +293,37 @@ export function downloadLine(
   return withTotal
     ? copy('screens.contentState.downloadingProgress', { percent: d.percent as number, size: size as string })
     : copy('screens.contentState.downloadingSoFar', { loaded: fmtSize(d.bytesLoaded) });
+}
+
+// ── Showing a backup playlist (2026-11-13) ─────────────────────────────────
+
+/** The backup playlist a screen is on, as the API stored it. */
+export interface BackupPlaylist {
+  /** The scheduled playlist the screen cannot play. */
+  from: string;
+  /** The playlist it is showing instead. */
+  to: string;
+  fromPlaylistId: string;
+  toPlaylistId: string;
+}
+
+/**
+ * `Screen.playlistFallback`, validated on the way in (the column is JSON),
+ * and counted ONLY over a proof of content on the glass (`pl:` / `tpl:`):
+ * the state is written on a change, not re-stamped, so on a screen showing an
+ * alert or its waiting screen it is history. The caller still decides
+ * freshness (an offline or stale screen speaks for itself).
+ */
+export function readBackupPlaylist(raw: unknown, lastRenderedHash: string | null | undefined): BackupPlaylist | null {
+  const proof = lastRenderedHash ?? '';
+  if (!proof.startsWith('pl:') && !proof.startsWith('tpl:')) return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const fromPlaylistId = str(r.fromPlaylistId);
+  const toPlaylistId = str(r.toPlaylistId);
+  const from = str(r.fromPlaylistName);
+  const to = str(r.toPlaylistName);
+  if (!fromPlaylistId || !toPlaylistId || !from || !to) return null;
+  return { from, to, fromPlaylistId, toPlaylistId };
 }

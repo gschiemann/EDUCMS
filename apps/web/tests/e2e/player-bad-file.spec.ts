@@ -189,6 +189,12 @@ test.describe('a bad file never freezes the screen or leaves a black slot', () =
  * two playlists scheduled all day on one screen; the one that outranked the
  * other held a single file the box could not play, and the screen sat on
  * "Content Unavailable" for hours with a good playlist in its manifest.
+ *
+ * The fallback is the LAST RESORT: the card must have been up for two minutes
+ * (`FallbackDwell`). These tests do not wait two real minutes and there is no
+ * setting a device could be given to shorten it: the page clock is installed
+ * (Playwright `page.clock`, as player-never-interrupt.spec.ts does) and moved
+ * forward; the files, the card and the picture are still real.
  */
 test.describe('a playlist with nothing playable gives the screen to the next scheduled playlist', () => {
   /** Two RANKED replace playlists, in the server's order: the broken one first. */
@@ -210,17 +216,36 @@ test.describe('a playlist with nothing playable gives the screen to the next sch
     return m;
   }
 
-  test('the incident: the card comes up, then the other playlist takes the screen and the proof says playing', async ({ page }) => {
-    test.setTimeout(150_000);
+  /** Move the page clock forward in 30 s steps (each fires the timers due, once), letting the page settle between. */
+  async function advance(page: Page, totalMs: number) {
+    for (let done = 0; done < totalMs; done += 30_000) {
+      await page.clock.fastForward(30_000);
+      await page.waitForTimeout(400);
+    }
+  }
+
+  test('the incident: the card stays for two minutes, then the other playlist takes the screen — and the report says so', async ({ page }) => {
+    test.setTimeout(180_000);
     guardPageErrors(page);
     const lines: string[] = [];
     page.on('console', (msg) => { if (msg.text().includes('PLAYLIST_FALLBACK')) lines.push(msg.text()); });
     const tag = 'fallback';
-    await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'good'), extraRoutes: brokenRoutes });
+    await page.clock.install();
+    const booted = await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'good'), extraRoutes: brokenRoutes });
     // The broken playlist wins first (the server's order) and ends on the card…
     await expect(page.getByText('Content Unavailable')).toBeVisible({ timeout: 60_000 });
-    // …and within the dwell the good playlist is on the glass.
-    await expect(page.locator('img[data-slide-id]')).toHaveCount(1, { timeout: 40_000 });
+
+    // …and STAYS on it: not after ten seconds (the old dwell), not after a minute and a half.
+    await page.waitForTimeout(3_000);
+    await advance(page, 90_000);
+    await expect(page.getByText('Content Unavailable')).toBeVisible();
+    await expect(page.locator('img[data-slide-id]')).toHaveCount(0);
+    expect(lines, 'no fallback before two minutes of the card').toEqual([]);
+    expect(booted.telemetry.some((b) => 'playlistFallback' in (b as object)), 'nothing reported before the fallback').toBe(false);
+
+    // Past two minutes of card: the good playlist is on the glass.
+    await advance(page, 60_000);
+    await expect(page.locator('img[data-slide-id]')).toHaveCount(1, { timeout: 20_000 });
     await startSampler(page);
     await page.waitForTimeout(10_000);
 
@@ -233,37 +258,59 @@ test.describe('a playlist with nothing playable gives the screen to the next sch
     // Said once, in words an operator can search for.
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('nothing in "4k" can be shown on this screen — showing "Everyday" instead');
+
+    // The routine report carries it — ids and a duration, never a name — so the server can tell the admins.
+    await advance(page, 90_000);
+    await expect
+      .poll(() => booted.telemetry.filter((b) => 'playlistFallback' in (b as object)).length, { timeout: 20_000, message: 'no report carried playlistFallback' })
+      .toBeGreaterThan(0);
+    const block = (booted.telemetry.filter((b) => 'playlistFallback' in (b as object)).pop() as unknown as { playlistFallback: Record<string, unknown> }).playlistFallback;
+    expect(Object.keys(block).sort()).toEqual(['forMs', 'fromPlaylistId', 'toPlaylistId']);
+    expect(block).toMatchObject({ fromPlaylistId: 'pl-4k', toPlaylistId: 'pl-everyday' });
+    expect(typeof block.forMs).toBe('number');
+    expect(JSON.stringify(block)).not.toContain('Everyday');
   });
 
-  test('no other playlist scheduled: nothing changes — the card stays, proven as such', async ({ page }) => {
-    test.setTimeout(120_000);
+  test('no other playlist scheduled: nothing changes — the card stays, proven as such, and nothing is reported', async ({ page }) => {
+    test.setTimeout(150_000);
     guardPageErrors(page);
     const lines: string[] = [];
     page.on('console', (msg) => { if (msg.text().includes('PLAYLIST_FALLBACK')) lines.push(msg.text()); });
     const tag = 'fallback-none';
-    await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'none'), extraRoutes: brokenRoutes });
+    await page.clock.install();
+    const booted = await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'none'), extraRoutes: brokenRoutes });
     await expect(page.getByText('Content Unavailable')).toBeVisible({ timeout: 60_000 });
+    await advance(page, 180_000); // well past the two minutes
     await startSampler(page);
-    await page.waitForTimeout(20_000);
+    await page.waitForTimeout(10_000);
     const all = await samples(page);
     expect(all.filter((s) => s.unavailable).length / all.length).toBeGreaterThan(0.95);
     expect(all[all.length - 1].proof).toBe('idle:content-unavailable');
     expect(lines).toEqual([]);
+    expect(booted.telemetry.some((b) => 'playlistFallback' in (b as object))).toBe(false);
   });
 
-  test('the other playlist is broken too: the card, honestly — never black, never a loop between the two', async ({ page }) => {
+  test('the other playlist is broken too: the card, honestly — never black, never a loop between the two, never "showing the backup"', async ({ page }) => {
     test.setTimeout(180_000);
     guardPageErrors(page);
     const tag = 'fallback-both';
-    await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'broken'), extraRoutes: brokenRoutes });
+    await page.clock.install();
+    const booted = await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'broken'), extraRoutes: brokenRoutes });
     await expect(page.getByText('Content Unavailable')).toBeVisible({ timeout: 60_000 });
-    // Long enough for: dwell → fall back → the second fails → dwell → both set aside.
-    await page.waitForTimeout(45_000);
+    // Two minutes of card → the second playlist is tried → it fails too.
+    await advance(page, 150_000);
+    await expect(page.getByText('Content Unavailable')).toBeVisible({ timeout: 30_000 });
+    const reportsBefore = booted.telemetry.length;
+    await advance(page, 150_000);
     await startSampler(page);
-    await page.waitForTimeout(15_000);
+    await page.waitForTimeout(12_000);
     const all = await samples(page);
     expect(all.filter((s) => s.unavailable).length / all.length, 'settles on the card').toBeGreaterThan(0.95);
     expect(all.filter((s) => s.proof.startsWith('pl:')).length).toBe(0);
     expect(all[all.length - 1].proof).toBe('idle:content-unavailable');
+    // Reports kept flowing, and none of them claims a backup is showing while the card is up.
+    const later = booted.telemetry.slice(reportsBefore);
+    expect(later.length).toBeGreaterThan(0);
+    expect(later.some((b) => 'playlistFallback' in (b as object))).toBe(false);
   });
 });

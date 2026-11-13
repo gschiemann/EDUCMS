@@ -44,7 +44,7 @@
 import { AlertTriangle, Download } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { deriveRenderTrustGrade, type RenderHealth } from './renderTrust';
-import { copy, downloadLine, liveDownload, type ContentDownload, type OpsMessage } from './contentDownload';
+import { copy, downloadLine, liveDownload, type BackupPlaylist, type ContentDownload, type OpsMessage } from './contentDownload';
 
 export function RenderTrustChip({
   status,
@@ -56,6 +56,7 @@ export function RenderTrustChip({
   lastRenderedHash,
   authState,
   download,
+  backupPlaylist,
 }: {
   /** Live-computed Screen.status (ONLINE / OFFLINE / PENDING / REVOKED). */
   status?: string | null;
@@ -82,6 +83,12 @@ export function RenderTrustChip({
    * 2026-09-27). Only a FRESH one adds progress; a stale one is ignored.
    */
   download?: ContentDownload | null;
+  /**
+   * The screen is on its BACKUP playlist (`readBackupPlaylist`, 2026-11-13):
+   * content is on the glass, and it is not the playlist that was scheduled.
+   * Turns the green state amber; every louder state is unchanged.
+   */
+  backupPlaylist?: BackupPlaylist | null;
 }) {
   const t = useTranslations();
   const say = (m: { en: string; message: OpsMessage }) => t(m.message.key, m.message.values);
@@ -172,6 +179,20 @@ export function RenderTrustChip({
       >
         <Download className="w-3 h-3 shrink-0" aria-hidden="true" />
         {say(downloadLine('showing-previous', live))}{verifiedAgo ? ` · ${verifiedAgo}` : ''}
+      </span>
+    );
+  }
+
+  // On its backup playlist (2026-11-13, player rule 20): something IS on the
+  // glass, and it is not what the operator scheduled. Never the green tick.
+  if (variant === 'painting' && backupPlaylist) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800"
+        title={say(copy('screens.contentState.backupPlaylistDetail', { from: backupPlaylist.from, to: backupPlaylist.to }))}
+      >
+        <AlertTriangle className="w-3 h-3 shrink-0" aria-hidden="true" />
+        {say(copy('screens.contentState.backupPlaylist'))} · {say(copy('screens.contentState.backupPlaylistEvidence', { from: backupPlaylist.from }))}
       </span>
     );
   }

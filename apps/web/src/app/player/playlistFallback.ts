@@ -15,6 +15,18 @@
  * player only steps past an entry it has proved it cannot play. When no other
  * playlist is scheduled, nothing changes: the card shows exactly as before.
  *
+ * IT IS THE LAST RESORT, AND IT IS REPORTED (the owner, 2026-11-13: "that
+ * should be the last option right and then it should notify the admin, no one
+ * wants the incorrect content to ever be playing on their screen"):
+ *  • the card must have been up for two minutes without a break before the
+ *    player steps to another playlist (`FallbackDwell` below has the exact
+ *    rule — a short outage never gets there, and the page's own 30-second
+ *    retries neither restart the two minutes nor count towards them);
+ *  • while a screen is on a fallback, every routine report says so
+ *    (`fallbackReport`: the two playlist ids and how long — never a name),
+ *    and the server tells the organisation's admins and shows it on the
+ *    Screens page. A backup playlist is never presented as "all is well".
+ *
  * It comes back:
  *  • at once when the set-aside playlist's content changes (it is keyed by the
  *    playlist AND its content signature — a re-publish, a converted file, a
@@ -44,8 +56,23 @@ export const FALLBACK_RETRY_STEPS_MS: readonly number[] = [15 * MIN, 30 * MIN, 6
 /** A long session must not grow without limit (a screen has a handful of schedules). */
 export const FALLBACK_MAX_ENTRIES = 32;
 
-/** The card must have been up this long before the player steps to another playlist. */
-export const FALLBACK_DWELL_MS = 10_000;
+/**
+ * The card must have been up this long, without a break, before the player
+ * steps to another playlist. Two minutes: long enough that a network blip, a
+ * file still arriving or one slow retry is over, short enough that a screen
+ * with a working playlist is not left on an error card for a class period.
+ */
+export const FALLBACK_DWELL_MS = 2 * MIN;
+
+/**
+ * The longest the card may be off the glass, with nothing proven playing,
+ * before the two minutes start again. The page takes its all-files-failed
+ * card down every 30 s to try the files once more; a file that is still
+ * broken puts the card back within seconds. That is one failure, not two, so
+ * it must not restart the clock — but a gap longer than this is no longer
+ * "the card, continuously".
+ */
+export const FALLBACK_CARD_GAP_MS = 60_000;
 
 /** What a set-aside is recorded under. `null` = this entry can never be set aside (a template). */
 export interface FallbackKey {
@@ -173,7 +200,142 @@ export interface FallbackDecisionInput {
   hasAlternative: boolean;
 }
 
-/** Should the playlist on glass be set aside so the next one can take the screen? */
+/** Everything but the card: is stepping to another playlist allowed at all right now? */
+export function fallbackEligible(i: Omit<FallbackDecisionInput, 'contentUnavailable'>): boolean {
+  return i.playing && !i.emergency && !!i.onGlass && i.hasAlternative;
+}
+
+/** Should the playlist on glass be set aside so the next one can take the screen? (Once the dwell below is served.) */
 export function shouldSetAside(i: FallbackDecisionInput): boolean {
-  return i.contentUnavailable && i.playing && !i.emergency && !!i.onGlass && i.hasAlternative;
+  return i.contentUnavailable && fallbackEligible(i);
+}
+
+// ── How long the card has been up: the last-resort clock ────────────────────
+
+export interface DwellObservation {
+  /**
+   * Everything else `shouldSetAside` asks for holds: regular content, playing,
+   * no alert state, a media playlist on glass, another playlist to go to.
+   */
+  eligible: boolean;
+  /** The playlist on glass (id + content signature) — a different one is a new clock. */
+  key: string;
+  /** The "Content unavailable" card is on the glass right now. */
+  cardUp: boolean;
+  /** The card is NOT up and a slide has proved it is showing (image loaded / video playing). */
+  contentShowing: boolean;
+  /** A monotonic clock (the page passes `performance.now()`), so a device clock correction cannot add time. */
+  nowMs: number;
+}
+
+export interface DwellVerdict {
+  /** The card has been up long enough: set the playlist aside now. */
+  due: boolean;
+  /** Card up and counting: how long until `due`. Null while nothing is counting. */
+  dueInMs: number | null;
+}
+
+const NOT_COUNTING: DwellVerdict = { due: false, dueInMs: null };
+
+/**
+ * The two-minute rule, exactly:
+ *
+ *  1. Only time with the card ON THE GLASS counts. The total must reach
+ *     `FALLBACK_DWELL_MS`, and the card must be up at that moment.
+ *  2. A short break in the card (the page's 30-second retry re-mounting the
+ *     files) does not restart the count — and does not add to it either: a
+ *     retry is the screen trying to play the right content, never evidence
+ *     against it.
+ *  3. The count starts over the moment anything is proven playing, when the
+ *     card has been off for longer than `FALLBACK_CARD_GAP_MS`, when the
+ *     playlist on glass or its content changes, and whenever the fallback is
+ *     not allowed at all (an alert, playback stopped, nowhere to fall back to).
+ *
+ * So a 20-second outage never falls back (its content plays again and the
+ * count is gone), and a playlist that really cannot play falls back after two
+ * minutes of card, however many retries happened in between.
+ *
+ * Pure: the page feeds it observations and owns the one timer.
+ */
+export class FallbackDwell {
+  private key: string | null = null;
+  /** Card-up time already banked in this episode. */
+  private bankedMs = 0;
+  private upSince: number | null = null;
+  private downSince: number | null = null;
+
+  constructor(
+    private readonly dwellMs: number = FALLBACK_DWELL_MS,
+    private readonly gapMs: number = FALLBACK_CARD_GAP_MS,
+  ) {}
+
+  reset(): void {
+    this.key = null;
+    this.bankedMs = 0;
+    this.upSince = null;
+    this.downSince = null;
+  }
+
+  observe(o: DwellObservation): DwellVerdict {
+    if (!o.eligible || o.contentShowing || (this.key !== null && this.key !== o.key)) this.reset();
+    if (!o.eligible || o.contentShowing) return NOT_COUNTING;
+    if (!o.cardUp) {
+      if (this.upSince !== null) {
+        this.bankedMs += Math.max(0, o.nowMs - this.upSince);
+        this.upSince = null;
+        this.downSince = o.nowMs;
+      } else if (this.downSince !== null && o.nowMs - this.downSince > this.gapMs) {
+        this.reset();
+      }
+      return NOT_COUNTING;
+    }
+    if (this.downSince !== null && o.nowMs - this.downSince > this.gapMs) this.reset();
+    this.key = o.key;
+    this.downSince = null;
+    if (this.upSince === null) this.upSince = o.nowMs;
+    const total = this.bankedMs + Math.max(0, o.nowMs - this.upSince);
+    return total >= this.dwellMs ? { due: true, dueInMs: 0 } : { due: false, dueInMs: this.dwellMs - total };
+  }
+}
+
+// ── What the routine report says while a screen is on a fallback ────────────
+
+/** The `playlistFallback` block of the telemetry report. Ids only — the server looks the names up. */
+export interface PlaylistFallbackReport {
+  /** The playlist the schedule wanted on this screen, which it cannot play. */
+  fromPlaylistId: string;
+  /** The playlist it is showing instead. */
+  toPlaylistId: string;
+  /** How long it has been showing it, in milliseconds (a duration: device clocks are not trusted). */
+  forMs: number;
+}
+
+/** What the page remembers about the fallback on glass. */
+export interface FallbackOnGlass {
+  fromId: string;
+  toId: string;
+  /** `Date.now()` when this pair first took the screen. */
+  sinceMs: number;
+}
+
+const REPORT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+/** A week: longer than any back-off; a bigger number says nothing more. */
+export const FALLBACK_REPORT_MAX_FOR_MS = 7 * 24 * 60 * MIN;
+
+/** The same pair keeps its start time; a new pair starts now; no fallback is null. */
+export function trackFallbackOnGlass(
+  prev: FallbackOnGlass | null,
+  now: { fellBack: boolean; fromId: string | null; toId: string | null },
+  nowMs: number,
+): FallbackOnGlass | null {
+  if (!now.fellBack || !now.fromId || !now.toId || now.fromId === now.toId) return null;
+  if (prev && prev.fromId === now.fromId && prev.toId === now.toId) return prev;
+  return { fromId: now.fromId, toId: now.toId, sinceMs: nowMs };
+}
+
+/** The report block, or null when there is nothing honest to send (not on a fallback, or an id the server would refuse). */
+export function fallbackReport(on: FallbackOnGlass | null, nowMs: number): PlaylistFallbackReport | null {
+  if (!on || !REPORT_ID.test(on.fromId) || !REPORT_ID.test(on.toId)) return null;
+  const forMs = Math.min(FALLBACK_REPORT_MAX_FOR_MS, Math.max(0, Math.floor(nowMs - on.sinceMs)));
+  return { fromPlaylistId: on.fromId, toPlaylistId: on.toId, forMs };
 }

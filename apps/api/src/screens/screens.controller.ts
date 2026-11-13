@@ -3242,6 +3242,11 @@ export class ScreensController {
         // `not-painting` and opened a district incident. Already fetched.
         lastRenderedAt: (s as any).lastRenderedAt ?? null,
         lastRenderedHash: (s as any).lastRenderedHash ?? null,
+        // 2026-11-13 — "showing a backup playlist" (telemetry/playlist-fallback.ts):
+        // the server-verified state, so the fleet views say it exactly as
+        // GET /screens does (which carries the column through its spread)
+        // and never grade such a screen a plain green. Already fetched.
+        playlistFallback: (s as any).playlistFallback ?? null,
         // Keep the 10-min rule in sync with list()'s pushChannel above.
         pushChannel: (s as any).lastPushConnectedAt
           ? (now - new Date((s as any).lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')

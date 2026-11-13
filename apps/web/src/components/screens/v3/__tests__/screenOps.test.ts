@@ -1449,6 +1449,76 @@ describe('downloads + idle proofs on the row, the Overview and the Delivery card
       expect(STATUS_ORDER.indexOf('content-unavailable')).toBeGreaterThan(STATUS_ORDER.indexOf('media-stalled'));
     });
 
+    describe('showing a backup playlist (2026-11-13) — never a healthy green', () => {
+      const FALLBACK = {
+        fromPlaylistId: 'pl-4k', fromPlaylistName: '4k',
+        toPlaylistId: 'pl-everyday', toPlaylistName: 'Everyday',
+        since: new Date(NOW - 10 * MIN).toISOString(),
+      };
+
+      it('amber, in Needs attention, and one line names the playlist that cannot play', () => {
+        const s = status({ lastRenderedHash: 'pl:0|10000|x', playlistFallback: FALLBACK });
+        expect(s).toMatchObject({
+          key: 'backup-playlist',
+          tone: 'warn',
+          label: 'Showing backup playlist',
+          evidence: 'Can’t play “4k”',
+          needsAttention: true,
+          action: 'Troubleshoot',
+        });
+        expect(s.detail).toBe(
+          'This screen reported that it could not play anything in “4k”, so it is showing “Everyday” instead. Check the files in “4k”. The screen tries “4k” again on its own, and right away when you change it.',
+        );
+        expect(s.messages).toEqual({
+          label: { key: 'screens.contentState.backupPlaylist' },
+          evidence: { key: 'screens.contentState.backupPlaylistEvidence', values: { from: '4k' } },
+          detail: { key: 'screens.contentState.backupPlaylistDetail', values: { from: '4k', to: 'Everyday' } },
+        });
+        expect(s.key).not.toBe('current');
+        expect(s.tone).not.toBe('ok');
+      });
+
+      it('a board as the backup reads the same', () => {
+        expect(status({ lastRenderedHash: 'tpl:board-1:3', playlistFallback: FALLBACK }).key).toBe('backup-playlist');
+      });
+
+      it('the same screen without the state is Current — the state is what makes it amber', () => {
+        expect(status({ lastRenderedHash: 'pl:0|10000|x' }).key).toBe('current');
+        expect(status({ lastRenderedHash: 'pl:0|10000|x', playlistFallback: null }).key).toBe('current');
+      });
+
+      it('outranks the calm web-build note, and is outranked by every real alarm', () => {
+        expect(status({ lastRenderedHash: 'pl:x', playlistFallback: FALLBACK, lastBundleSha: 'oldoldoldold' }).key).toBe('backup-playlist');
+        expect(status({ lastRenderedHash: 'pl:x', playlistFallback: FALLBACK, status: 'OFFLINE' }).key).toBe('offline');
+        expect(status({ lastRenderedHash: 'idle:content-unavailable', playlistFallback: FALLBACK }).key).toBe('content-unavailable');
+        expect(status({ lastRenderedHash: 'stall|pl:x', playlistFallback: FALLBACK }).key).toBe('media-stalled');
+        expect(status({ lastRenderedHash: 'unconfirmed|em:1', playlistFallback: FALLBACK }).key).toBe('alert-unconfirmed');
+        expect(status({ lastRenderedHash: 'pl:x', playlistFallback: FALLBACK, authState: 'REPAIR_REQUIRED' }).key).toBe('repair-required');
+        expect(status({ lastRenderedHash: 'pl:x', playlistFallback: FALLBACK, pendingRefreshAt: new Date(NOW - 10 * MIN).toISOString() }).key).toBe('content-behind');
+        expect(STATUS_ORDER.indexOf('backup-playlist')).toBeLessThan(STATUS_ORDER.indexOf('app-updating'));
+        expect(STATUS_ORDER.indexOf('backup-playlist')).toBeGreaterThan(STATUS_ORDER.indexOf('content-unavailable'));
+      });
+
+      it('an alert or a waiting screen on the glass is never called a backup playlist', () => {
+        expect(status({ lastRenderedHash: 'em:1', playlistFallback: FALLBACK }).key).not.toBe('backup-playlist');
+        expect(status({ lastRenderedHash: 'idle:playing', playlistFallback: FALLBACK }).key).not.toBe('backup-playlist');
+      });
+
+      it('a malformed column is no state at all (it is JSON a device caused)', () => {
+        for (const bad of ['x', 7, [], {}, { fromPlaylistId: 'a', toPlaylistId: 'b' }, { ...FALLBACK, fromPlaylistName: '  ' }]) {
+          expect(status({ lastRenderedHash: 'pl:x', playlistFallback: bad }).key).toBe('current');
+        }
+      });
+
+      it('the Overview card says it too, and delivery does not claim the picture is unconfirmed', () => {
+        const over = { lastRenderedHash: 'pl:0|10000|x', lastRenderedAt: new Date(NOW - 20_000).toISOString(), playlistFallback: FALLBACK };
+        const r = deriveReportedContent(scr(over), SHA, NOW);
+        expect(r).toMatchObject({ state: 'playing', line: 'Showing backup playlist' });
+        expect(r.detail).toMatch(/could not play anything in “4k”, so it is showing “Everyday”/);
+        expect(deriveDelivery(scr(over), status(over), NOW).line).toMatch(/^Nothing waiting\./);
+      });
+    });
+
     it('connecting and loading say what they are, calmly', () => {
       const c = status({ lastRenderedHash: 'idle:connecting' });
       expect(c).toMatchObject({ key: 'connecting', label: 'Screen on · connecting', tone: 'neutral', needsAttention: false });

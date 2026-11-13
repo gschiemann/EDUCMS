@@ -1580,6 +1580,17 @@ model Screen {
   // saying so and the dashboard treats it as stale. Telemetry-only: listed in
   // SCREEN_TELEMETRY_ONLY_FIELDS so this write never busts the manifest cache.
   softBlankAt                         DateTime?    @map("soft_blank_at")
+  // ── playlistFallback (2026-11-13) — this screen is showing a BACKUP playlist.
+  // The web player, as a last resort (two minutes on its "Content unavailable"
+  // card), shows the next scheduled playlist when the scheduled one has
+  // nothing it can play, and says so on its telemetry post (ids only). The
+  // server verifies both playlists inside the screen's own tenant, reads their
+  // names itself and stores `{ fromPlaylistId, fromPlaylistName, toPlaylistId,
+  // toPlaylistName, since }` here for the Screens page; NULL = the schedule's
+  // own choice plays. Written only on a change (apps/api/src/telemetry/
+  // playlist-fallback.ts). Telemetry-only: listed in
+  // SCREEN_TELEMETRY_ONLY_FIELDS so this write never busts the manifest cache.
+  playlistFallback                    Json?        @map("playlist_fallback")
   // ── Device-credential trust state (2026-08-30 reliability program) ────
   // Stamped SERVER-SIDE at register time (never client-reported):
   //   'PROVEN'          — last re-registration presented a valid proven
