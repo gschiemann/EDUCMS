@@ -68,6 +68,39 @@ describe('ScreenWedgeDetectorCron.decide', () => {
     expect(d.action).toBe('push-dead');
   });
 
+  describe('push-dead: one flag per outage, not per 24 h (2026-11-14, Houston Menu Board Left)', () => {
+    const flag = (m: number) => [{ action: 'AUTO_RECOVERY_PUSH_DEAD', createdAt: minAgo(m) }];
+
+    it('re-flags a NEW outage: the channel came back after the last flag and died again', () => {
+      // Flagged yesterday 17:09, channel reconnected, died 12:35 today → recover now, not at 17:09.
+      const d = cron.decide(now, flag(20 * 60), true, now - 4.5 * 60 * 60_000);
+      expect(d.action).toBe('push-dead');
+    });
+
+    it('stays quiet for the SAME outage: the channel has not been live since the flag', () => {
+      const d = cron.decide(now, flag(60), true, now - 3 * 60 * 60_000);
+      expect(d.action).toBe('push-dead-flagged');
+    });
+
+    it('a flapping channel cannot loop: a new outage within an hour of the last flag waits', () => {
+      const d = cron.decide(now, flag(40), true, now - 15 * 60_000);
+      expect(d.action).toBe('push-dead-flagged');
+    });
+
+    it('a new outage exactly one hour after the last flag is recovered', () => {
+      const d = cron.decide(now, flag(60), true, now - 15 * 60_000);
+      expect(d.action).toBe('push-dead');
+    });
+
+    it('unknown last-live time keeps the old once-per-24 h behaviour', () => {
+      expect(cron.decide(now, flag(60), true, null).action).toBe('push-dead-flagged');
+    });
+
+    it('pushDead=false ignores push-dead flags (the classic ladder decides)', () => {
+      expect(cron.decide(now, flag(20 * 60), false, now - 30_000).action).toBe('fire');
+    });
+  });
+
   it('push-dead trumps cooldown — never burns fire cycles on an unreachable screen', () => {
     const d = cron.decide(now, [{ action: 'AUTO_REFRESH_WEB', createdAt: minAgo(5) }], true);
     expect(d.action).toBe('push-dead');

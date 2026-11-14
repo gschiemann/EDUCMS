@@ -345,8 +345,18 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
    *  enough that "never connected" is the only remaining explanation. */
   private static readonly PUSH_UNKNOWN_GRACE_MS = 24 * 60 * 60_000;
 
-  /** Re-flag a push-dead screen at most this often. */
+  /** Re-flag a push-dead screen at most this often WITHIN ONE OUTAGE. */
   private static readonly PUSH_DEAD_REFLAG_MS = 24 * 60 * 60_000;
+
+  /** Floor between two flags of DIFFERENT outages (2026-11-14). A flag only
+   *  suppresses the outage it was raised for: once the channel has been seen
+   *  live after the flag, a new death is a new outage and is recovered on
+   *  the next sweep — but never sooner than this after the previous flag, so
+   *  a channel that flaps cannot turn into a reload loop. Houston Menu Board
+   *  Left lost its channel every night (01:40–05:06, and once 12:35) and sat
+   *  without it until the 24 h clock came round at ~17:08 — 10.2 h on
+   *  average, 15.5 h at worst, in 7 days. */
+  private static readonly PUSH_DEAD_NEW_OUTAGE_MIN_MS = 60 * 60_000;
 
   /** Fleet Command retention (2026-08-31) — see sweepRetention(). Runs on
    *  the existing sweep cadence, self-throttled to hourly. */
@@ -583,7 +593,7 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
       const pushDead = screen.lastPushConnectedAt
         ? now - screen.lastPushConnectedAt.getTime() > ScreenWedgeDetectorCron.PUSH_STALE_MS
         : !!screen.pairedAt && now - screen.pairedAt.getTime() > ScreenWedgeDetectorCron.PUSH_UNKNOWN_GRACE_MS;
-      const decision = this.decide(now, history, pushDead);
+      const decision = this.decide(now, history, pushDead, screen.lastPushConnectedAt?.getTime() ?? null);
 
       if (decision.action === 'cooldown') {
         cooldownSkipped++;
@@ -949,6 +959,9 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     nowMs: number,
     history: ReadonlyArray<{ action: string; createdAt: Date }>,
     pushDead = false,
+    /** When the push channel was last seen live; null = unknown, which
+     *  keeps the old once-per-24 h behaviour. */
+    lastPushConnectedAtMs: number | null = null,
   ): {
     action: 'fire' | 'cooldown' | 'backoff' | 'escalate' | 'push-dead' | 'push-dead-flagged';
     fireCountInWindow: number;
@@ -986,10 +999,19 @@ export class ScreenWedgeDetectorCron implements OnModuleInit, OnModuleDestroy {
     // Push-dead trumps everything (2026-07-31): a REFRESH_WEB rides the
     // push channel — with no live channel it cannot arrive, so firing,
     // cooling down, and escalating are all noise. Flag once per
-    // PUSH_DEAD_REFLAG_MS, then stay quiet.
+    // PUSH_DEAD_REFLAG_MS per outage, then stay quiet. A flag raised before
+    // the channel was last seen live belongs to an outage that already
+    // ended: this death is new and is recovered now (2026-11-14), subject
+    // only to the PUSH_DEAD_NEW_OUTAGE_MIN_MS floor.
     if (pushDead) {
+      const flagMs = mostRecentPushDeadFlag?.getTime() ?? null;
+      const flagIsForAnEndedOutage =
+        flagMs !== null &&
+        lastPushConnectedAtMs !== null &&
+        lastPushConnectedAtMs > flagMs &&
+        nowMs - flagMs >= ScreenWedgeDetectorCron.PUSH_DEAD_NEW_OUTAGE_MIN_MS;
       return {
-        action: mostRecentPushDeadFlag ? 'push-dead-flagged' : 'push-dead',
+        action: flagMs !== null && !flagIsForAnEndedOutage ? 'push-dead-flagged' : 'push-dead',
         fireCountInWindow,
       };
     }
