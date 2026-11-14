@@ -17,9 +17,14 @@ import JSZip from 'jszip';
 const SCHOOL_ID = 'usb-school';
 const USER = { id: 'usb-operator', email: 'operator@example.test', role: 'SCHOOL_ADMIN', tenantId: SCHOOL_ID };
 const asset = { id: 'usb-asset', originalName: 'Welcome.png', mimeType: 'image/png', fileUrl: '/usb-welcome.png', folderId: null };
+// The item's asset carries what GET /playlists always selects for it (id, fileUrl, mimeType,
+// originalName — playlists.controller.ts `list`), its fileUrl an absolute https storage URL as in
+// production (the `**/usb-welcome.png` route answers it). Without a fileUrl the card's thumbnail
+// asked for `http://api.invalid` + `undefined` (the CSP `img-src blocked=http://api.invalidundefined/`
+// report on this page): a fixture gap, not a product path — Asset.fileUrl is a required column.
 const PLAYLISTS = [{
   id: 'pl-lobby', name: 'Lobby Welcome',
-  items: [{ id: 'i1', durationMs: 10_000, asset: { originalName: 'Welcome.png', mimeType: 'image/png' } }],
+  items: [{ id: 'i1', durationMs: 10_000, asset: { id: asset.id, originalName: 'Welcome.png', mimeType: 'image/png', fileUrl: 'https://storage.example.test/usb-welcome.png' } }],
   updatedAt: new Date().toISOString(), createdBy: { id: USER.id, email: USER.email },
 }];
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=', 'base64');
@@ -119,11 +124,13 @@ test.describe('USB — download a playlist for a stick, no settings', () => {
     expect(errors).toEqual([]);
   });
 
+  // The Playlists page is the filmstrip gallery since b61944bc8 (2026-11-07), which removed the v1
+  // table and its `playlist-row`s: "Export to USB" lives in each card's "⋯" menu.
   test('existing playlist → Export to USB → .zip download (no folder picker)', async ({ page }) => {
     test.setTimeout(120_000);
     const { bundles } = await openDashboard(page, { folderPicker: false });
     await page.goto(`/${SCHOOL_ID}/playlists`);
-    const row = page.getByTestId('playlist-row').filter({ hasText: 'Lobby Welcome' }).first();
+    const row = page.getByTestId('playlist-card-v2').filter({ hasText: 'Lobby Welcome' }).first();
     await row.waitFor({ state: 'visible', timeout: 90_000 });
     await row.getByRole('button', { name: /More actions for Lobby Welcome/ }).click();
     const download = page.waitForEvent('download');
@@ -138,7 +145,7 @@ test.describe('USB — download a playlist for a stick, no settings', () => {
     test.setTimeout(120_000);
     await openDashboard(page, { folderPicker: true });
     await page.goto(`/${SCHOOL_ID}/playlists`);
-    const row = page.getByTestId('playlist-row').filter({ hasText: 'Lobby Welcome' }).first();
+    const row = page.getByTestId('playlist-card-v2').filter({ hasText: 'Lobby Welcome' }).first();
     await row.waitFor({ state: 'visible', timeout: 90_000 });
     await row.getByRole('button', { name: /More actions for Lobby Welcome/ }).click();
     await page.getByRole('menuitem', { name: /Export to USB/ }).click();
