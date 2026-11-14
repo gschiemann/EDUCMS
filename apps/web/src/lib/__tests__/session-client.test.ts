@@ -17,6 +17,7 @@ import {
   endRememberedSession,
   hasRememberMarker,
   refreshRememberedSession,
+  refreshRememberedSessionWithOutcome,
   REMEMBER_MARKER_KEY,
   setRememberMarker,
 } from '../session-client';
@@ -107,6 +108,50 @@ describe('refreshRememberedSession — single-flight', () => {
     await new Promise((r) => queueMicrotask(() => r(null)));
     await refreshRememberedSession();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * 2026-11-14 — what the refresh FOUND OUT, for /panic: "this browser has no
+ * remembered session" (show sign-in) must never be confused with "could not
+ * reach the server" (say so, keep trying).
+ */
+describe('refreshRememberedSessionWithOutcome', () => {
+  it('a new access token is "refreshed"', async () => {
+    mockFetch(() => jsonRes({ refreshed: true, access_token: 'a', user: { id: 'u1' } }));
+    expect(await refreshRememberedSessionWithOutcome()).toEqual({
+      result: { access_token: 'a', user: { id: 'u1' } },
+      outcome: 'refreshed',
+    });
+  });
+
+  it.each([401, 403])('the route’s %i (no cookie / the API said no) is "refused"', async (status) => {
+    mockFetch(() => jsonRes({ refreshed: false }, status));
+    expect(await refreshRememberedSessionWithOutcome()).toEqual({ result: null, outcome: 'refused' });
+  });
+
+  it('a 503, a network failure or an unreadable 200 is "unavailable" — never "refused"', async () => {
+    mockFetch(() => jsonRes({ refreshed: false, reason: 'retry' }, 503));
+    expect((await refreshRememberedSessionWithOutcome()).outcome).toBe('unavailable');
+    __resetSessionRefreshState();
+    mockFetch(() => {
+      throw new TypeError('offline');
+    });
+    expect((await refreshRememberedSessionWithOutcome()).outcome).toBe('unavailable');
+    __resetSessionRefreshState();
+    mockFetch(() => jsonRes({ refreshed: true }));
+    expect((await refreshRememberedSessionWithOutcome()).outcome).toBe('unavailable');
+  });
+
+  it('shares ONE flight with refreshRememberedSession — the panic page can never be a second spend', async () => {
+    const fetchMock = mockFetch(() => jsonRes({ refreshed: true, access_token: 'one', user: null }));
+    const [plain, detailed] = await Promise.all([
+      refreshRememberedSession(),
+      refreshRememberedSessionWithOutcome(),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(plain?.access_token).toBe('one');
+    expect(detailed.result?.access_token).toBe('one');
   });
 });
 

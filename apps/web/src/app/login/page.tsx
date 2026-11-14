@@ -2365,6 +2365,15 @@ function LoginContent() {
           <p className="text-xs text-amber-800 font-medium">{t('sessionExpired')}</p>
         </div>
       )}
+      {/* 2026-11-14 — sent here by the emergency button (/panic), which shows
+          sign-in only when this phone has no remembered session to restore.
+          Say what the sign-in is for, and how to keep the phone ready. */}
+      {authReason === 'panic' && (
+        <div className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-lg" data-testid="login-reason-panic">
+          <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" aria-hidden />
+          <p className="text-xs text-red-800 font-medium">{t('panicSignIn')}</p>
+        </div>
+      )}
     </>
   );
 

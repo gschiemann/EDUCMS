@@ -151,7 +151,16 @@
       "voiceOff": "静音",
       "voiceOnHint": "此手机将朗读警报状态。",
       "voiceOffHint": "此手机不会发出声音。点按可朗读警报状态。",
-      "voiceOnConfirm": "语音播报已开启。此手机将发出声音。"
+      "voiceOnConfirm": "语音播报已开启。此手机将发出声音。",
+      "checkingSignIn": "正在检查登录…",
+      "checkingSignInHint": "正在检查您的登录状态。现在即可长按按钮——检查完成后警报会立即发出。",
+      "unreachableHint": "无法连接 VenueOS 检查您的登录状态。长按按钮仍会尝试发送——如果失败，请人工通知安保人员。",
+      "signInTitle": "登录后即可使用紧急按钮",
+      "signInLead": "此手机尚未登录 VenueOS。",
+      "signInBody": "如果现在正发生紧急情况，请人工通知安保人员。之后请登录一次并勾选“保持登录状态”，让此手机随时待命。",
+      "signInButton": "登录",
+      "errSignInNeeded": "此手机未登录。请立即人工通知安保人员——您的警报未发出。登录后即可从此手机发送警报。",
+      "errSignInTimeout": "未能及时检查您的登录状态。请立即人工通知安保人员——您的警报未发出。"
     },
     "broadcast": {
       "title": "广播",
@@ -506,7 +515,8 @@
     "phoneSetupLater": "你可以稍后在“我的账户”中为这台设备添加通行密钥。",
     "setupDoneSignIn": "你的账户已设置完成。请用新的邮箱和密码登录。",
     "security": "安全",
-    "requestInfo": "索取信息"
+    "requestInfo": "索取信息",
+    "panicSignIn": "您正在登录以在此手机上使用紧急按钮。请勾选“保持登录状态”，让它随时待命。"
   },
   "account": {
     "title": "我的账户",

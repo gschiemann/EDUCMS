@@ -996,6 +996,32 @@ describe('remember me survives leaving the browser', () => {
   });
 });
 
+// ─── Sent here by the emergency button (2026-11-14) ────────────────────────
+describe('reason=panic — the sign-in says it is for the emergency button', () => {
+  it('shows what the sign-in is for and how to keep the phone ready', async () => {
+    search = 'redirect=/panic&reason=panic';
+    mockFetchByPath({ '/auth/sign-in-options': NO_SSO });
+    await renderPage();
+    expect(screen.getByTestId('login-reason-panic')).toHaveTextContent(
+      'You’re signing in to use the emergency button on this phone. Tick “Keep me signed in” so it stays ready.',
+    );
+  });
+
+  it('a session restored on this page goes straight back to /panic', async () => {
+    search = 'redirect=/panic&reason=panic';
+    useUIStore.setState({ token: 'restored-token', user: { id: 'u1', tenantSlug: 'lincoln', tenantId: 't1' } as never });
+    await renderPage();
+    await waitFor(() => { expect(replace).toHaveBeenCalledWith('/panic'); });
+  });
+
+  it('no banner without the reason', async () => {
+    search = 'redirect=/panic';
+    mockFetchByPath({ '/auth/sign-in-options': NO_SSO });
+    await renderPage();
+    expect(screen.queryByTestId('login-reason-panic')).not.toBeInTheDocument();
+  });
+});
+
 // ─── "Sign in with a passkey" is a button you can see (2026-11-11) ─────────
 describe('the passkey button — no password needed', () => {
   const GET_OPTIONS = { challenge: 'Y2hhbGw', rpId: 'venue-os.app' };

@@ -151,7 +151,16 @@
       "voiceOff": "Silent",
       "voiceOnHint": "This phone will speak alert status out loud.",
       "voiceOffHint": "This phone will not make sound. Tap to speak alert status aloud.",
-      "voiceOnConfirm": "Spoken alert status is on. This phone will speak out loud."
+      "voiceOnConfirm": "Spoken alert status is on. This phone will speak out loud.",
+      "checkingSignIn": "Checking sign-in…",
+      "checkingSignInHint": "Checking your sign-in. You can hold a button now — the alert sends as soon as the check is done.",
+      "unreachableHint": "Can’t reach VenueOS to check your sign-in. Holding a button still tries to send — if it fails, NOTIFY SECURITY MANUALLY.",
+      "signInTitle": "Sign in to use the emergency button",
+      "signInLead": "This phone isn’t signed in to VenueOS.",
+      "signInBody": "In an emergency right now, NOTIFY SECURITY MANUALLY. Then sign in once, with “Keep me signed in” ticked, so this phone stays ready.",
+      "signInButton": "Sign in",
+      "errSignInNeeded": "This phone isn’t signed in. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast. Sign in to send alerts from this phone.",
+      "errSignInTimeout": "Your sign-in could not be checked in time. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast."
     },
     "broadcast": {
       "title": "Broadcast",
@@ -506,7 +515,8 @@
     "phoneSetupLater": "You can add a passkey for this device later in My account.",
     "setupDoneSignIn": "Your account is set up. Sign in with your new email and password.",
     "security": "Security",
-    "requestInfo": "Request info"
+    "requestInfo": "Request info",
+    "panicSignIn": "You’re signing in to use the emergency button on this phone. Tick “Keep me signed in” so it stays ready."
   },
   "account": {
     "title": "My account",
