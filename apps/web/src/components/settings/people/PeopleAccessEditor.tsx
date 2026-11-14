@@ -47,6 +47,8 @@ import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { EditorHead, EditorSection, StatusPill, ErrorSummary, HelpText } from '@/components/settings/shell/primitives';
 import { PersonAccessPanel } from '@/components/settings/people/PersonAccessPanel';
+// 2026-11-14 — panic phones: list and turn off a person's emergency phones.
+import { PanicPhonesPanel } from '@/components/settings/people/PanicPhonesPanel';
 
 /** 2026-10-11 — user scoping applies to the location roles only (server: SCOPABLE_ROLES). */
 const SCOPABLE_ROLES = ['SCHOOL_ADMIN', 'CONTRIBUTOR', 'RESTRICTED_VIEWER'];
@@ -319,6 +321,8 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
   const [copied, setCopied] = useState(false);
   const inviteEmailRef = useRef<HTMLInputElement>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  // 2026-11-14 — whose "Emergency phones" panel is open (one at a time).
+  const [panicPhonesFor, setPanicPhonesFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (showAddUser) inviteEmailRef.current?.focus();
@@ -773,6 +777,21 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                             </span>
                           </button>
                         )}
+                        {/* 2026-11-14 — "Emergency phones": the phones this person
+                            keeps ready for emergencies (panic phones), each one
+                            revocable here. Shown for anyone who could hold one. */}
+                        {manageable && !isPending && (user.role === 'SCHOOL_ADMIN' || user.role === 'DISTRICT_ADMIN' || user.canTriggerPanic === true) && (
+                          <button
+                            type="button"
+                            onClick={() => setPanicPhonesFor((cur) => (cur === user.id ? null : user.id))}
+                            aria-expanded={panicPhonesFor === user.id}
+                            data-testid={`people-panic-phones-toggle-${user.id}`}
+                            className="inline-flex items-center gap-1.5 min-h-[34px] px-2 rounded-[8px] border border-slate-200 bg-white text-[12px] font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                            <Siren className="w-3.5 h-3.5" aria-hidden />
+                            {t('settings.cc.people.panicPhonesButton')}
+                          </button>
+                        )}
                         {manageable && (
                           <button
                             type="button"
@@ -1201,6 +1220,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                           </div>
                         </form>
                       )}
+                      {panicPhonesFor === user.id && <PanicPhonesPanel userId={user.id} email={user.email} />}
                     </li>
                   );
                 })}

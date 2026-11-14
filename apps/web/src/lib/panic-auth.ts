@@ -42,8 +42,15 @@ export interface PanicUser {
   [key: string]: unknown;
 }
 
-/** What an alert is sent with. */
-export type PanicCredential = { kind: 'session'; token: string; user: PanicUser };
+/**
+ * What an alert is sent with: the tab's (or the restored) dashboard session,
+ * or — 2026-11-14 — this phone's panic credential, which lives in an HttpOnly
+ * cookie the page cannot read (`token` is null; every call goes through
+ * `/api/panic/*`). A panic credential can send and read, never end an alert.
+ */
+export type PanicCredential =
+  | { kind: 'session'; token: string; user: PanicUser }
+  | { kind: 'device'; token: null; user: PanicUser; deviceId: string; deviceLabel: string };
 
 export type PanicAuthState =
   /** A check is in flight. The page is usable; a press waits for this. */
@@ -68,6 +75,13 @@ export interface PanicAuthDeps {
   verify(token: string): Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
   /** The shared single-flight remembered-session refresh. */
   refresh(): Promise<RefreshAttempt>;
+  /** 2026-11-14 — is there a panic-phone marker cookie? (optional: absent = no panic phones) */
+  hasDeviceMarker?(): boolean;
+  /** 2026-11-14 — `POST /api/panic/status`. */
+  deviceStatus?(): Promise<
+    | { ok: true; body: { device: { id: string; label: string }; user: PanicUser } }
+    | { ok: false; outcome: 'refused' | 'unavailable' }
+  >;
   /** Every state change, in order. */
   onChange(state: PanicAuthState): void;
   /** Timer seam (tests). */
@@ -134,9 +148,38 @@ export function createPanicAuth(deps: PanicAuthDeps): PanicAuth {
     return attempt.outcome === 'refused' ? { status: 'signin' } : { status: 'unreachable' };
   }
 
+  /**
+   * COLD-START ORDER (2026-11-14): panic phone → remembered session →
+   * sign-in. A tab that already holds a dashboard session uses it first (it
+   * can also end an alert); a cold start of the home-screen app has none.
+   */
+  async function coldStart(): Promise<PanicAuthState> {
+    if (deps.hasDeviceMarker?.() && deps.deviceStatus) {
+      let r: Awaited<ReturnType<NonNullable<PanicAuthDeps['deviceStatus']>>>;
+      try {
+        r = await deps.deviceStatus();
+      } catch {
+        r = { ok: false, outcome: 'unavailable' };
+      }
+      if (r.ok && hasTenant(r.body?.user)) {
+        return {
+          status: 'ready',
+          credential: { kind: 'device', token: null, user: r.body.user, deviceId: r.body.device.id, deviceLabel: r.body.device.label },
+          checked: true,
+        };
+      }
+      const fallback = await restore();
+      // The phone could not be CHECKED (offline, switched off server-side) —
+      // that is not "nothing to restore": never send the person to sign-in for it.
+      if (fallback.status === 'signin' && !r.ok && r.outcome === 'unavailable') return { status: 'unreachable' };
+      return fallback;
+    }
+    return restore();
+  }
+
   async function pass(): Promise<PanicAuthState> {
     const { token, user } = deps.readSession();
-    if (!token) return restore();
+    if (!token) return coldStart();
     try {
       const res = await deps.verify(token);
       if (res.ok) {
@@ -243,6 +286,9 @@ export function createPanicAuth(deps: PanicAuthDeps): PanicAuth {
     // refresh flight `SessionRestorer` uses), so it already sees this.
     if (state.status === 'resolving') return;
     if (state.status === 'ready' && state.credential.token === token) return;
+    // A panic phone that works stays the credential; a dashboard session in
+    // the store is only adopted over one that is NOT working.
+    if (state.status === 'ready' && state.credential.kind === 'device') return;
     // A session reached the store after our pass ended (another component's
     // restore, or the api-client's own 401 refresh). The server minted it, so
     // it is offered — but marked unchecked until a request proves it.

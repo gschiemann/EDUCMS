@@ -64,6 +64,7 @@ const TEACHER = {
 type Handler = () => Promise<any> | any;
 let onRefresh: Handler;
 let onMe: Handler;
+let onPanic: (action: string, init: any) => any;
 const res = (status: number, body: unknown = {}) => ({
   ok: status >= 200 && status < 300,
   status,
@@ -71,9 +72,10 @@ const res = (status: number, body: unknown = {}) => ({
 });
 
 function routeFetch() {
-  (global as any).fetch = jest.fn(async (input: any) => {
+  (global as any).fetch = jest.fn(async (input: any, init?: any) => {
     const url = String(input);
     if (url === '/api/session/refresh') return onRefresh();
+    if (url.startsWith('/api/panic/')) return onPanic(url.slice('/api/panic/'.length), init);
     if (url.endsWith('/users/me')) return onMe();
     throw new Error(`unexpected fetch ${url}`);
   });
@@ -120,6 +122,8 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   document.cookie = 'venueos_rm=; Max-Age=0; Path=/';
+  document.cookie = 'venueos_pm=; Max-Age=0; Path=/';
+  onPanic = () => res(401, { ok: false, reason: 'no-cookie' });
   act(() => {
     useUIStore.setState({ token: null, user: null, authRestoring: false });
   });
@@ -302,5 +306,73 @@ describe('4 — no remembered session at all: sign-in, made clear it is for the 
 
     fireEvent.click(screen.getByTestId('panic-sign-in-button'));
     expect(push).toHaveBeenCalledWith('/login?redirect=/panic&reason=panic');
+  });
+});
+
+describe('2026-11-14 — panic phones on the page', () => {
+  const DEVICE_STATUS = { device: { id: 'pd-1', label: 'iPhone · Safari' }, user: TEACHER };
+
+  it('a ready phone is used FIRST on a cold start; the alert goes through /api/panic/trigger, never the session action', async () => {
+    document.cookie = 'venueos_pm=1; Path=/';
+    const panicCalls: Array<{ action: string; body: any }> = [];
+    onPanic = (action, init) => {
+      panicCalls.push({ action, body: init?.body ? JSON.parse(init.body) : null });
+      if (action === 'status') return res(200, DEVICE_STATUS);
+      if (action === 'trigger') return res(200, { success: true, overrideId: 'ovr_pd' });
+      if (action === 'active') return res(200, { alerts: panicCalls.some((c) => c.action === 'trigger') ? [LIVE_TENANT_ALERT] : [] });
+      if (action === 'targets') return res(200, TARGETS);
+      return res(404, {});
+    };
+    const refresh = jest.fn(() => res(200, {}));
+    onRefresh = refresh;
+    render(<MobilePanicPage />);
+    await flush();
+    expect(screen.getByTestId('panic-phone-ready')).toHaveTextContent('iPhone · Safari');
+    expect(refresh).not.toHaveBeenCalled();
+
+    await hold(lockdown());
+    await flush(10);
+    expect(broadcastEmergency).not.toHaveBeenCalled();
+    expect(panicCalls.find((c) => c.action === 'trigger')?.body).toEqual({ type: 'lockdown' });
+    expect(screen.getByText(/Broadcasted/i)).toBeInTheDocument();
+  });
+
+  it('a signed-in person with authority is offered "Keep this phone ready"; one tap enrols with the page’s own session', async () => {
+    act(() => {
+      useUIStore.setState({ token: 'fresh.jwt', user: TEACHER as never });
+    });
+    let enrollAuth: string | null = null;
+    onPanic = (action, init) => {
+      if (action === 'enroll') {
+        enrollAuth = init?.headers?.Authorization ?? null;
+        document.cookie = 'venueos_pm=1; Path=/';
+        return res(200, { enrolled: true, device: { id: 'pd-2', label: 'iPhone · Safari' } });
+      }
+      return res(401, { ok: false, reason: 'no-cookie' });
+    };
+    render(<MobilePanicPage />);
+    await flush();
+    expect(screen.getByTestId('panic-keep-ready')).toHaveTextContent(/Keep this phone ready for emergencies/);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('panic-keep-ready-button'));
+    });
+    await flush();
+    expect(enrollAuth).toBe('Bearer fresh.jwt');
+    expect(screen.queryByTestId('panic-keep-ready')).toBeNull();
+  });
+
+  it('an old sign-in is sent through a FRESH sign-in before a phone can be kept ready', async () => {
+    act(() => {
+      useUIStore.setState({ token: 'old.jwt', user: TEACHER as never });
+    });
+    onPanic = (action) => (action === 'enroll' ? res(403, { enrolled: false, reason: 'stale-login' }) : res(401, { reason: 'no-cookie' }));
+    render(<MobilePanicPage />);
+    await flush();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('panic-keep-ready-button'));
+    });
+    await flush();
+    fireEvent.click(screen.getByText('Sign in'));
+    expect(push).toHaveBeenCalledWith('/login?redirect=/panic&reason=panic-enroll');
   });
 });
