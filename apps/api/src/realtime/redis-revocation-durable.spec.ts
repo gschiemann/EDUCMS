@@ -95,6 +95,41 @@ function makeService(prisma?: ReturnType<typeof makePrisma>) {
   return svc;
 }
 
+/**
+ * ioredis-shaped pipeline over the publisher's own mocks: commands queue,
+ * `exec()` runs them in order and reports `[err, result]` per command — the
+ * shape the lookups read since F1 (2026-11-14) batched the revocation key with
+ * the continuity marker into one round trip.
+ */
+function fakePipeline(publisher: Record<string, any>) {
+  const ops: Array<[string, unknown[]]> = [];
+  const chain: any = new Proxy(
+    {},
+    {
+      get(_t, prop: string) {
+        if (prop === 'exec') {
+          return async () => {
+            const out: Array<[Error | null, unknown]> = [];
+            for (const [cmd, args] of ops) {
+              try {
+                out.push([null, await publisher[cmd](...args)]);
+              } catch (e) {
+                out.push([e as Error, null]);
+              }
+            }
+            return out;
+          };
+        }
+        return (...args: unknown[]) => {
+          ops.push([prop, args]);
+          return chain;
+        };
+      },
+    },
+  );
+  return chain;
+}
+
 function attachRedis(
   svc: RedisService,
   opts: {
@@ -102,14 +137,19 @@ function attachRedis(
     sismember?: jest.Mock;
     get?: jest.Mock;
     set?: jest.Mock;
+    /** The F1 continuity marker. Default: present (Redis intact). */
+    exists?: jest.Mock;
   },
 ) {
   (svc as any).connected = opts.connected;
-  (svc as any).publisher = {
+  const publisher: Record<string, any> = {
     sismember: opts.sismember ?? jest.fn(async () => 0),
     get: opts.get ?? jest.fn(async () => null),
     set: opts.set ?? jest.fn(async () => 'OK'),
+    exists: opts.exists ?? jest.fn(async () => 1),
   };
+  publisher.pipeline = () => fakePipeline(publisher);
+  (svc as any).publisher = publisher;
 }
 
 // The posture window is process-wide by design (see revocation-posture.ts),
@@ -145,7 +185,11 @@ describe('sismember — durable fallback', () => {
       false,
     );
 
-    expect(sis).toHaveBeenCalledTimes(2);
+    // Each lookup also asks the restored-hash set (F1) in the same pipeline;
+    // the raw-token set is still asked exactly once per lookup.
+    expect(
+      sis.mock.calls.filter((c: unknown[]) => c[0] === 'jwt_revoked_list'),
+    ).toHaveLength(2);
     expect(prisma.findUnique).not.toHaveBeenCalled();
   });
 

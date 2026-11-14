@@ -77,6 +77,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { assertAllowedEmergencyMediaUrl } from './media-url-guard';
+import { z } from 'zod';
+import { ZodValidationPipe } from '../security/zod-validation.pipe';
 // 2026-09-02 (efficiency P0-2) — the cheap emergency-revision token the player
 // polls instead of re-fetching the whole manifest every 10 s.
 import { bumpTenantEmergencyEpoch } from '../screens/emergency-rev';
@@ -89,18 +91,38 @@ const ALLOWED_TYPES = new Set([
 ]);
 const ALLOWED_SEVERITIES = new Set(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 
-interface OverrideInput {
-  type: string;
-  severity?: string;
-  scopeNote?: string;
-  playlistId?: string;
-  mediaUrl?: string;
-  textBlob?: string;
-  expiresAt?: string | number;
-  floorPlanId?: string;
-  floorZoneId?: string;
-  scenarioId?: string;
-}
+/**
+ * Request shape for the per-screen trigger routes (F2, 2026-11-14 — these two
+ * were the only emergency routes without a schema; `bulk-trigger` with no
+ * `override` threw a TypeError → 500, and `screenIds` entries reached Prisma
+ * untyped). Deliberately LENIENT where the old code was lenient: free text is
+ * still truncated in `validateOverride`, never refused — an alert must not
+ * fail because its note ran long. Ids are bounded; `scenarioId` names no table
+ * yet (the scenario picker is Phase 2), so it is held to a short safe label.
+ */
+export const OverrideInputSchema = z.object({
+  type: z.string().min(1).max(32),
+  severity: z.string().max(16).nullish(),
+  scopeNote: z.string().nullish(),
+  playlistId: z.string().min(1).max(128).nullish(),
+  mediaUrl: z.string().nullish(),
+  textBlob: z.string().nullish(),
+  expiresAt: z.union([z.string().max(64), z.number()]).nullish(),
+  floorPlanId: z.string().min(1).max(128).nullish(),
+  floorZoneId: z.string().min(1).max(128).nullish(),
+  scenarioId: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,64}$/, 'must be 1-64 letters, digits, - or _')
+    .nullish(),
+});
+type OverrideInput = z.infer<typeof OverrideInputSchema>;
+
+export const BulkTriggerInputSchema = z.object({
+  // The 500 ceiling stays in the handler, with its "use tenant scope" advice.
+  screenIds: z.array(z.string().min(1).max(128)).min(1),
+  override: OverrideInputSchema,
+});
+type BulkTriggerInput = z.infer<typeof BulkTriggerInputSchema>;
 
 @Controller('api/v1/emergency/screens')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -166,6 +188,56 @@ export class ScreenEmergencyController {
       floorZoneId: input.floorZoneId?.toString() || null,
       scenarioId: input.scenarioId?.toString() || null,
     };
+  }
+
+  /**
+   * F3 (2026-11-14): an override's floor plan / zone ids must belong to the
+   * tenant of every screen it targets — the rule `playlistId` already follows.
+   * They were stored and broadcast unchecked. Nothing resolves them into data
+   * today, but a school floor plan is sensitive: the first feature that showed
+   * "the plan named in the alert" would have shown another school's.
+   * A zone given with a plan must sit on that plan. 404 on any miss.
+   */
+  private async assertFloorRefsOwned(
+    override: { floorPlanId: string | null; floorZoneId: string | null },
+    tenantIds: string[],
+  ): Promise<void> {
+    if (override.floorPlanId) {
+      const plan = await this.prisma.client.floorPlan.findFirst({
+        where: { id: override.floorPlanId, tenantId: { in: tenantIds } },
+        select: { tenantId: true },
+      });
+      if (!plan || tenantIds.some((t) => t !== plan.tenantId)) {
+        throw new HttpException(
+          `Floor plan not found in this tenant: ${override.floorPlanId}`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+    }
+    if (override.floorZoneId) {
+      const zone = await this.prisma.client.floorZone.findFirst({
+        where: {
+          id: override.floorZoneId,
+          floorPlan: { tenantId: { in: tenantIds } },
+        },
+        select: {
+          floorPlanId: true,
+          floorPlan: { select: { tenantId: true } },
+        },
+      });
+      const wrongPlan =
+        !!override.floorPlanId && zone?.floorPlanId !== override.floorPlanId;
+      if (
+        !zone ||
+        wrongPlan ||
+        tenantIds.some((t) => t !== zone.floorPlan.tenantId)
+      ) {
+        throw new HttpException(
+          `Floor zone not found in this tenant: ${override.floorZoneId}`,
+          HttpStatus.NOT_FOUND,
+        );
+      }
+    }
   }
 
   // ─── Resolve the screen + tenant-check it ──────────────────────
@@ -400,12 +472,22 @@ export class ScreenEmergencyController {
   async trigger(
     @Req() req: any,
     @Param('screenId') screenId: string,
-    @Body() body: OverrideInput,
+    @Body(new ZodValidationPipe(OverrideInputSchema)) body: OverrideInput,
   ) {
     // emergency-004 fix: refuse missing-tenantId tokens before any DB call.
     const tenantId = this.requireTenantId(req);
     const screen = await this.resolveScreen(screenId, tenantId, req.user);
     const override = this.validateOverride(body);
+    // F3: floor plan / zone ids must belong to the screen's tenant.
+    if (override.floorPlanId || override.floorZoneId) {
+      if (!screen.tenantId) {
+        throw new HttpException(
+          'Screen has no tenant binding',
+          HttpStatus.CONFLICT,
+        );
+      }
+      await this.assertFloorRefsOwned(override, [screen.tenantId]);
+    }
     // SECURITY (Lane-1 re-audit P0): verify any operator-supplied playlistId
     // belongs to the screen's tenant. Same shape as the panic-settings fix.
     if (override.playlistId) {
@@ -559,7 +641,7 @@ export class ScreenEmergencyController {
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
   async bulkTrigger(
     @Req() req: any,
-    @Body() body: { screenIds: string[]; override: OverrideInput },
+    @Body(new ZodValidationPipe(BulkTriggerInputSchema)) body: BulkTriggerInput,
   ) {
     // emergency-004 fix: previously this read `req.user.tenantId` blind.
     // If the JWT was missing tenantId (malformed token, SUPER_ADMIN with
@@ -615,6 +697,22 @@ export class ScreenEmergencyController {
           HttpStatus.NOT_FOUND,
         );
       }
+    }
+    // F3: floor plan / zone ids must belong to EVERY targeted screen's tenant
+    // (the same rule the playlist check above applies).
+    if (override.floorPlanId || override.floorZoneId) {
+      const tenantIds = [
+        ...new Set(
+          screens.map((s) => s.tenantId).filter((t): t is string => !!t),
+        ),
+      ];
+      if (tenantIds.length === 0) {
+        throw new HttpException(
+          'Targeted screens have no tenant binding',
+          HttpStatus.CONFLICT,
+        );
+      }
+      await this.assertFloorRefsOwned(override, tenantIds);
     }
     const results: Array<{ screenId: string; overrideId: string }> = [];
     for (const screen of screens) {

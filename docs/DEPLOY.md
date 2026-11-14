@@ -22,6 +22,7 @@ Every Railway redeploy must come up without hand-holding. Below is how to verify
 - UI says "Can't reach the server" → check `NEXT_PUBLIC_API_URL` in Vercel env. If unset the frontend falls back to localhost — set it and redeploy web.
 - DB errors in Railway logs → Supabase pooler hiccup. Boot warm-up logs `Prisma pool warm (Nms)`; if consistently >2s, check `DATABASE_URL` / `DIRECT_URL` split.
 - Redis missing → API boots anyway (HTTP-polling realtime fallback). Emergency trigger still works.
+- Redis restarted empty or flushed → revocations (logouts, role downgrades, removed panic permission) stay enforced from the Postgres mirror and are copied back into Redis automatically; the log shows `Revocation continuity marker absent` then `Revocation continuity restored`. The marker key is `revocation:continuity` (`redis.service.ts`). Redis must run `maxmemory-policy noeviction`: under any other policy it can evict single revocation keys without notice, and the API logs an ERROR at boot when it can read a different policy.
 
 **Never do:** weaken the 10-retry restart policy, add DB checks to liveness, or remove the 7s Redis hard-cap in `redis.service.ts`. Those three keep Railway from pod-thrashing.
 

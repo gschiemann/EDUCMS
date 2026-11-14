@@ -355,6 +355,21 @@ export function EmergencyOverlay() {
                   type="text"
                   value={confirmKey}
                   onChange={(e) => setConfirmKey(e.target.value.toUpperCase())}
+                  // Keyboard equivalence (a11y §18-1), as the trigger modal's
+                  // confirm field has: Enter fires the SAME guarded
+                  // handleAllClear, which returns unless canSubmit (CLEAR typed,
+                  // a target chosen when several alerts are live, nothing in
+                  // flight) — an added keyboard path, not a weaker gate. Enter
+                  // that commits an IME composition is not a submit: Safari
+                  // sends that Enter AFTER compositionend with isComposing
+                  // false, so keyCode 229 (the IME marker) is checked too.
+                  onKeyDown={(e) => {
+                    const imeCommit = e.nativeEvent.isComposing || e.keyCode === 229;
+                    if (e.key === 'Enter' && !imeCommit && canSubmit) {
+                      e.preventDefault();
+                      handleAllClear();
+                    }
+                  }}
                   placeholder={t('emergency.overlay.placeholder')}
                   className={`w-full px-4 py-3 bg-black/50 border rounded-lg text-white font-mono text-center tracking-[0.5em] focus:ring-2 outline-none uppercase ${tone.input} ${tone.ring}`}
                 />
