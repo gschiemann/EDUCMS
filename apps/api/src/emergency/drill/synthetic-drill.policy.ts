@@ -466,10 +466,32 @@ export function gradePane(id: string, input: GradeInput): PaneGrade {
   ]);
 
   // Link 2 — nothing but `em:<identity>` from first paint until the clear.
+  //
+  // THE FIRST-PAINT RACE (2026-11-14, fleet audit). A player that runs the
+  // native layer reports the same alert twice in the same second — the page's
+  // overlay paint and the app's validated paint — and the two reports land out
+  // of order: a `pending` (raised, paint not yet proven) or a `no paint proof`
+  // row for the SAME alert identity can arrive a few milliseconds AFTER the
+  // first painted one. That is one paint reported twice, not a board that
+  // dropped — it is exactly the case the identical-PAINTED-rows dedupe below
+  // already covers. Every persistence FAIL the bench drills recorded on
+  // 2026-11-09/10 (GUQ55 ×2, FUH43-L ×2, M43 ×2) was this: the offending report
+  // came 5–70 ms after the first paint, carried the same identity, and a
+  // painted proof dated ≥ +60 s followed. It is forgiven ONLY when it names
+  // the expected identity, is the `pending` form (never another alert, never
+  // content, never `unconfirmed`), and lands within REPAINT_DEDUPE_MS of the
+  // first paint. Anything later, or anything else, is still a violation, and
+  // Link 2 still requires the painted proof dated ≥ +60 s.
+  const firstPaintRace = (atMs: number) => paintedAtMs !== null && atMs - paintedAtMs <= DRILL_TIMING.REPAINT_DEDUPE_MS;
+  const samePendingRace = (s: { atMs: number; hash: string | null }) => {
+    const p = parseEmergencyHash(s.hash);
+    return !!p && p.form === 'pending' && p.identity === identity && firstPaintRace(s.atMs);
+  };
   let violation: PaneGrade['violation'] = null;
   if (paintedAtMs !== null) {
     for (const s of samples) {
       if (s.atMs <= paintedAtMs || !preClear(s.atMs)) continue;
+      if (samePendingRace(s)) continue;
       if (s.hash !== `em:${identity}`) {
         violation = { atMs: s.atMs, hash: s.hash, why: isEmergencyRenderHash(s.hash) ? 'changed' : 'dropped' };
         break;
@@ -480,6 +502,8 @@ export function gradePane(id: string, input: GradeInput): PaneGrade {
       if (t.atMs <= paintedAtMs || !preClear(t.atMs) || t === firstPaintRow) continue;
       // Two posts racing the same first paint write two identical rows: one paint.
       if (t.action === PLAYER_PAINTED_ACTION && t.identity === identity && firstPaintRow && t.atMs - firstPaintRow.atMs <= DRILL_TIMING.REPAINT_DEDUPE_MS) continue;
+      // …and the other reporter's "not proven yet" for the same alert, in the same race (see above).
+      if (t.action === PLAYER_NO_PAINT_ACTION && t.identity === identity && firstPaintRace(t.atMs)) continue;
       if (!violation || t.atMs < violation.atMs) {
         violation = { atMs: t.atMs, hash: null, why: t.action === PLAYER_NO_PAINT_ACTION ? 'paint-lost' : 'repainted' };
       }
