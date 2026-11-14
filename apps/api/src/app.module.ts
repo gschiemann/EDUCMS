@@ -14,6 +14,12 @@ import { EmergencyReadinessService } from './emergency/emergency-readiness.servi
 // EMERGENCY_DRILL_SCREENS is set; EMERGENCY_DRILL_CRON_DISABLED=1 beats everything.
 import { SyntheticDrillRunner } from './emergency/drill/synthetic-drill.runner';
 import { SyntheticDrillApprovalController } from './emergency/drill/synthetic-drill-approval.controller';
+// 2026-11-14 — panic phones: a revocable credential that can only send an
+// emergency and read the panic page. Kill switch PANIC_DEVICE_DISABLED.
+import { PanicDeviceController } from './emergency/panic-device/panic-device.controller';
+import { PanicDeviceAdminController } from './emergency/panic-device/panic-device-admin.controller';
+import { PanicDeviceService } from './emergency/panic-device/panic-device.service';
+import { PanicRateLimiter } from './emergency/panic-device/panic-rate-limit';
 import { StatsController } from './stats/stats.controller';
 import { AuditController } from './audit/audit.controller';
 import { UsersController } from './users/users.controller';
@@ -320,6 +326,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     ScreenEmergencyController,
     EmergencyReadinessController,
     SyntheticDrillApprovalController,
+    PanicDeviceController,
+    PanicDeviceAdminController,
     StatsController,
     AuditController,
     UsersController,
@@ -352,6 +360,8 @@ import { SentryGlobalFilter } from '@sentry/nestjs/setup';
     BootReadinessService,
     EmergencyReadinessService,
     SyntheticDrillRunner,
+    PanicDeviceService,
+    PanicRateLimiter,
     GeocodingService,
     PlaylistDistributionService,
     WebsocketSignerService,

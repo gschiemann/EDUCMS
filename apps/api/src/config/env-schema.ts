@@ -365,7 +365,7 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
     note: 'Any other value, including a typo, leaves the gate closed.' },
   { name: 'SESSION_BFF_SECRET', type: 'secret', default: null, failureDirection: 'open',
     purpose: 'Binds the durable-session (refresh-cookie) endpoints to the web origin\'s server; set the same value on web and API.',
-    note: 'Min 16 chars. Unset is SUBTRACTIVE, never a lockout: the endpoints keep working, but the last step of the SEC-010 finding stays open.' },
+    note: 'Min 16 chars. Unset is SUBTRACTIVE, never a lockout: the session endpoints keep working, but the last step of the SEC-010 finding stays open. Panic phones (/panic-device/*) REQUIRE it: unset, they are unavailable and /panic uses the session path.' },
   { name: 'SESSION_SECRET', type: 'secret', default: null, failureDirection: 'closed',
     purpose: 'Encrypts express-session cookies. Required in production.',
     note: 'Min 16 chars; production REFUSES TO BOOT without it.' },
@@ -389,6 +389,9 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
   { name: 'EMERGENCY_REV_RAISE', type: 'boolean', default: true, accepts: 'off | 0 | false', failureDirection: 'open', killSwitch: true,
     purpose: 'Lets the rev endpoint attach an alert descriptor so a screen raises an alert faster; off reverts to revision-move then manifest fetch.',
     note: 'SUBTRACTIVE: any other value, including a typo, leaves it ON. Off only makes raises slower, never wrong or missing.' },
+  { name: 'PANIC_DEVICE_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,
+    purpose: 'Turns panic phones off: every panic-phone credential is refused and no phone can be set up; /panic falls back to the remembered session, then sign-in.',
+    note: 'Case-insensitive, read per request. SUBTRACTIVE: credentials are KEPT, not revoked, so unsetting it brings every phone back. Turning one phone off still works while set. When the credential check cannot run (database unreachable) the phone is refused with a retryable 503 and keeps its cookie.' },
 
   // ─── Synthetic emergency drill (emergency/drill/; design 2026-10-31) ───────────────────────
   { name: 'EMERGENCY_DRILL_CRON_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,

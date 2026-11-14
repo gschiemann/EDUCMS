@@ -123,6 +123,9 @@ import { LEDGER_BULK_MAX_ROWS, ScreenEventsService } from '../screens/events/scr
 // to the organisation's admins, queued AFTER the action committed and never
 // awaited (notifications/customer-alerts/customer-alert-emails.service.ts).
 import { CustomerAlertEmailsService } from '../notifications/customer-alerts/customer-alert-emails.service';
+// 2026-11-14 — panic phones: a trigger sent with one names it on its audit
+// row. Empty for every other caller (the row is unchanged for a session).
+import { panicDeviceAuditFields } from './panic-device/panic-device.policy';
 
 @Controller('api/v1/emergency')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -1312,6 +1315,8 @@ export class EmergencyController {
                 originTenantId: scopeId,
                 propagatedFromTenantId: isOriginTenant ? null : scopeId,
                 subtreeTenantCount: affectedTenantIds.length,
+                // Sent with a panic phone: which one, and from where.
+                ...panicDeviceAuditFields(req.user),
               }),
             },
           }),
@@ -1449,6 +1454,8 @@ export class EmergencyController {
               affectedScreenIds: affectedIds,
               replacedAlertIds,
               triggeredByTenant: req.user?.tenantId,
+              // Sent with a panic phone: which one, and from where.
+              ...panicDeviceAuditFields(req.user),
             }),
           },
         }),
