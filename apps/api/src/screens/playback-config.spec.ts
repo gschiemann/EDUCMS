@@ -1,4 +1,4 @@
-import { resolveLoopMode, resolvePlaybackConfig } from './playback-config';
+import { playlistFallbackDisabled, resolveLoopMode, resolvePlaybackConfig } from './playback-config';
 
 describe('resolveLoopMode', () => {
   it('pins only named screens to the same-file native backend without changing default enrollment', () => {
@@ -132,5 +132,27 @@ describe('resolveLoopMode', () => {
   it('keeps full-screen fit explicit after removing temporary enrollment', () => {
     expect(resolvePlaybackConfig(S, {})).toEqual({ loopMode: 'continuous', mediaFit: 'fill' });
     expect(resolvePlaybackConfig('another-screen', { PLAYER_FULLSCREEN_FILL_SCREEN_IDS: '' }).mediaFit).toBe('fill');
+  });
+});
+
+describe('PLAYLIST_FALLBACK_DISABLED — the playlist-fallback kill switch (2026-11-14, player rule 20)', () => {
+  it('unset: the key is ABSENT, so the hashed manifest — and every screen’s ETag — is unchanged', () => {
+    expect(resolvePlaybackConfig('s1', {})).not.toHaveProperty('playlistFallback');
+    expect(JSON.stringify(resolvePlaybackConfig('s1', {}))).toBe('{"loopMode":"continuous","mediaFit":"fill"}');
+    expect(playlistFallbackDisabled({})).toBe(false);
+  });
+
+  it('1 / true / yes (any case, trimmed) turn it off for every screen', () => {
+    for (const v of ['1', 'true', 'TRUE', 'yes', ' Yes ']) {
+      expect(playlistFallbackDisabled({ PLAYLIST_FALLBACK_DISABLED: v })).toBe(true);
+      expect(resolvePlaybackConfig('s1', { PLAYLIST_FALLBACK_DISABLED: v })).toEqual({ loopMode: 'continuous', mediaFit: 'fill', playlistFallback: 'off' });
+    }
+  });
+
+  it('anything else — a typo, 0, false, empty — leaves the fallback on (subtractive: only a clear yes takes it away)', () => {
+    for (const v of ['', '0', 'false', 'no', 'off', 'disabled', 'tru']) {
+      expect(playlistFallbackDisabled({ PLAYLIST_FALLBACK_DISABLED: v })).toBe(false);
+      expect(resolvePlaybackConfig('s1', { PLAYLIST_FALLBACK_DISABLED: v })).not.toHaveProperty('playlistFallback');
+    }
   });
 });

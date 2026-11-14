@@ -443,6 +443,21 @@ const updateAppliedSchema = z.strictObject({
   converged: z.boolean(),
 });
 
+/** A playlist id as the manifest hands it out: a bounded token, nothing that could carry content. */
+const playlistIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+
+const playlistFallbackSchema = z
+  .object({
+    fromPlaylistId: playlistIdSchema,
+    /** backup / retrying: the backup playlist; recovered: the playlist proven playing. */
+    toPlaylistId: playlistIdSchema,
+    /** How long the episode has lasted, in ms (a duration — device clocks are not trusted). */
+    forMs: z.number().int().min(0).max(7 * 24 * 60 * 60_000),
+    /** backup — on the glass; retrying — the scheduled playlist is being tried again; recovered — it played again for five minutes. */
+    state: z.enum(['backup', 'retrying', 'recovered']),
+  })
+  .strict();
+
 export const screenTelemetrySchema = z.strictObject({
   versions: z
     .strictObject({
@@ -497,6 +512,11 @@ export const screenTelemetrySchema = z.strictObject({
   // Soft BLANK overlay on the glass (2026-11-02). Optional: an older bundle
   // never sends it and still validates.
   softBlank: z.boolean().optional(),
+  // A playlist-fallback EPISODE (2026-11-13/14, playlist-fallback.ts). Ids, a
+  // duration and a state only; the names are read server-side, inside the
+  // screen's own tenant. Optional: sent only while it lasts; an older bundle
+  // never sends it.
+  playlistFallback: playlistFallbackSchema.optional(),
 });
 
 export type ScreenTelemetryBody = z.infer<typeof screenTelemetrySchema>;
