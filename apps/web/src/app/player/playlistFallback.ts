@@ -18,7 +18,7 @@
  * IT IS THE LAST RESORT, AND IT IS REPORTED (the owner, 2026-11-13: "that
  * should be the last option right and then it should notify the admin, no one
  * wants the incorrect content to ever be playing on their screen"):
- *  • the card must have been up for two minutes without a break before the
+ *  • the card must have been on the glass for two full minutes before the
  *    player steps to another playlist (`FallbackDwell` below has the exact
  *    rule — a short outage never gets there, and the page's own 30-second
  *    retries neither restart the two minutes nor count towards them);
@@ -57,7 +57,7 @@ export const FALLBACK_RETRY_STEPS_MS: readonly number[] = [15 * MIN, 30 * MIN, 6
 export const FALLBACK_MAX_ENTRIES = 32;
 
 /**
- * The card must have been up this long, without a break, before the player
+ * The card must have been on the glass this long before the player
  * steps to another playlist. Two minutes: long enough that a network blip, a
  * file still arriving or one slow retry is over, short enough that a screen
  * with a working playlist is not left on an error card for a class period.
