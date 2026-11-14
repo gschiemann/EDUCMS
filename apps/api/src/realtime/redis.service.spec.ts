@@ -152,6 +152,44 @@ describe('RedisService fan-out gate — channel binding (R-02)', () => {
   });
 });
 
+describe('RedisService fan-out gate — only signed fields reach a screen (F4)', () => {
+  it('strips an unsigned top-level field from a validly signed message, on BOTH transports', async () => {
+    // The signature covers eventId/timestamp/type/payload (+ channel) only.
+    // Anything with Redis PUBLISH could graft extra top-level fields onto a
+    // fresh, genuinely signed envelope; SSE used to forward the whole object.
+    const { svc, gateway, sse } = makeService();
+    const publish = withLivePublisher(svc);
+    await svc.publish(
+      'tenant:district-a',
+      signLegacy('OVERRIDE', { severity: 'LOCKDOWN' }),
+    );
+    const grafted = {
+      ...JSON.parse(publish.mock.calls[0][1]),
+      injected: '<b>not signed</b>',
+      mediaUrl: 'https://evil.example/x.png',
+    };
+
+    (svc as any).handleRedisMessage(
+      'tenant:district-a',
+      JSON.stringify(grafted),
+    );
+
+    for (const transport of [gateway, sse]) {
+      expect(transport.broadcastToScope).toHaveBeenCalledTimes(1);
+      const delivered = transport.broadcastToScope.mock.calls[0][2];
+      expect(Object.keys(delivered).sort()).toEqual([
+        'eventId',
+        'payload',
+        'signature',
+        'timestamp',
+        'type',
+      ]);
+      expect(delivered.payload).toEqual({ severity: 'LOCKDOWN' });
+      expect(delivered.signature).toBe(grafted.signature);
+    }
+  });
+});
+
 describe('RedisService fan-out gate — channel parsing', () => {
   it('rejects a 3-segment channel instead of routing it by its first two parts', async () => {
     const { svc, gateway } = makeService();
