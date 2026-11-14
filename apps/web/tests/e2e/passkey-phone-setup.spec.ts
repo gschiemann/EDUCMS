@@ -325,6 +325,13 @@ test.describe('set up a passkey on this phone', () => {
       expect(memory).not.toContain('venueos.example');
 
       // ── The NEXT sign-in on this device ───────────────────────────────────
+      // While the session lasts, the sign-in page goes straight back to the dashboard instead of
+      // showing the form (2026-11-10, 22ebbc44b, PR #301 — "I ticked Remember me and it asked me
+      // again"). The next sign-in is a later visit: the tab's session is gone (Safari closed the
+      // tab, and "Keep me signed in" was not ticked), while what the DEVICE remembers stays.
+      await page.goto('/login');
+      await expect(page).toHaveURL(new RegExp(`/${SLUG}/dashboard`));
+      await page.evaluate(() => sessionStorage.clear());
       await signInWithPassword(page);
       const usePasskey = page.getByRole('button', { name: 'Use your passkey' });
       await expect(usePasskey).toBeVisible({ timeout: 30_000 });
