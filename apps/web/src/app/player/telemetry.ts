@@ -1,5 +1,6 @@
 import { NATIVE_TIMING_EXTRA_KEYS, type NativeSharedVideoState } from './nativeSharedVideo';
 import type { EmergencyPaintProof } from './emergencyPaintProof';
+import type { PlaylistFallbackReport } from './playlistFallback';
 /**
  * telemetry.ts — the player's ONE routine report (2026-09-02, efficiency
  * program P0-1).
@@ -281,6 +282,18 @@ export interface TelemetryBody {
    * a window (`softBlankRefused`), so an older API never costs liveness.
    */
   softBlank?: boolean;
+  /**
+   * A playlist-fallback EPISODE (2026-11-13/14, playlistFallback.ts): the
+   * schedule's choice could show nothing, so a backup playlist took the
+   * screen. Present on every report from the moment the backup is proven on
+   * the glass until ten minutes after the schedule's choice has played again
+   * for five (`state`: backup → retrying ↔ backup → recovered), absent
+   * otherwise — the server tells the admins when it starts and when it is
+   * over, and the Screens page says it while it lasts. Ids, a duration and a
+   * state only; never a name.
+   * ⚠️ Same rollout rule as `softBlank` (`playlistFallbackRefused`).
+   */
+  playlistFallback?: PlaylistFallbackReport;
 }
 
 /**
@@ -508,6 +521,8 @@ export interface TelemetryBodyInput {
   update?: TelemetryUpdateReport | null;
   /** Soft BLANK overlay present in the DOM; null/undefined = not sent. */
   softBlank?: boolean | null;
+  /** A playlist-fallback episode (playlistFallback.ts `fallbackReport`); null/undefined = not sent. */
+  playlistFallback?: PlaylistFallbackReport | null;
 }
 
 /** What the page knows about its download (its `largeDownload` state) + the hold. */
@@ -590,6 +605,11 @@ export function buildTelemetryBody(input: TelemetryBodyInput): TelemetryBody {
 
   if (typeof input.softBlank === 'boolean') body.softBlank = input.softBlank;
 
+  if (input.playlistFallback) {
+    const f = input.playlistFallback;
+    body.playlistFallback = { fromPlaylistId: f.fromPlaylistId, toPlaylistId: f.toPlaylistId, forMs: f.forMs, state: f.state };
+  }
+
   return body;
 }
 
@@ -632,6 +652,11 @@ export function updateReportRefused(status: number | null, sent: TelemetryBody):
 /** An API from before `softBlank` 400'd a strict body that carried the key. */
 export function softBlankRefused(status: number | null, sent: TelemetryBody): boolean {
   return status === 400 && typeof sent.softBlank === 'boolean';
+}
+
+/** An API from before `playlistFallback` 400'd a strict body that carried the key. */
+export function playlistFallbackRefused(status: number | null, sent: TelemetryBody): boolean {
+  return status === 400 && !!sent.playlistFallback;
 }
 
 /**
