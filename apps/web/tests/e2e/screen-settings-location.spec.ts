@@ -1,8 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
   emptyDistrictReadiness,
+  emptyScreenDiagnostics,
   emptyScreenEvents,
   playbackCapabilityScreenId,
+  screenDiagnosticsScreenId,
   screenEventsScreenId,
   unknownPlaybackCapability,
 } from '../fixtures/api-contract';
@@ -57,7 +59,9 @@ async function openScreens(page: Page, suffix = "", sharedAddress = false) {
         : path.endsWith('/faces') ? { faces: [] }
           // The drawer's playback card reads `capability.*` off this (2026-10-11).
           : playbackCapabilityScreenId(path) ? unknownPlaybackCapability(playbackCapabilityScreenId(path)!)
-            : bodies[path] ?? [];
+            // The Settings tab's Diagnostics section reads a view object (2026-11-08); `[]` crashes the page.
+            : screenDiagnosticsScreenId(path) ? emptyScreenDiagnostics()
+              : bodies[path] ?? [];
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
   await page.goto('/e2e-settings/screens' + suffix);

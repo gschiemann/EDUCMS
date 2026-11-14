@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { emptyScreenDiagnostics, screenDiagnosticsScreenId } from '../fixtures/api-contract';
 
 /**
  * Android settings in the screen drawer (2026-10-18; API:
@@ -96,7 +97,9 @@ async function openScreens(page: Page) {
               evidence: 'unknown', concurrencyEvidence: 'unknown', evidenceAt: null, classScreens: 0, stale: false,
             },
           }
-            : bodies[path] ?? [];
+            // The Settings tab's Diagnostics section reads a view object (2026-11-08); `[]` crashes the page.
+            : screenDiagnosticsScreenId(path) ? emptyScreenDiagnostics()
+              : bodies[path] ?? [];
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
   await page.goto('/e2e-ds/screens');

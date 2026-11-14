@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { emptyScreenEvents, screenEventsScreenId } from '../fixtures/api-contract';
+import { emptyScreenDiagnostics, emptyScreenEvents, screenDiagnosticsScreenId, screenEventsScreenId } from '../fixtures/api-contract';
 
 /**
  * The screen drawer, read by an end user (2026-10-22).
@@ -117,7 +117,10 @@ async function openScreens(page: Page) {
       : screenEventsScreenId(path) ? emptyScreenEvents(screenEventsScreenId(path)!)
         : path.endsWith('/faces') ? { faces: [] }
           : path.endsWith('/playback-capability') ? PLAYBACK
-            : bodies[path] ?? [];
+            // The deep link opens on Settings, whose Diagnostics section reads a view object
+            // (2026-11-08); `[]` crashes the page.
+            : screenDiagnosticsScreenId(path) ? emptyScreenDiagnostics()
+              : bodies[path] ?? [];
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
   await page.goto(`/e2e-enduser/screens?screen=${SCREEN_ID}`);
