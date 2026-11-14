@@ -92,6 +92,7 @@ import { createManifestGate } from './manifestGate';
 import { createPairingLoop } from './pairingLoop';
 import { createWsAuthPolicy } from './wsAuthPolicy';
 import { superviseWs, TICK_MS as WS_SUPERVISOR_TICK_MS } from './wsSupervisor';
+import { onSseError } from './sseRecovery';
 // 2026-08-30 deep audit D-1/F1 — serialized chains must bound every await
 // ACROSS THE BODY READ, not just headers: a browser fetch has no timeout,
 // and one hung socket (or a 200-then-stalled-body proxy) would otherwise
@@ -1216,7 +1217,8 @@ function readCachedEmergency(): any | null {
 
 /**
  * R-01 (2026-08-01) — the API root is the player's ENTIRE trust anchor: the
- * WebSocket (`getApiRoot().replace(/^http/,'ws')`), the SSE stream, the
+ * WebSocket (`getDirectApiRoot().replace(/^http/,'ws')` — always direct, the
+ * gateway cannot carry it), the SSE stream, the
  * device-authenticated manifest (the SOLE arbiter of the lockdown overlay) and
  * the stranded-alert reconcile all derive from it. It used to accept any
  * `?api=` value verbatim and persist it to localStorage forever, so a single
@@ -1344,12 +1346,30 @@ function warnGatewayRootUnusable(pageOrigin: string): void {
   } catch { /* swallow */ }
 }
 
-function getApiRoot(): string {
+/**
+ * The DIRECT API root — the validated override or `NEXT_PUBLIC_API_URL`, never
+ * the same-origin gateway. `getApiRoot()` uses it whenever the control plane is
+ * on the direct path; the WebSocket uses it ALWAYS (see `connect()`).
+ */
+function getDirectApiRoot(): string {
   const env = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
   const fallback = env.replace('/api/v1', '');
   if (typeof window === 'undefined') return fallback;
   let storage: Storage | null = null;
   try { storage = window.localStorage; } catch { storage = null; }
+  return resolveApiRoot({
+    search: window.location.search,
+    policy: apiRootPolicy(),
+    storage,
+    fallback,
+    onReject: (reason, value) => {
+      try { console.warn('[Player] refused untrusted API root —', reason, value); } catch {}
+    },
+  });
+}
+
+function getApiRoot(): string {
+  if (typeof window === 'undefined') return getDirectApiRoot();
   if (apiOriginState().mode === 'gateway') {
     // `gatewayApiRoot` (apiOrigin.ts) — NOT `normalizeApiRoot`. The page
     // origin is the trust ANCHOR, not an override, so the R-01 rule that
@@ -1368,15 +1388,7 @@ function getApiRoot(): string {
     // signals). Once per session; a kiosk console must stay readable.
     warnGatewayRootUnusable(window.location.origin);
   }
-  return resolveApiRoot({
-    search: window.location.search,
-    policy: apiRootPolicy(),
-    storage,
-    fallback,
-    onReject: (reason, value) => {
-      try { console.warn('[Player] refused untrusted API root —', reason, value); } catch {}
-    },
-  });
+  return getDirectApiRoot();
 }
 
 /**
@@ -4824,6 +4836,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // SSE works through ~95% of proxies that block WS.
   const sseRef = useRef<EventSource | null>(null);
   const sseFailCountRef = useRef(0);
+  // The pending SSE re-open (sseRecovery.ts): every SSE error closes the
+  // EventSource and re-opens with a fresh ticket after a back-off.
+  const sseRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const emergencyPollRef = useRef<NodeJS.Timeout | null>(null);
   const cachedAuthTokenRef = useRef<string | null>(null);
   const [activeEmergency, setActiveEmergency] = useState<any | null>(null);
@@ -9912,15 +9927,27 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
 
       es.onerror = () => {
         sseFailCountRef.current += 1;
-        console.warn(`[Player SSE] error (#${sseFailCountRef.current})`);
-        // EventSource attempts its own reconnect by default. After 2
-        // failures with no successful onopen in between, give up on
-        // SSE entirely and drop to HTTP poll.
-        if (sseFailCountRef.current >= 2) {
-          try { es.close(); } catch { /* swallow */ }
-          sseRef.current = null;
-          engageHttpPollFallback('sse-failed-twice');
-        }
+        const decision = onSseError(sseFailCountRef.current);
+        console.warn(
+          `[Player SSE] error (#${sseFailCountRef.current}) — closed; re-opening with a fresh ticket in ~${Math.round(decision.retryInMs / 1000)}s`,
+        );
+        // 2026-11-14 (sseRecovery.ts) — NEVER let EventSource auto-reconnect:
+        // it replays THIS URL, whose 60 s stream ticket has expired by the
+        // time a stream rotates (`ticket_expired`, 401). That replay was the
+        // second error, and two errors used to end the SSE tier for the whole
+        // session — the Houston Free Standing Kiosk ran 14 h with no push
+        // channel. Close now; `tryOpenSse` mints a fresh ticket.
+        try { es.close(); } catch { /* swallow */ }
+        if (sseRef.current === es) sseRef.current = null;
+        if (decision.engageHttpPoll) engageHttpPollFallback('sse-failed-twice');
+        if (sseRetryRef.current) clearTimeout(sseRetryRef.current);
+        sseRetryRef.current = setTimeout(() => {
+          sseRetryRef.current = null;
+          // The WebSocket authenticated meanwhile (its AUTH_OK owns realtime
+          // and stands SSE down), or another path already re-opened SSE.
+          if (wsAuthOkRef.current || sseRef.current) return;
+          void tryOpenSse();
+        }, decision.retryInMs);
       };
     };
 
@@ -9934,7 +9961,18 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // Always clear timers from prior attempt before opening a new socket.
       clearTimers();
       try {
-        const wsUrl = getApiRoot().replace(/^http/, 'ws') + '/realtime';
+        // ALWAYS the DIRECT origin (2026-11-14). The same-origin gateway is
+        // Vercel, which cannot carry a WebSocket — `proxy.ts` documents the
+        // design as "the player keeps WS direct". Built from `getApiRoot()`,
+        // a gateway-mode screen dialled the web origin, so every redial
+        // failed and the push channel stayed dead until the page reloaded
+        // (gateway mode never reverts mid-session): Houston Menu Board Left
+        // 2026-11-13, 4.5 h with zero dials reaching the API while its HTTP
+        // control plane ran through the gateway. A direct dial costs nothing
+        // when direct is truly unreachable (it fails and the SSE/HTTP ladder
+        // takes over, as before) and restores the push channel the moment
+        // the blip that caused the switch is over.
+        const wsUrl = getDirectApiRoot().replace(/^http/, 'ws') + '/realtime';
         console.log('[Player WS] Connecting to', wsUrl, `(attempt ${wsPolicyRef.current.failCount() + 1})`);
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
@@ -10039,10 +10077,13 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               wsAuthOkRef.current = true;
               setWsDegraded(false);
               if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
+              // The WS owns realtime again: cancel any pending SSE re-open
+              // (sseRecovery.ts) and end the SSE failure streak with it.
+              if (sseRetryRef.current) { clearTimeout(sseRetryRef.current); sseRetryRef.current = null; }
+              sseFailCountRef.current = 0;
               if (sseRef.current) {
                 try { sseRef.current.close(); } catch { /* swallow */ }
                 sseRef.current = null;
-                sseFailCountRef.current = 0;
               }
             }
             // AUTH_FAIL — the server rejected our device token at the
@@ -10635,6 +10676,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       window.removeEventListener('online', onOnlineKick);
       try { delete (window as any).__eduRealtime; } catch { /* non-configurable in an odd ROM */ }
       if (httpFallbackRef.current) { clearInterval(httpFallbackRef.current); httpFallbackRef.current = null; }
+      if (sseRetryRef.current) { clearTimeout(sseRetryRef.current); sseRetryRef.current = null; }
       if (sseRef.current) {
         try { sseRef.current.close(); } catch {}
         sseRef.current = null;

@@ -225,13 +225,22 @@ describe('player/page.tsx wiring', () => {
     // `resolveApiRoot(` and went red for a reason that had nothing to do with
     // what it guards. A source-text guard that can be truncated by an unrelated
     // edit is a guard that will eventually be deleted rather than fixed.
-    const start = src.indexOf('function getApiRoot()');
-    expect(start).toBeGreaterThan(-1);
-    const end = src.indexOf('\n}\n', start);
-    expect(end).toBeGreaterThan(start);
-    const fn = src.slice(start, end);
+    const body = (signature: string) => {
+      const start = src.indexOf(signature);
+      expect(start).toBeGreaterThan(-1);
+      const end = src.indexOf('\n}\n', start);
+      expect(end).toBeGreaterThan(start);
+      return src.slice(start, end);
+    };
+    // 2026-11-14: the direct resolution moved into `getDirectApiRoot()` so the
+    // WebSocket can use it while the control plane is on the gateway. Both
+    // halves keep the guarantees this test has always pinned.
+    const direct = body('function getDirectApiRoot()');
+    expect(direct).toContain('resolveApiRoot(');
+    expect(direct).not.toMatch(/localStorage\.(getItem|setItem)\(\s*'edu_api_root'/);
 
-    expect(fn).toContain('resolveApiRoot(');
+    const fn = body('function getApiRoot()');
+    expect(fn).toContain('getDirectApiRoot()');
     // The gateway branch resolves through `gatewayApiRoot` (apiOrigin.ts),
     // which validates scheme + credentials and can only ever return the page's
     // own origin — never `window.location.origin` handed straight to a fetch.
