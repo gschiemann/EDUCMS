@@ -237,6 +237,15 @@ export interface TelemetryUpdateReport {
   /** Cover painted → operator content on the glass, ms. */
   coverMs: number | null;
   converged: boolean;
+  /**
+   * 2026-11-14 — the server clock the window was decided on: measured or not,
+   * and server − device ms (null when not measured). Optional both ways: an
+   * older bundle never sends them and the API accepts their absence. Same
+   * strict-schema rollout rule; it holds naturally, because only a document
+   * whose update was APPLIED by this bundle has them to send.
+   */
+  clockMeasured?: boolean;
+  clockOffsetMs?: number | null;
 }
 
 export interface TelemetryBody {
@@ -616,6 +625,15 @@ function updateReport(u: TelemetryUpdateReport): TelemetryUpdateReport | null {
     blankMs: ms(u.blankMs),
     coverMs: ms(u.coverMs),
     converged: u.converged === true,
+    ...(typeof u.clockMeasured === 'boolean'
+      ? {
+          clockMeasured: u.clockMeasured,
+          clockOffsetMs:
+            u.clockMeasured && typeof u.clockOffsetMs === 'number' && Number.isFinite(u.clockOffsetMs)
+              ? Math.max(-Number.MAX_SAFE_INTEGER, Math.min(Number.MAX_SAFE_INTEGER, Math.round(u.clockOffsetMs)))
+              : null,
+        }
+      : {}),
   };
 }
 

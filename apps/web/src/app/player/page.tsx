@@ -122,6 +122,7 @@ import {
   buildUpdateEvidence,
   convergenceHoldUntil as convergenceHoldUntilFn,
   decideUpdateApply,
+  isBundleUpdateRecord,
   parseDisplayWindows,
   parseUpdateAppliedRecord,
   resolveUpdateZone,
@@ -129,6 +130,15 @@ import {
   type UpdateEvidenceReport,
   type UpdateWindowKind,
 } from './offHoursUpdate';
+import {
+  clockEvidence,
+  createClockRelearnState,
+  finishClockRelearn,
+  planClockRelearn,
+  readUpdateClock,
+  serverClockSample,
+  type ServerClockSample,
+} from './updateClock';
 import { captureCoverFrame, removeUpdateCover, writeUpdateCover, reloadCoverRecord, BLACK_COVER_FRAME, type ReloadCoverReason } from './updateCover';
 import {
   hasShownContentBefore,
@@ -3695,7 +3705,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // Set when the window is open and the screen is waiting for the next item
   // boundary; the advance path runs it INSTEAD of advancing (the reload lands
   // where a cut would have been). Cleared by whoever consumes it.
-  const updateAtBoundaryRef = useRef<(() => void) | null>(null);
+  // The armed apply answers whether it TOOK the boundary (true = the reload is
+  // underway); false = it withdrew, and the caller advances as usual.
+  const updateAtBoundaryRef = useRef<(() => boolean) | null>(null);
   const updateApplyingRef = useRef(false);
   // The screen's display windows (both arrays) from the last manifest that
   // carried a `display` block — the zone and the display-OFF test read them.
@@ -3719,8 +3731,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const fn = updateAtBoundaryRef.current;
     if (!fn) return false;
     updateAtBoundaryRef.current = null;
-    fn();
-    return true;
+    // A withdrawn apply (the window closed, an alert, a download …) gives the
+    // boundary back: the slide advances as if nothing had been armed.
+    return fn() === true;
   };
   const [exitUnavailable, setExitUnavailable] = useState(false);
   // 2026-07-01 — LAUNCH-SPRINT player deep pass, blank-screen class (b):
@@ -4356,6 +4369,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // otherwise drop every emergency. Offset is "server - local"; apply
   // by ADDING to local Date.now() before comparing.
   const serverClockOffsetRef = useRef<number>(0);
+  // 2026-11-14 (updateClock.ts) — the latest REAL server-time measurement,
+  // anchored on both device clocks. `null` = never measured: the 0 above is
+  // "unknown", not "measured zero". Written next to every assignment of the
+  // offset from a real server time (and by the update window's own
+  // re-measure, which keeps its result here and never moves the push gate's
+  // offset). Only the off-hours update window reads it.
+  const serverClockSampleRef = useRef<ServerClockSample | null>(null);
+  const noteServerClockMeasured = (offsetMs: number) => {
+    try { serverClockSampleRef.current = serverClockSample(offsetMs, Date.now(), performance.now()); } catch { /* evidence only */ }
+  };
 
   // ─── Display control (2026-08-13) ────────────────────────────────────
   // displayConfigFpRef — fingerprint of the `display` block we last handed
@@ -8591,6 +8614,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           if (offset === null) return;
           const previous = serverClockOffsetRef.current;
           serverClockOffsetRef.current = offset;
+          noteServerClockMeasured(offset);
           if (Math.abs(offset - previous) > 5_000) {
             console.warn(`[Player ${transport}] server clock offset re-learned after a stale drop: ${previous} ms -> ${offset} ms`);
           }
@@ -9202,48 +9226,29 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       }
     };
 
-    const applyUpdate = async (windowKind: UpdateWindowKind, boundary: UpdateBoundary) => {
-      const p = pendingUpdateRef.current;
-      if (!p || cancelled || updateApplyingRef.current) return;
-      updateApplyingRef.current = true;
-      updateAtBoundaryRef.current = null;
+    // ── The clock the window is decided on (2026-11-14, updateClock.ts) ──
+    // The nightly window reads the SERVER-corrected clock, and only while the
+    // offset is proven (measured, and the device clock has not stepped since).
+    // Unproven → `wait:clock-unverified` and one bounded re-measure from
+    // `GET /api/v1/realtime/time` (single-flight, ≥ 30 s apart, backing off to
+    // 15 min). Its result stays in `serverClockSampleRef`: the push gate's
+    // offset is never moved from here. Houston Video Wall: a box ~4 h slow
+    // applied "nightly" updates at 07:45 local.
+    const clockRelearn = createClockRelearnState();
+    const readClock = () => readUpdateClock(serverClockSampleRef.current, Date.now(), performance.now());
+    const relearnClockIfDue = () => {
       try {
-        // The hard exclusions, re-checked at the moment of truth (a boundary
-        // can arrive minutes after it was armed).
-        const ev = liveEvidence();
-        if (ev.emergency || largeDownloadRef.current || playbackStoppedRef.current || (windowKind === 'nightly' && syncActiveRef.current)) {
-          console.log('[bundle-update] apply withdrawn at the boundary — state changed');
-          updateApplyingRef.current = false;
-          return;
-        }
-        const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current);
-        const frame = await captureCoverFrame(document);
-        if (cancelled) { updateApplyingRef.current = false; return; }
-        const navigatedAtMs = Date.now();
-        const st = safeSessionStorage();
-        if (st) {
-          writeUpdateCover(st, {
-            v: 1, from: p.mine, to: p.theirs, window: windowKind, boundary, zone: zone.zone, zoneSource: zone.source,
-            capture: frame.capture, navigatedAtMs, kind: frame.kind, data: frame.data, color: frame.color, w: frame.w, h: frame.h,
-          });
-        }
-        // The next navigation is served from the pinned shell (one-shot).
-        if (cacheDriveRef.current !== 'unavailable') await armShellSwap(120_000);
-        console.log(`[bundle-update] applying by=${p.by} ${p.mine} → ${p.theirs} — ${windowKind} window, at ${boundary}, zone ${zone.zone} (${zone.source}), cover ${frame.capture}`);
-        // Record BEFORE navigating so the floor holds even if the reload is async.
-        lastBundleReloadAtRef.current = Date.now();
-        hardCacheBustingReload();
-      } catch (e) {
-        updateApplyingRef.current = false;
-        console.warn('[bundle-update] apply failed; will retry on the next tick:', (e as Error)?.message);
-      }
+        if (!planClockRelearn(clockRelearn, performance.now(), Date.now())) return;
+        void relearnServerClockOffset({ apiRoot: getApiRoot() }).then((offset) => {
+          finishClockRelearn(clockRelearn, offset !== null);
+          if (offset === null || cancelled) return;
+          noteServerClockMeasured(offset);
+          console.log(`[bundle-update] server clock measured for the update window: offset ${offset} ms`);
+        }, () => finishClockRelearn(clockRelearn, false));
+      } catch { /* the next tick asks again */ }
     };
-
-    const evaluate = () => {
-      const p = pendingUpdateRef.current;
-      if (!p || cancelled || updateApplyingRef.current) return;
-      const now = Date.now();
-      if (convergenceHoldUntil > now) return;
+    type PendingUpdate = NonNullable<typeof pendingUpdateRef.current>;
+    const decide = (p: PendingUpdate, clock: ReturnType<typeof readClock>) => {
       const ev = liveEvidence();
       const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current);
       const decision = decideUpdateApply({
@@ -9251,7 +9256,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         prepared: p.prepared,
         prepareAttempts: p.prepareAttempts,
         cacheDrive: cacheDriveRef.current,
-        nowMs: now,
+        nowMs: Date.now(),
+        clock,
         lastReloadAtMs: lastBundleReloadAtRef.current,
         minReloadGapMs: MIN_BUNDLE_RELOAD_GAP_MS,
         screenId: screenIdRef.current,
@@ -9265,6 +9271,84 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         evidence: ev,
         hasItemBoundary: sortedItemsRef.current.length > 1,
       });
+      return { decision, zone };
+    };
+
+    /**
+     * Apply the waiting bundle — or decline. Returns synchronously whether the
+     * reload is underway: the armed item boundary only skips its advance on
+     * `true`. The whole decision is re-run on the corrected clock at the
+     * boundary (it can arrive minutes after it was armed) and once more right
+     * before the reload, so a boundary armed inside the window can never
+     * reload outside it.
+     */
+    const applyUpdate = (windowKind: UpdateWindowKind, boundary: UpdateBoundary): boolean => {
+      const p = pendingUpdateRef.current;
+      if (!p || cancelled || updateApplyingRef.current) return false;
+      const clock = readClock();
+      const gate = decide(p, clock).decision;
+      if (gate.action !== 'apply') {
+        console.log(`[bundle-update] ${windowKind} apply withdrawn at the boundary — ${gate.reason}`);
+        if (gate.reason === 'clock-unverified') relearnClockIfDue();
+        updateAtBoundaryRef.current = null;
+        p.boundaryArmedAt = 0;
+        return false;
+      }
+      updateApplyingRef.current = true;
+      updateAtBoundaryRef.current = null;
+      const appliedWindow = gate.window;
+      const indexAtBoundary = currentIndexRef.current;
+      void (async () => {
+        let navigatedAtMs = 0;
+        try {
+          const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current);
+          const frame = await captureCoverFrame(document);
+          if (cancelled) { updateApplyingRef.current = false; return; }
+          navigatedAtMs = Date.now();
+          const st = safeSessionStorage();
+          if (st) {
+            writeUpdateCover(st, {
+              v: 1, from: p.mine, to: p.theirs, window: appliedWindow, boundary, zone: zone.zone, zoneSource: zone.source,
+              capture: frame.capture, navigatedAtMs, kind: frame.kind, data: frame.data, color: frame.color, w: frame.w, h: frame.h,
+              ...clockEvidence(clock),
+            });
+          }
+          // The next navigation is served from the pinned shell (one-shot).
+          if (cacheDriveRef.current !== 'unavailable') await armShellSwap(120_000);
+          // Right before reloading: the window, the alert, the download — again.
+          const last = decide(p, readClock()).decision;
+          if (cancelled || last.action !== 'apply') {
+            const why = last.action === 'apply' ? 'cancelled' : last.reason;
+            console.log(`[bundle-update] apply withdrawn before the reload — ${why}`);
+            try {
+              const rec = parseUpdateAppliedRecord(st?.getItem(UPDATE_COVER_KEY));
+              if (rec && rec.navigatedAtMs === navigatedAtMs && isBundleUpdateRecord(rec)) st?.removeItem(UPDATE_COVER_KEY);
+            } catch { /* best effort */ }
+            p.boundaryArmedAt = 0;
+            updateApplyingRef.current = false;
+            // Give the item boundary back when nothing else advanced meanwhile
+            // (a video's onEnded has no second chance; the 500 ms heartbeat does).
+            if (!cancelled && boundary === 'item' && currentIndexRef.current === indexAtBoundary) advanceSlide();
+            return;
+          }
+          console.log(`[bundle-update] applying by=${p.by} ${p.mine} → ${p.theirs} — ${appliedWindow} window, at ${boundary}, zone ${zone.zone} (${zone.source}), cover ${frame.capture}, server clock ${clock.verified ? `offset ${clock.offsetMs} ms` : `unverified (${clock.reason})`}`);
+          // Record BEFORE navigating so the floor holds even if the reload is async.
+          lastBundleReloadAtRef.current = Date.now();
+          hardCacheBustingReload();
+        } catch (e) {
+          updateApplyingRef.current = false;
+          console.warn('[bundle-update] apply failed; will retry on the next tick:', (e as Error)?.message);
+        }
+      })();
+      return true;
+    };
+
+    const evaluate = () => {
+      const p = pendingUpdateRef.current;
+      if (!p || cancelled || updateApplyingRef.current) return;
+      const now = Date.now();
+      if (convergenceHoldUntil > now) return;
+      const { decision, zone } = decide(p, readClock());
       const label = decision.action === 'apply' ? `apply:${decision.window}:${decision.boundary}` : `wait:${decision.reason}`;
       if (label !== updateLastDecisionRef.current) {
         updateLastDecisionRef.current = label;
@@ -9274,17 +9358,18 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         }
       }
       if (decision.action === 'wait') {
+        if (decision.reason === 'clock-unverified') relearnClockIfDue();
         if (updateAtBoundaryRef.current) { updateAtBoundaryRef.current = null; p.boundaryArmedAt = 0; }
         return;
       }
-      if (decision.boundary === 'now') { void applyUpdate(decision.window, 'now'); return; }
+      if (decision.boundary === 'now') { applyUpdate(decision.window, 'now'); return; }
       // Wait for the next item boundary, but not forever: a long clip or a
       // stuck advance must not cost the night.
-      if (p.boundaryArmedAt && now - p.boundaryArmedAt >= BOUNDARY_WAIT_CAP_MS) { void applyUpdate(decision.window, 'now'); return; }
+      if (p.boundaryArmedAt && now - p.boundaryArmedAt >= BOUNDARY_WAIT_CAP_MS) { applyUpdate(decision.window, 'now'); return; }
       if (!updateAtBoundaryRef.current) {
         p.boundaryArmedAt = now;
         const windowKind = decision.window;
-        updateAtBoundaryRef.current = () => { void applyUpdate(windowKind, 'item'); };
+        updateAtBoundaryRef.current = () => applyUpdate(windowKind, 'item');
         console.log(`[bundle-update] ${windowKind} window open — applying at the next item boundary`);
       }
     };
@@ -9350,6 +9435,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           convergenceHoldUntil,
           windows: (updateWindowsRef.current ?? []).length,
           zone: resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current),
+          clock: readClock(),
         }),
       };
     } catch { /* diagnostics only */ }
@@ -9783,6 +9869,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           const srv = typeof data?.ts === 'number' ? data.ts : null;
           if (srv == null) return;
           serverClockOffsetRef.current = srv - Date.now();
+          noteServerClockMeasured(serverClockOffsetRef.current);
           if (Math.abs(serverClockOffsetRef.current) > 5000) {
             console.warn('[Player SSE] Large clock skew detected — offset=', serverClockOffsetRef.current, 'ms');
           }
@@ -10064,6 +10151,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             if (msg.type === 'AUTH_OK' && typeof authServerTime === 'number') {
               const srv = authServerTime as number;
               serverClockOffsetRef.current = srv - Date.now();
+              noteServerClockMeasured(serverClockOffsetRef.current);
               if (Math.abs(serverClockOffsetRef.current) > 5000) {
                 console.warn('[Player WS] Large clock skew detected — offset=', serverClockOffsetRef.current, 'ms');
               }

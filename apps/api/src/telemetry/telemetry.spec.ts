@@ -710,6 +710,36 @@ describe('POST /screens/:id/telemetry', () => {
     expect(shouldBumpManifestRev('Screen', 'update', keys)).toBe(false);
   });
 
+  it('the update block carries the server-clock evidence when sent, and an older player without it still lands', async () => {
+    const base = {
+      fromBundleId: 'aaaa', toBundleId: 'bbbb', window: 'nightly', boundary: 'item', zone: 'America/Chicago',
+      zoneSource: 'screen', capture: 'live', blankMs: 410, coverMs: 1800, converged: true,
+    };
+    await controller.report(SCREEN_ID, makeReq(), { update: { ...base, clockMeasured: true, clockOffsetMs: 14_400_250 } } as never);
+    expect(prisma.client.screenEvent.create.mock.calls[0][0].data.detail).toMatchObject({ clockMeasured: true, clockOffsetMs: 14_400_250 });
+    prisma.client.screenEvent.create.mockClear();
+    jest.advanceTimersByTime(31_000); // the per-screen 30 s accept floor
+    await controller.report(SCREEN_ID, makeReq(), { update: { ...base, clockMeasured: false, clockOffsetMs: null } } as never);
+    expect(prisma.client.screenEvent.create.mock.calls[0][0].data.detail).toMatchObject({ clockMeasured: false, clockOffsetMs: null });
+    prisma.client.screenEvent.create.mockClear();
+    jest.advanceTimersByTime(31_000);
+    await controller.report(SCREEN_ID, makeReq(), { update: base } as never);
+    const detail = prisma.client.screenEvent.create.mock.calls[0][0].data.detail as Record<string, unknown>;
+    expect(detail).toMatchObject(base);
+    expect(Object.keys(detail)).not.toContain('clockMeasured');
+    expect(Object.keys(detail)).not.toContain('clockOffsetMs');
+  });
+
+  it('a malformed clock field is a 400 like any other bad update key', async () => {
+    const base = {
+      fromBundleId: 'a', toBundleId: 'b', window: 'nightly', boundary: 'now', zone: 'UTC',
+      zoneSource: 'device', capture: 'color', blankMs: 1, coverMs: 2, converged: true,
+    };
+    await expect(controller.report(SCREEN_ID, makeReq(), { update: { ...base, clockOffsetMs: '4h' } } as never)).rejects.toMatchObject({ status: 400 });
+    await expect(controller.report(SCREEN_ID, makeReq(), { update: { ...base, clockOffsetMs: 1.5 } } as never)).rejects.toMatchObject({ status: 400 });
+    expect(prisma.client.screenEvent.create).not.toHaveBeenCalled();
+  });
+
   it('a timeline write that fails never fails the report', async () => {
     prisma.client.screenEvent.create.mockRejectedValueOnce(new Error('db blip'));
     const out = await controller.report(SCREEN_ID, makeReq(), {

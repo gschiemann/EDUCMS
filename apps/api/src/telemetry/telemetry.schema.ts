@@ -441,6 +441,13 @@ const updateAppliedSchema = z.strictObject({
   blankMs: z.number().finite().min(0).max(86_400_000).nullable(),
   coverMs: z.number().finite().min(0).max(86_400_000).nullable(),
   converged: z.boolean(),
+  // 2026-11-14 — the server clock the window was decided on (Houston Video
+  // Wall: a device clock ~4 h slow applied "nightly" updates at 07:45).
+  // `clockOffsetMs` = server − device, ms; null when not measured. OPTIONAL:
+  // an older player never sends either and still validates. The bound is the
+  // safe-integer range, so a box that booted at 1970 is recorded, not refused.
+  clockMeasured: z.boolean().optional(),
+  clockOffsetMs: z.number().int().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER).nullable().optional(),
 });
 
 export const screenTelemetrySchema = z.strictObject({
