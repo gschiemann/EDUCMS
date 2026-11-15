@@ -14,6 +14,7 @@ This is the always-loaded rulebook: the rules every session must know, each with
 | `apps/web/` | `apps/web/CLAUDE.md` — cross-browser, mobile performance, Taurus CSS |
 | configuration | `docs/ENVIRONMENT.md` — every variable, default, failure direction, kill switch |
 | deploying, health, rollback | `docs/DEPLOY.md`, `docs/BACKUP_AND_ROLLBACK.md` |
+| hosting cost, polling, builds | `docs/COST.md` - what each provider bills for, the request budget, the rules |
 | auditing | `docs/governance/AUDIT-SURFACE.md` — the domain map every audit must cover |
 | dispatching agents | `docs/governance/AGENT-DISPATCH.md` |
 | the standard, your authority, the owner's rules | `AGENTS.md`, `docs/governance/` |
@@ -90,6 +91,10 @@ Test in WebKit before "done"; never `.remove()` a node React rendered; the playe
 ## 12. AI in the product
 
 Our key serves the Concierge and the included allowance (metered in dollars per paired screen); tenants' own keys are unlimited; board design never runs on Claude (owner's rule); models are catalog data that upgrade themselves daily behind a canary (`ai-model-sync.cron.ts`). Detail: `docs/product/CONCIERGE.md`.
+
+## 13. Cost
+
+A request that reaches Vercel is billed on four meters; the same request sent straight to the API costs almost nothing, and a screen polls all day. So: the same-origin gateway is a fallback, never a screen's home; no new periodic network call on a screen, and no faster one, without `apps/web/tools/request-budget.json` changing in the same pull request; an error slows a retry down, never speeds it up; a route every screen polls answers from memory or Redis; a push is a build, so no work-in-progress pushes. Vercel moves the team up a Flat Rate CDN tier by itself when a cycle's requests pass the cap. *Mechanism:* `apps/web/tools/check-request-budget.cjs` (floors, ceilings, a tripwire on new timers; `request-budget.yml`, reports), `apps/web/scripts/vercel-ignore-build.sh`; the gateway's return path and a usage watch are GAPs named in `docs/COST.md`.
 
 ---
 

@@ -1,0 +1,90 @@
+{
+  "_doc": [
+    "The player's request budget - every PERIODIC network call a paired screen makes, with the interval it may not go below.",
+    "Read by apps/web/tools/check-request-budget.cjs (CI: .github/workflows/request-budget.yml). Rules and reasoning: docs/COST.md.",
+    "A floor is a COST floor: an interval may get longer without touching this file, never shorter. It says nothing about how slow a life-safety poll may be - that is owned by the emergency rulebook and its tests.",
+    "The ceilings equal today's totals on purpose. A new periodic call, or a faster one, changes this file in the same pull request, where the owner sees it."
+  ],
+  "ceilings": {
+    "healthyPerScreenDay": 20400,
+    "degradedPerScreenDay": 53520
+  },
+  "timerBaseline": {
+    "apps/web/src/app/player": 44,
+    "apps/web/src/components/player": 8
+  },
+  "calls": [
+    {
+      "id": "emergency-rev",
+      "route": "GET /api/v1/screens/:id/emergency-rev",
+      "file": "apps/web/src/app/player/emergencyRev.ts",
+      "pattern": "export const REV_POLL_HEALTHY_MS = ([^;]+);",
+      "floorMs": 10000,
+      "mode": "healthy"
+    },
+    {
+      "id": "emergency-rev (push degraded or alert live)",
+      "route": "GET /api/v1/screens/:id/emergency-rev",
+      "file": "apps/web/src/app/player/emergencyRev.ts",
+      "pattern": "export const REV_POLL_FAST_MS = ([^;]+);",
+      "floorMs": 5000,
+      "mode": "degraded"
+    },
+    {
+      "id": "manifest reconcile",
+      "route": "GET /api/v1/screens/:id/manifest",
+      "file": "apps/web/src/app/player/emergencyRev.ts",
+      "pattern": "export const RECONCILE_HEALTHY_MS = ([^;]+);",
+      "floorMs": 60000,
+      "mode": "healthy"
+    },
+    {
+      "id": "manifest reconcile (push degraded)",
+      "route": "GET /api/v1/screens/:id/manifest",
+      "file": "apps/web/src/app/player/emergencyRev.ts",
+      "pattern": "export const RECONCILE_DEGRADED_MS = ([^;]+);",
+      "floorMs": 10000,
+      "mode": "degraded"
+    },
+    {
+      "id": "manifest HTTP fallback (WS and SSE both down)",
+      "route": "GET /api/v1/screens/:id/manifest",
+      "file": "apps/web/src/app/player/page.tsx",
+      "pattern": "httpFallbackRef\\.current = setInterval\\(\\(\\) => fetchContent\\(\\), ([^)]+)\\);",
+      "floorMs": 5000,
+      "mode": "degraded"
+    },
+    {
+      "id": "emergency messages (overlay poll)",
+      "route": "GET /api/v1/emergency/messages",
+      "file": "apps/web/src/app/player/page.tsx",
+      "pattern": "pollMs=\\{([^}]+)\\}",
+      "floorMs": 10000,
+      "mode": "both"
+    },
+    {
+      "id": "telemetry",
+      "route": "POST /api/v1/screens/:id/telemetry",
+      "file": "apps/web/src/app/player/telemetry.ts",
+      "pattern": "export const TELEMETRY_INTERVAL_MS = ([^;]+);",
+      "floorMs": 60000,
+      "mode": "both"
+    },
+    {
+      "id": "play log upload",
+      "route": "POST /api/v1/screens/:id/play-log",
+      "file": "apps/web/src/app/player/playLog.ts",
+      "pattern": "export const PLAY_LOG_UPLOAD_INTERVAL_MS = ([^;]+);",
+      "floorMs": 600000,
+      "mode": "both"
+    },
+    {
+      "id": "web bundle check (always the web origin)",
+      "route": "GET /api/build-info",
+      "file": "apps/web/src/app/player/page.tsx",
+      "pattern": "const iv = setInterval\\(check, ([^)]+)\\);",
+      "floorMs": 900000,
+      "mode": "both"
+    }
+  ]
+}
