@@ -45,3 +45,8 @@ jobs:
         run: node apps/web/tools/check-request-budget.cjs --self-test
       - name: Player request budget (floors, ceilings, timer tripwire)
         run: node apps/web/tools/check-request-budget.cjs
+      # The rule that decides whether Vercel builds a push. It shipped once
+      # without working inside Vercel (no usable `origin` in that checkout),
+      # so the test rebuilds that checkout: shallow, no remote, no network.
+      - name: Build-skip rule, replayed in Vercel's checkout
+        run: sh apps/web/scripts/vercel-ignore-build.test.sh
