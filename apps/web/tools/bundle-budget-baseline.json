@@ -1,6 +1,6 @@
 {
-  "_comment": "Bundle-size ceilings (F3). Ratchets DOWN only \u2014 regenerate deliberately after a real reduction: UPDATE_BASELINE=1 node apps/web/tools/check-bundle-budget.cjs. Growth past tolerance REDS CI; do not bump to get green. Owner raised totalBytes 2026-11-02 (+0.28 MB) for the free data widgets (#221): total is the sum of every page's chunks, not what a screen downloads; the per-chunk kiosk ceilings are unchanged.",
+  "_comment": "Bundle-size ceilings (F3). Ratchets DOWN only \u2014 regenerate deliberately after a real reduction: UPDATE_BASELINE=1 node apps/web/tools/check-bundle-budget.cjs. Growth past tolerance REDS CI; do not bump to get green. Owner raised totalBytes 2026-11-02 (+0.28 MB) for the free data widgets (#221): total is the sum of every page's chunks, not what a screen downloads; the per-chunk kiosk ceilings are unchanged. Owner raised totalBytes 2026-11-14 (+0.1 MB) for the security patch sweep (#307): next 16.4.5 grows the summed chunks ~0.05 MB; per-chunk ceilings unchanged.",
   "maxChunkBytes": 1053469,
   "maxChunkGzipBytes": 207654,
-  "totalBytes": 20300000
+  "totalBytes": 20400000
 }
