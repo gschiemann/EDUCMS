@@ -23,11 +23,12 @@
 # rule above shipped comparing with `git fetch origin master`, and the first
 # docs-only branch pushed after it (PR #323) built anyway: this script
 # answered BUILD in 261 ms and, being silent, did not say why. Vercel's
-# checkout is a ten-commit shallow clone; the fetch from a remote named
-# `origin` did not succeed in it, and the script fell to its safe answer. The
-# validation run before the merge used a branch that changed the web, where
-# BUILD was the right answer for the wrong reason. The base is now fetched
-# from the repository's own URL (`origin` stays as a second try for a
+# checkout is a depth-10 shallow clone with NO remote at all (this script's
+# own line in the correcting branch's build log: `remotes: []`), so a fetch
+# from `origin` can never succeed there and the script fell to its safe
+# answer. The validation run before the merge used a branch that changed the
+# web, where BUILD was the right answer for the wrong reason. The base is now
+# fetched from the repository's own URL (`origin` stays as a second try for a
 # checkout that has one), and every decision prints one line, so a build log
 # says why it built. `vercel-ignore-build.test.sh` replays that checkout
 # (shallow, no remote) and runs in CI.
