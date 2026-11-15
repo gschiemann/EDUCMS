@@ -27,7 +27,7 @@ Prices move. Read the provider's pricing page before quoting one; the audit hand
 
 `apps/web/tools/request-budget.json` lists every periodic network call a paired screen makes and the interval it may not go below. `apps/web/tools/check-request-budget.cjs` reads each interval back from the source and fails CI when one is faster than its floor, when the totals pass their ceilings, or when a new timer appears in the player (`.github/workflows/request-budget.yml`; it reports, and becomes blocking when the owner adds it to the ruleset).
 
-Per paired screen, per day: **20,400 requests healthy, 53,520 degraded** (push channel down). Run the guard to print the table.
+Per paired screen, per day, from the web player: **20,400 requests healthy, 53,520 degraded** (push channel down). Run the guard to print the table. The APK's own timers are in the table as well (status heartbeat every 60 s; the native alert watch every 15 s while a panel is off, every 5 s on an unattended face); their floors are checked and they are not part of those two totals.
 
 What those numbers mean in dollars depends on the origin:
 

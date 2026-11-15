@@ -29,6 +29,11 @@
  *      the point of a tripwire: a new one stops here and is either shown to
  *      be free (raise the baseline, say why in the PR) or added to the table.
  *
+ * The APK's native timers (the status heartbeat, the alert watch while a
+ * panel is off) are in the table with mode "native": their floors are
+ * checked, and they stay out of the two totals because they run under
+ * different conditions from the page's calls.
+ *
  * WHAT IT CANNOT SEE: a poll built from chained setTimeout, traffic caused by
  * retries, and which origin a screen is actually using. Those are runtime
  * facts; `docs/COST.md` names the measurements that cover them.
@@ -55,7 +60,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * than guessed at: an interval that became a variable needs a human.
  */
 function evalIntervalMs(expr) {
-  const cleaned = String(expr).replace(/_/g, '').trim();
+  // `15_000L` is a Kotlin Long literal: the APK's own timers are in the table too.
+  const cleaned = String(expr).replace(/_/g, '').replace(/(\d)L\b/g, '$1').trim();
   if (!cleaned || !/^[0-9\s*+().]+$/.test(cleaned)) return null;
   let value;
   try {
@@ -191,11 +197,16 @@ function selfTest() {
     if (!ok) bad += 1;
     console.log(`  ${ok ? 'ok  ' : 'FAIL'} ${name} - ${failures.length} failure(s), expected ${expected}`);
   }
-  if (evalIntervalMs('process.exit(1)') !== null || evalIntervalMs('15 * 60_000') !== 900000) {
+  if (
+    evalIntervalMs('process.exit(1)') !== null ||
+    evalIntervalMs('15 * 60_000') !== 900000 ||
+    evalIntervalMs('15_000L') !== 15000 ||
+    evalIntervalMs('L') !== null
+  ) {
     bad += 1;
     console.log('  FAIL evalIntervalMs');
   } else {
-    console.log('  ok   evalIntervalMs refuses code and evaluates arithmetic');
+    console.log('  ok   evalIntervalMs refuses code and evaluates arithmetic, Kotlin Long literals included');
   }
   if (bad) {
     console.error(`\n[request-budget] self-test FAILED (${bad}).`);
