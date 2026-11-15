@@ -70,6 +70,8 @@ import {
   isNetworkClassFailure,
   onControlPlaneFailure,
   onControlPlaneSuccess,
+  onDirectOriginProven,
+  pushProvesDirect,
   readPersistedFallback,
   writePersistedFallback,
   type ApiOriginState,
@@ -1288,7 +1290,13 @@ function publishApiOriginDiagnostic(): void {
   if (typeof window === 'undefined') return;
   try {
     (window as any).__eduApiOrigin = apiOriginStateRef
-      ? { mode: apiOriginStateRef.mode, networkFailures: apiOriginStateRef.networkFailures, persistedFallback: apiOriginStateRef.persistedFallback }
+      ? {
+          mode: apiOriginStateRef.mode,
+          networkFailures: apiOriginStateRef.networkFailures,
+          persistedFallback: apiOriginStateRef.persistedFallback,
+          healUnproven: apiOriginStateRef.healUnproven === true,
+          failedHeals: apiOriginStateRef.failedHeals ?? 0,
+        }
       : null;
   } catch { /* swallow */ }
 }
@@ -1300,7 +1308,7 @@ function noteControlPlaneFailure(err: unknown): void {
   // policy below is untouched by it.
   if (isNetworkClassFailure(err)) noteNetworkNoAnswer();
   const before = apiOriginState();
-  const next = onControlPlaneFailure(before, err);
+  const next = onControlPlaneFailure(before, err, originClockMs());
   apiOriginStateRef = next;
   publishApiOriginDiagnostic();
   if (next.mode !== before.mode) {
@@ -1324,6 +1332,43 @@ function noteControlPlaneSuccess(): void {
   if (before.persistedFallback && !next.persistedFallback) {
     writePersistedFallback(playerLocalStorage(), false);
     try { console.info('[Player] direct API origin reachable again — gateway fallback cleared'); } catch { /* swallow */ }
+  }
+}
+
+/**
+ * The clock the origin policy measures its gateway dwell on. Monotonic: an
+ * Android box steps `Date.now()` when NTP lands, and a dwell measured across
+ * that step would be wrong by hours in either direction.
+ */
+function originClockMs(): number {
+  try { return performance.now(); } catch { return Date.now(); }
+}
+
+/**
+ * 2026-11-15 - THE WAY BACK FROM THE GATEWAY (`apiOrigin.ts`, same heading).
+ *
+ * Called with independent proof that the DIRECT origin is reachable: the push
+ * WebSocket, which always dials direct, is authenticated and talking. The
+ * policy decides (dwell, failed-heal budget); this is only the wiring.
+ *
+ * The persisted suspicion is deliberately NOT cleared here. The return is a
+ * probe, exactly like the one a boot makes: `noteControlPlaneSuccess` clears
+ * the flag on the first direct request that succeeds, and one failed direct
+ * request puts the whole control plane back on the gateway
+ * (`noteControlPlaneFailure`, threshold 1).
+ */
+function noteDirectOriginProven(): void {
+  const before = apiOriginState();
+  const next = onDirectOriginProven(before, originClockMs());
+  if (next === before) return;
+  apiOriginStateRef = next;
+  publishApiOriginDiagnostic();
+  if (next.mode !== before.mode) {
+    try {
+      console.info(
+        '[Player] push channel is up on the direct API origin - control plane returning to direct (one failed request sends it back to the gateway)',
+      );
+    } catch { /* swallow */ }
   }
 }
 
@@ -10639,6 +10684,17 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         connect();
       } else if (verdict.action === 'abandon') {
         abandonAndRedial(verdict.reason);
+      } else if (pushProvesDirect({
+        open: state === WebSocket.OPEN,
+        authOk: wsAuthOkRef.current,
+        sinceLastMessageMs: ws ? now - lastWsMessageAtRef.current : Infinity,
+      })) {
+        // 2026-11-15 - the way back from the gateway. This socket dialled the
+        // DIRECT origin (`connect()`), authenticated there and is talking, so
+        // whatever moved the HTTP control plane onto the gateway is over.
+        // Offered on every tick rather than at AUTH_OK because the policy
+        // measures a dwell; it is a no-op on direct and while the dwell runs.
+        noteDirectOriginProven();
       }
     };
     wsSupervisorRef.current = setInterval(supervise, WS_SUPERVISOR_TICK_MS);

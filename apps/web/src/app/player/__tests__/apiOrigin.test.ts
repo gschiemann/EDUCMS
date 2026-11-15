@@ -1,12 +1,19 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   DIRECT_FAILURES_BEFORE_GATEWAY,
+  DIRECT_PROOF_FRESH_MS,
   GATEWAY_FALLBACK_STORAGE_KEY,
+  MAX_FAILED_HEALS_PER_SESSION,
+  MIN_GATEWAY_DWELL_MS,
   failureThreshold,
   gatewayApiRoot,
   initialApiOriginState,
   isNetworkClassFailure,
   onControlPlaneFailure,
   onControlPlaneSuccess,
+  onDirectOriginProven,
+  pushProvesDirect,
   readPersistedFallback,
   writePersistedFallback,
   type ApiOriginState,
@@ -149,6 +156,214 @@ describe('boot behaviour + self-heal', () => {
   it('a gateway success does NOT clear the suspicion (direct was never retried)', () => {
     const s = onControlPlaneSuccess(fail(initialApiOriginState(false), NETWORK_ERR, 3));
     expect(s.persistedFallback).toBe(true);
+  });
+});
+
+/**
+ * 2026-11-15 (cost audit) - THE WAY BACK, MID-SESSION.
+ *
+ * Until this date the only way off the gateway was the single probe a boot
+ * makes. 27% of all screen traffic was reaching the API through Vercel, on a
+ * fleet where the gateway exists for a handful of units. These tests pin the
+ * properties that make the return safe:
+ *
+ *   1. Only INDEPENDENT proof of the direct origin moves the mode - never an
+ *      HTTP outcome on the gateway (the test above still holds).
+ *   2. The return is a PROBE, not a verdict: the suspicion stays set, so one
+ *      failed direct request goes straight back to the gateway.
+ *   3. It waits out a dwell, so the outage that caused the switch can end.
+ *   4. A device the proof is wrong about stops being offered the return
+ *      after a small budget; a device it is right about never runs out.
+ */
+describe('the way back to direct, mid-session', () => {
+  const T0 = 1_000_000;
+  /** On the gateway since T0, entered the ordinary way. */
+  const onGateway = (): ApiOriginState => {
+    let s = initialApiOriginState(false);
+    s = onControlPlaneFailure(s, NETWORK_ERR, T0 - 2);
+    s = onControlPlaneFailure(s, NETWORK_ERR, T0 - 1);
+    s = onControlPlaneFailure(s, NETWORK_ERR, T0);
+    expect(s.mode).toBe('gateway');
+    expect(s.gatewaySinceMs).toBe(T0);
+    return s;
+  };
+  const AFTER_DWELL = T0 + MIN_GATEWAY_DWELL_MS;
+
+  it('does nothing on direct - same object, so the caller sees no transition', () => {
+    const s = initialApiOriginState(false);
+    expect(onDirectOriginProven(s, T0)).toBe(s);
+    const suspicious = initialApiOriginState(true);
+    expect(onDirectOriginProven(suspicious, T0)).toBe(suspicious);
+  });
+
+  it('waits out the dwell: proof one millisecond early changes nothing', () => {
+    const s = onGateway();
+    expect(onDirectOriginProven(s, T0)).toBe(s);
+    expect(onDirectOriginProven(s, AFTER_DWELL - 1)).toBe(s);
+  });
+
+  it('after the dwell it returns to direct AS A PROBE: suspicion kept, threshold 1', () => {
+    const healed = onDirectOriginProven(onGateway(), AFTER_DWELL);
+    expect(healed.mode).toBe('direct');
+    expect(healed.persistedFallback).toBe(true);
+    expect(healed.healUnproven).toBe(true);
+    expect(healed.networkFailures).toBe(0);
+    expect(failureThreshold(healed)).toBe(1);
+  });
+
+  it('ONE failed direct request after the return goes straight back to the gateway, and is counted', () => {
+    const healed = onDirectOriginProven(onGateway(), AFTER_DWELL);
+    const back = onControlPlaneFailure(healed, NETWORK_ERR, AFTER_DWELL + 9_000);
+    expect(back.mode).toBe('gateway');
+    expect(back.persistedFallback).toBe(true);
+    expect(back.failedHeals).toBe(1);
+    // The dwell starts again from the moment it fell back.
+    expect(back.gatewaySinceMs).toBe(AFTER_DWELL + 9_000);
+    expect(onDirectOriginProven(back, AFTER_DWELL + 9_000 + MIN_GATEWAY_DWELL_MS - 1)).toBe(back);
+  });
+
+  it('ONE successful direct request proves the return and drops the suspicion', () => {
+    const healed = onDirectOriginProven(onGateway(), AFTER_DWELL);
+    const proven = onControlPlaneSuccess(healed);
+    expect(proven.mode).toBe('direct');
+    expect(proven.persistedFallback).toBe(false);
+    expect(proven.healUnproven).toBeUndefined();
+    expect(failureThreshold(proven)).toBe(3);
+  });
+
+  it('an HTTP refusal after the return is the API answering - it does not send the screen back', () => {
+    const healed = onDirectOriginProven(onGateway(), AFTER_DWELL);
+    const s = onControlPlaneFailure(healed, HTTP_ERR, AFTER_DWELL + 1);
+    expect(s.mode).toBe('direct');
+  });
+
+  it('a device the proof is WRONG about runs out of returns; the gateway is then final for the session', () => {
+    let s = onGateway();
+    let now = T0;
+    for (let i = 0; i < MAX_FAILED_HEALS_PER_SESSION; i += 1) {
+      now += MIN_GATEWAY_DWELL_MS;
+      s = onDirectOriginProven(s, now);
+      expect(s.mode).toBe('direct');
+      now += 5_000;
+      s = onControlPlaneFailure(s, NETWORK_ERR, now); // the socket works, HTTP does not
+      expect(s.mode).toBe('gateway');
+    }
+    expect(s.failedHeals).toBe(MAX_FAILED_HEALS_PER_SESSION);
+    // However long it waits and however alive the socket is.
+    expect(onDirectOriginProven(s, now + 100 * MIN_GATEWAY_DWELL_MS)).toBe(s);
+    // And gateway traffic keeps the mode, as before.
+    expect(onControlPlaneSuccess(s).mode).toBe('gateway');
+  });
+
+  it('a device the proof is RIGHT about never runs out, however many outages the day has', () => {
+    let s = onGateway();
+    let now = T0;
+    for (let outage = 0; outage < 25; outage += 1) {
+      now += MIN_GATEWAY_DWELL_MS;
+      s = onDirectOriginProven(s, now);
+      expect(s.mode).toBe('direct');
+      s = onControlPlaneSuccess(s); // direct really works
+      expect(s.persistedFallback).toBe(false);
+      now += 60_000;
+      for (let i = 0; i < DIRECT_FAILURES_BEFORE_GATEWAY; i += 1) s = onControlPlaneFailure(s, NETWORK_ERR, now); // next API restart
+      expect(s.mode).toBe('gateway');
+      expect(s.failedHeals).toBeUndefined();
+    }
+  });
+
+  it('a proven return keeps the count of earlier failed ones (the budget is per session)', () => {
+    let s = onDirectOriginProven(onGateway(), AFTER_DWELL);
+    s = onControlPlaneFailure(s, NETWORK_ERR, AFTER_DWELL + 1); // failed heal #1
+    s = onDirectOriginProven(s, AFTER_DWELL + 1 + MIN_GATEWAY_DWELL_MS);
+    s = onControlPlaneSuccess(s); // this one took
+    expect(s.mode).toBe('direct');
+    expect(s.failedHeals).toBe(1);
+  });
+
+  it('a state that reached the gateway without a clock starts its dwell at the first proof', () => {
+    let s = initialApiOriginState(false);
+    for (let i = 0; i < DIRECT_FAILURES_BEFORE_GATEWAY; i += 1) s = onControlPlaneFailure(s, NETWORK_ERR);
+    expect(s.mode).toBe('gateway');
+    expect(s.gatewaySinceMs).toBeUndefined();
+    const started = onDirectOriginProven(s, 50_000);
+    expect(started.mode).toBe('gateway');
+    expect(started.gatewaySinceMs).toBe(50_000);
+    expect(onDirectOriginProven(started, 50_000 + MIN_GATEWAY_DWELL_MS).mode).toBe('direct');
+  });
+
+  it('refuses a clock that is not a finite number', () => {
+    const s = onGateway();
+    expect(onDirectOriginProven(s, Number.NaN)).toBe(s);
+    expect(onDirectOriginProven(s, Number.POSITIVE_INFINITY)).toBe(s);
+    expect(onDirectOriginProven(s, undefined as unknown as number)).toBe(s);
+  });
+
+  describe('pushProvesDirect - what counts as proof', () => {
+    const alive = { open: true, authOk: true, sinceLastMessageMs: 4_000 };
+    it('an open, AUTHENTICATED socket heard from recently is proof', () => {
+      expect(pushProvesDirect(alive)).toBe(true);
+      expect(pushProvesDirect({ ...alive, sinceLastMessageMs: DIRECT_PROOF_FRESH_MS })).toBe(true);
+    });
+    it('a TCP open without AUTH_OK is not (player rule 5)', () => {
+      expect(pushProvesDirect({ ...alive, authOk: false })).toBe(false);
+    });
+    it('a socket that is not open is not', () => {
+      expect(pushProvesDirect({ ...alive, open: false })).toBe(false);
+    });
+    it('a silent socket is not - nor is a nonsense age', () => {
+      expect(pushProvesDirect({ ...alive, sinceLastMessageMs: DIRECT_PROOF_FRESH_MS + 1 })).toBe(false);
+      expect(pushProvesDirect({ ...alive, sinceLastMessageMs: Number.POSITIVE_INFINITY })).toBe(false);
+      expect(pushProvesDirect({ ...alive, sinceLastMessageMs: Number.NaN })).toBe(false);
+      expect(pushProvesDirect({ ...alive, sinceLastMessageMs: -1 })).toBe(false);
+    });
+  });
+
+  describe('player/page.tsx - the wiring (source-text guards)', () => {
+    const src = readFileSync(join(__dirname, '..', 'page.tsx'), 'utf8');
+    const fnBody = (signature: string) => {
+      const start = src.indexOf(signature);
+      expect(start).toBeGreaterThan(-1);
+      const end = src.indexOf('\n}\n', start);
+      expect(end).toBeGreaterThan(start);
+      return src.slice(start, end);
+    };
+
+    it('the fallback is stamped with the monotonic clock the dwell is measured on', () => {
+      expect(fnBody('function noteControlPlaneFailure(')).toContain('onControlPlaneFailure(before, err, originClockMs())');
+      expect(fnBody('function noteDirectOriginProven(')).toContain('onDirectOriginProven(before, originClockMs())');
+      expect(fnBody('function originClockMs(')).toContain('performance.now()');
+    });
+
+    it('the return never clears the persisted suspicion itself - only a direct success does', () => {
+      const heal = fnBody('function noteDirectOriginProven(');
+      expect(heal).not.toContain('writePersistedFallback');
+      expect(fnBody('function noteControlPlaneSuccess(')).toContain('writePersistedFallback(playerLocalStorage(), false)');
+    });
+
+    it('the proof is offered from ONE place, the socket supervisor, and only behind pushProvesDirect', () => {
+      const calls = src.split('noteDirectOriginProven();').length - 1;
+      expect(calls).toBe(1);
+      const at = src.indexOf('noteDirectOriginProven();');
+      const gate = src.lastIndexOf('pushProvesDirect({', at);
+      expect(gate).toBeGreaterThan(-1);
+      const between = src.slice(gate, at);
+      expect(between).toContain('authOk: wsAuthOkRef.current');
+      expect(between).toContain('open: state === WebSocket.OPEN');
+      // Nothing but the gate's own arguments and a comment between the two.
+      expect(between.split('\n').length).toBeLessThan(14);
+      // ...and it sits inside the supervisor tick.
+      const supervise = src.lastIndexOf('const supervise = () => {', at);
+      const tickArmed = src.indexOf('wsSupervisorRef.current = setInterval(supervise, WS_SUPERVISOR_TICK_MS);', at);
+      expect(supervise).toBeGreaterThan(-1);
+      expect(tickArmed).toBeGreaterThan(at);
+      expect(src.slice(supervise, at)).not.toContain('wsSupervisorRef.current = setInterval(');
+    });
+
+    it('the socket that supplies the proof dials the DIRECT origin (it would prove nothing otherwise)', () => {
+      const dial = src.match(/const wsUrl = ([^\n]+)/);
+      expect(dial).not.toBeNull();
+      expect(dial![1]).toContain('getDirectApiRoot()');
+    });
   });
 });
 
