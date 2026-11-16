@@ -1,0 +1,52 @@
+name: Request budget
+
+# The player's periodic network calls may not get faster, and no new one may
+# appear, without `apps/web/tools/request-budget.json` changing in the same
+# pull request. Static (no install, no build), under a second. Rules and the
+# reasoning behind every number: docs/COST.md. Reports; it is not a required
+# check until the owner adds it to the "Master deploy safety" ruleset.
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.claude/**'
+      - 'scratch/**'
+      - 'LICENSE'
+  pull_request:
+    branches: [master]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.claude/**'
+      - 'scratch/**'
+      - 'LICENSE'
+
+concurrency:
+  # Same shape as every other workflow here: a superseded PR run is cancelled,
+  # every commit that lands on master keeps its own verdict.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  request-budget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Negative controls (a guard that passes everything proves nothing)
+        run: node apps/web/tools/check-request-budget.cjs --self-test
+      - name: Player request budget (floors, ceilings, timer tripwire)
+        run: node apps/web/tools/check-request-budget.cjs
+      # The rule that decides whether Vercel builds a push. It shipped once
+      # without working inside Vercel (no usable `origin` in that checkout),
+      # so the test rebuilds that checkout: shallow, no remote, no network.
+      - name: Build-skip rule, replayed in Vercel's checkout
+        run: sh apps/web/scripts/vercel-ignore-build.test.sh

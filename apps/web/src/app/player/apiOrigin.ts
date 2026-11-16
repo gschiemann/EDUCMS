@@ -29,6 +29,40 @@
  * threshold is 1 (not N) — a device with a known-bad direct path must not
  * burn three backoff cycles before every boot.
  *
+ * ── THE WAY BACK, MID-SESSION (2026-11-15, cost audit) ────────────────────
+ * Until this date the boot probe was the ONLY way back, and it is a single
+ * request made while the box's own network may still be coming up. Measured
+ * on 2026-11-08 to 11-14: 27% of all screen traffic was reaching the API
+ * through the gateway, on a fleet where the gateway exists for a handful of
+ * Android-9 units. Every one of those requests is billed by Vercel on four
+ * meters (`docs/COST.md`), and 15.5 M of them in one cycle moved the team up
+ * a pricing tier.
+ *
+ * The push WebSocket ALWAYS dials the direct origin (the gateway cannot
+ * carry one). So an authenticated socket is independent proof - TLS, DNS,
+ * routing and the device credential, all on the direct origin - that the
+ * reason for being on the gateway is over. `onDirectOriginProven` turns that
+ * proof into the same probe a boot performs: back to direct with the
+ * persisted suspicion still set, so ONE failed direct request returns the
+ * control plane to the gateway and one success clears the suspicion.
+ *
+ * Two brakes keep that from becoming a flap:
+ *   • DWELL. No return until the session has been on the gateway for
+ *     `MIN_GATEWAY_DWELL_MS`, so the outage that caused the switch has time
+ *     to end.
+ *   • FAILED-HEAL BUDGET. A return that is followed by a fallback before any
+ *     direct request succeeded was wrong about this device (a path that
+ *     carries the socket and not HTTP). After
+ *     `MAX_FAILED_HEALS_PER_SESSION` of those the gateway is final for the
+ *     session, exactly as it was before this change.
+ *
+ * WHAT THIS DOES NOT TOUCH: when the control plane LEAVES direct (the
+ * thresholds above), what counts as a network-class failure, and the rule
+ * that an HTTP outcome on the gateway never moves the mode - the test
+ * "never flaps back to direct mid-session" still holds for every HTTP
+ * outcome. While a return is being proven the push channel is, by
+ * construction, authenticated: the alert path is never without both legs.
+ *
  * Everything here is PURE (no React, no window, no fetch) so it is
  * exhaustively unit-testable without mounting the 11k-line player page —
  * same pattern as `trustGuards.ts`, `emergencyReconcile.ts` and `sync/`.
@@ -105,12 +139,35 @@ export const GATEWAY_FALLBACK_STORAGE_KEY = 'edu_api_gateway_fallback';
 /** Consecutive network-class failures required to leave the direct origin. */
 export const DIRECT_FAILURES_BEFORE_GATEWAY = 3;
 
+/**
+ * How long a session stays on the gateway before independent proof of the
+ * direct origin may move it back. Long enough for an API restart or a slow
+ * minute to be over; short next to the hours a screen used to spend here.
+ */
+export const MIN_GATEWAY_DWELL_MS = 5 * 60_000;
+
+/**
+ * Returns to direct that were followed by a fallback before ANY direct
+ * request succeeded. At this many the gateway is final for the session.
+ */
+export const MAX_FAILED_HEALS_PER_SESSION = 2;
+
 export interface ApiOriginState {
   mode: ApiOriginMode;
   /** Consecutive NETWORK-class failures while on the current mode. */
   networkFailures: number;
   /** A previous session already concluded direct was unreachable here. */
   persistedFallback: boolean;
+  /**
+   * When this session moved onto the gateway, on the CALLER's monotonic
+   * clock. Absent on direct, and on a state built without a clock (the dwell
+   * then starts at the first proof).
+   */
+  gatewaySinceMs?: number;
+  /** Back on direct because of independent proof; no direct request has succeeded since. */
+  healUnproven?: boolean;
+  /** Returns that fell back before any direct success, this session. */
+  failedHeals?: number;
 }
 
 /**
@@ -170,32 +227,98 @@ export function failureThreshold(state: ApiOriginState): number {
  * Record a control-plane failure. Returns the NEXT state (pure — the caller
  * owns persistence and decides what changed by comparing the two).
  */
-export function onControlPlaneFailure(state: ApiOriginState, err: unknown): ApiOriginState {
+export function onControlPlaneFailure(state: ApiOriginState, err: unknown, nowMs?: number): ApiOriginState {
   if (!isNetworkClassFailure(err)) {
     // An HTTP error breaks the "consecutive" run: the transport is fine.
     return state.networkFailures === 0 ? state : { ...state, networkFailures: 0 };
   }
   if (state.mode === 'gateway') {
     // Already on the long path. Keep counting for diagnostics, but there is
-    // nowhere further to fall back to — never flap back to direct mid-session.
+    // nowhere further to fall back to - and no HTTP outcome ever moves the
+    // mode back (only `onDirectOriginProven` does).
     return { ...state, networkFailures: state.networkFailures + 1 };
   }
   const networkFailures = state.networkFailures + 1;
   if (networkFailures < failureThreshold(state)) {
     return { ...state, networkFailures };
   }
-  return { mode: 'gateway', networkFailures: 0, persistedFallback: true };
+  // A return that never saw a direct success was wrong about this device.
+  const failedHeals = (state.failedHeals ?? 0) + (state.healUnproven ? 1 : 0);
+  return {
+    mode: 'gateway',
+    networkFailures: 0,
+    persistedFallback: true,
+    ...(typeof nowMs === 'number' ? { gatewaySinceMs: nowMs } : {}),
+    ...(failedHeals > 0 ? { failedHeals } : {}),
+  };
 }
 
 /** Record a control-plane success. Direct success clears the suspicion. */
 export function onControlPlaneSuccess(state: ApiOriginState): ApiOriginState {
   if (state.mode === 'direct') {
-    if (state.networkFailures === 0 && !state.persistedFallback) return state;
+    if (state.networkFailures === 0 && !state.persistedFallback && !state.healUnproven) return state;
     // SELF-HEAL: direct worked, so the device is no longer on the bad path.
-    return { mode: 'direct', networkFailures: 0, persistedFallback: false };
+    // The failed-heal count is the session's memory and survives; everything
+    // else about a past fallback is over.
+    return {
+      mode: 'direct',
+      networkFailures: 0,
+      persistedFallback: false,
+      ...(state.failedHeals ? { failedHeals: state.failedHeals } : {}),
+    };
   }
   if (state.networkFailures === 0) return state;
   return { ...state, networkFailures: 0 };
+}
+
+/** A push session is proof of the direct origin only while it is demonstrably alive. */
+export const DIRECT_PROOF_FRESH_MS = 30_000;
+
+/**
+ * Is the push WebSocket, right now, proof that the DIRECT origin is
+ * reachable? It always dials direct, so: open, authenticated (AUTH_OK - a TCP
+ * open proves nothing, player rule 5) and heard from within the last
+ * `DIRECT_PROOF_FRESH_MS` (the heartbeat answers every 15 s).
+ */
+export function pushProvesDirect(push: { open: boolean; authOk: boolean; sinceLastMessageMs: number }): boolean {
+  return (
+    push.open === true &&
+    push.authOk === true &&
+    Number.isFinite(push.sinceLastMessageMs) &&
+    push.sinceLastMessageMs >= 0 &&
+    push.sinceLastMessageMs <= DIRECT_PROOF_FRESH_MS
+  );
+}
+
+/**
+ * Independent proof that the DIRECT origin is reachable arrived while the
+ * control plane is on the gateway - today, the push WebSocket (which always
+ * dials direct) holding an authenticated session.
+ *
+ * Returns the SAME state object when nothing changes, so the caller can tell
+ * a transition by identity. The transition it makes is the boot probe, not a
+ * verdict: `persistedFallback` stays set, so the threshold is 1 and the first
+ * failed direct request goes straight back to the gateway.
+ *
+ * @param nowMs the caller's monotonic clock (`performance.now()`), the same
+ *   one it passes to `onControlPlaneFailure`.
+ */
+export function onDirectOriginProven(state: ApiOriginState, nowMs: number): ApiOriginState {
+  if (state.mode !== 'gateway') return state;
+  if ((state.failedHeals ?? 0) >= MAX_FAILED_HEALS_PER_SESSION) return state;
+  if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) return state;
+  if (typeof state.gatewaySinceMs !== 'number') {
+    // Entered the gateway without a clock: start the dwell now.
+    return { ...state, gatewaySinceMs: nowMs };
+  }
+  if (nowMs - state.gatewaySinceMs < MIN_GATEWAY_DWELL_MS) return state;
+  return {
+    mode: 'direct',
+    networkFailures: 0,
+    persistedFallback: true,
+    healUnproven: true,
+    ...(state.failedHeals ? { failedHeals: state.failedHeals } : {}),
+  };
 }
 
 // ── Persistence (thin, storage injected so it stays testable) ──────────────
