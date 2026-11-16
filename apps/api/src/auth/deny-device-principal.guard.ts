@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 
 /**
  * Refuses a DEVICE principal (`req.user.kind === 'device'`, set by
@@ -6,7 +11,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
  * JwtAuthGuard on dashboard routes that carry no `@RequireRoles` and serve or
  * change a tenant's administrative data — the routes a person's session uses,
  * which no screen calls. A route the player or APK calls must never carry it;
- * `screens/device-route-inventory.spec.ts` lists every route that does, and
+ * `screens/device-principal-routes.spec.ts` lists every route that does, and
  * the routes deliberately kept open to devices, with the call site that keeps
  * each one.
  *
@@ -16,7 +21,9 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 @Injectable()
 export class DenyDevicePrincipalGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const req = context.switchToHttp().getRequest();
+    const req = context
+      .switchToHttp()
+      .getRequest<{ user?: { kind?: string } }>();
     if (req?.user?.kind === 'device') {
       throw new ForbiddenException({
         code: 'DEVICE_PRINCIPAL_NOT_ALLOWED',

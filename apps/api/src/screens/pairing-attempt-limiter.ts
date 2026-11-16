@@ -34,7 +34,8 @@ export function pairingLockedRefusal(retryAfterMs: number): HttpException {
   return new HttpException(
     {
       code: PAIRING_TOO_MANY_ATTEMPTS,
-      message: 'Too many incorrect pairing codes. Wait a few minutes, then check the code on the screen and try again.',
+      message:
+        'Too many incorrect pairing codes. Wait a few minutes, then check the code on the screen and try again.',
       retryAfterSeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)),
     },
     HttpStatus.TOO_MANY_REQUESTS,
@@ -45,7 +46,10 @@ export class PairingAttemptLimiter {
   private readonly logger = new Logger('PairingAttemptLimiter');
   private lastWarnAt = 0;
   /** In-process fallback while Redis is unreachable: userId → window. */
-  private readonly local = new Map<string, { count: number; resetAt: number }>();
+  private readonly local = new Map<
+    string,
+    { count: number; resetAt: number }
+  >();
 
   constructor(
     private readonly redis: () => PairLimiterRedis | null | undefined,
@@ -56,7 +60,9 @@ export class PairingAttemptLimiter {
     const t = this.now();
     if (t - this.lastWarnAt < 60_000) return;
     this.lastWarnAt = t;
-    this.logger.warn(`pairing-attempt limiter using the in-process count (Redis unavailable): ${(e as Error)?.message ?? e}`);
+    this.logger.warn(
+      `pairing-attempt limiter using the in-process count (Redis unavailable): ${(e as Error)?.message ?? e}`,
+    );
   }
 
   private localWindow(userId: string) {
@@ -72,8 +78,12 @@ export class PairingAttemptLimiter {
     const r = this.redis();
     if (r) {
       try {
-        const [count, ttl] = await Promise.all([r.get(key(userId)), r.pttl(key(userId))]);
-        if (Number(count) >= PAIR_FAIL_LIMIT) throw pairingLockedRefusal(ttl > 0 ? ttl : PAIR_FAIL_WINDOW_MS);
+        const [count, ttl] = await Promise.all([
+          r.get(key(userId)),
+          r.pttl(key(userId)),
+        ]);
+        if (Number(count) >= PAIR_FAIL_LIMIT)
+          throw pairingLockedRefusal(ttl > 0 ? ttl : PAIR_FAIL_WINDOW_MS);
         return;
       } catch (e) {
         if (e instanceof HttpException) throw e;
@@ -81,14 +91,17 @@ export class PairingAttemptLimiter {
       }
     }
     const w = this.localWindow(userId);
-    if (w && w.count >= PAIR_FAIL_LIMIT) throw pairingLockedRefusal(w.resetAt - this.now());
+    if (w && w.count >= PAIR_FAIL_LIMIT)
+      throw pairingLockedRefusal(w.resetAt - this.now());
   }
 
   /**
    * Record one wrong code. Returns the count in the window and whether THIS
    * failure reached the limit (exactly once per window — the caller audits it).
    */
-  async recordFailure(userId: string): Promise<{ failures: number; tripped: boolean }> {
+  async recordFailure(
+    userId: string,
+  ): Promise<{ failures: number; tripped: boolean }> {
     const r = this.redis();
     if (r) {
       try {
@@ -100,12 +113,17 @@ export class PairingAttemptLimiter {
       }
     }
     const t = this.now();
-    const w = this.localWindow(userId) ?? { count: 0, resetAt: t + PAIR_FAIL_WINDOW_MS };
+    const w = this.localWindow(userId) ?? {
+      count: 0,
+      resetAt: t + PAIR_FAIL_WINDOW_MS,
+    };
     w.count += 1;
     this.local.set(userId, w);
     if (this.local.size > 10_000) {
-      const oldest = this.local.keys().next().value;
-      if (oldest !== undefined) this.local.delete(oldest);
+      for (const oldest of this.local.keys()) {
+        this.local.delete(oldest);
+        break;
+      }
     }
     return { failures: w.count, tripped: w.count === PAIR_FAIL_LIMIT };
   }
