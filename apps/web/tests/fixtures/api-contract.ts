@@ -26,6 +26,7 @@ import type {
   ScreenInterruptionsResponse,
   ScreenPlaybackCapabilityResponse,
 } from '../../src/hooks/use-api';
+import type { DiagnosticsView } from '../../src/hooks/use-screen-diagnostics';
 
 /** `GET /emergency/readiness/district` for a location with no readiness rows. */
 export function emptyDistrictReadiness(): DistrictReadinessResponse {
@@ -87,5 +88,35 @@ export function emptyScreenEvents(screenId: string, hours: 24 | 72 = 24): Screen
 /** The screen id in a `/screens/:id/events` API path, or null for any other path. */
 export function screenEventsScreenId(apiPath: string): string | null {
   const m = /^\/screens\/([^/]+)\/events$/.exec(apiPath);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * `GET /screens/:id/diagnostics` for a screen with no self-test, no log request
+ * and no storage report yet (2026-11-14) — what the real route
+ * (`ScreenDiagnosticsService.view`) answers with its defaults. `canRequestLogs`
+ * is false for a SCHOOL_ADMIN: log requests are SUPER / DISTRICT only.
+ *
+ * The screen drawer's Settings tab mounts the Diagnostics section (02b416912,
+ * landed with the Manager waves in PR #272 on 2026-11-08), which reads
+ * `logs.some(...)` off this body. A bare `[]` threw while rendering, so every
+ * spec that opens the Settings tab — or deep-links a drawer, which opens on
+ * Settings — went to "This page couldn't load" (the cause of the 13 screen
+ * drawer reds on master from 2026-11-08 to 2026-11-14).
+ */
+export function emptyScreenDiagnostics(opts: { canRequestLogs?: boolean } = {}): DiagnosticsView {
+  return {
+    enabled: true,
+    canRequestLogs: opts.canRequestLogs ?? false,
+    retentionDays: 7,
+    storage: null,
+    selfTest: null,
+    logs: [],
+  };
+}
+
+/** The screen id in a `/screens/:id/diagnostics` API path, or null for any other path. */
+export function screenDiagnosticsScreenId(apiPath: string): string | null {
+  const m = /^\/screens\/([^/]+)\/diagnostics$/.exec(apiPath);
   return m ? decodeURIComponent(m[1]) : null;
 }

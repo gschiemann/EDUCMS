@@ -220,7 +220,12 @@ test.describe('step 1 — one field', () => {
     await expect(page.getByRole('link', { name: /Forgot password/i })).toHaveCount(0);
   });
 
-  test('passkeys: the browser\'s own autofill where it has one, otherwise one quiet link — never a box', async ({ page }) => {
+  // 2026-11-11 (62e7224d6, PR #306) — the owner: "most other apps ask you for your email and then
+  // you can select a button that says sign in with passkey". The button now shows on EVERY browser
+  // that can do passkeys; where the browser also lists passkeys in the email field's autofill, the
+  // autofill stays and the button rides ITS options, so the page still asks the server once. (This
+  // test asserted the old rule — no control at all where autofill exists — and went red with #306.)
+  test('passkeys: one visible "Sign in with a passkey" button wherever the browser can do passkeys — one options request, never a box', async ({ page }) => {
     const a = api();
     await open(page, a);
     const support = await page.evaluate(async () => {
@@ -231,23 +236,25 @@ test.describe('step 1 — one field', () => {
       if (typeof pkc.isConditionalMediationAvailable !== 'function') return 'modal-only';
       return (await pkc.isConditionalMediationAvailable()) ? 'autofill' : 'modal-only';
     });
-    const link = page.getByRole('button', { name: 'Sign in with a passkey' });
-    if (support === 'autofill') {
-      // Armed from the email field (the options request went out), and no control on the page.
-      await expect.poll(() => a.passkeyOptionCalls).toBeGreaterThan(0);
-      await expect(link).toHaveCount(0);
-    } else if (support === 'modal-only') {
-      await expect(link).toBeVisible();
-      // The link's options are fetched ahead of the tap (Safari gesture, 2026-10-11): ONE request.
-      await expect.poll(() => a.passkeyOptionCalls).toBe(1);
-    } else {
-      await expect(link).toHaveCount(0);
+    const button = page.getByRole('button', { name: 'Sign in with a passkey' });
+    if (support === 'none') {
+      await expect(button).toHaveCount(0);
       expect(a.passkeyOptionCalls).toBe(0);
+    } else {
+      await expect(button).toBeVisible();
+      // A second way in, never the primary: Continue stays the one submit button on the card.
+      await expect(button).toHaveAttribute('type', 'button');
+      await expect(card(page).locator('button[type="submit"]')).toHaveCount(1);
+      // ONE options request either way: the email field's autofill request where the browser has
+      // one (the button uses that set), else the button's own prefetch (Safari gesture, 2026-10-11).
+      await expect.poll(() => a.passkeyOptionCalls).toBe(1);
     }
     // Either way: the refused options call left no error, and the old explainer box is gone.
     // (Scoped to the card: Next's own route announcer is a page-level role="alert".)
     await expect(card(page).getByRole('alert')).toHaveCount(0);
     await expect(page.getByText(/No passkey on this device/)).toHaveCount(0);
+    // Showing the button cost no extra request.
+    expect(a.passkeyOptionCalls).toBe(support === 'none' ? 0 : 1);
   });
 
   test('chromium: a passkey for this site signs in from step 1 — the real ceremony, with a virtual authenticator', async ({ page, browserName }) => {

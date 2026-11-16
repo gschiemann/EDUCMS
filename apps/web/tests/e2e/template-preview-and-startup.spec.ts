@@ -61,13 +61,23 @@ for (const command of [false, true]) {
     await expect.poll(() => poster.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
     await page.screenshot({ path: info.outputPath('dashboard-template.png'), fullPage: true });
     await page.goto(`/${TENANT}/playlists`);
-    await expect(page.locator('[data-tpl-poster] img').first()).toBeVisible();
-    await page.getByRole('checkbox', { name: 'Select Demo board', exact: true }).check();
-    const remove = page.getByTestId('bulk-remove');
-    await expect(remove).toHaveText('Remove 1');
-    const removeBox = await remove.boundingBox();
-    const searchBox = await page.getByRole('searchbox', { name: 'Search playlists' }).boundingBox();
-    expect(removeBox!.y + removeBox!.height).toBeLessThan(searchBox!.y);
+    const card = page.getByTestId('playlist-card-v2').filter({ hasText: 'Demo board' });
+    await expect(card.locator('[data-tpl-poster] img')).toBeVisible();
+    // The Playlists page is the filmstrip gallery (b61944bc8, 2026-11-07); its bulk bar is the shared
+    // SelectionToolbar, which takes over the toolbar row IN PLACE — the page never grows, and the
+    // selected card keeps its saved template preview. (The v1 table this checked — "Remove 1" above
+    // the search box — is gone.)
+    const toolbar = page.getByTestId('playlists-toolbar');
+    const toolbarBefore = (await toolbar.boundingBox())!;
+    const cardBefore = (await card.boundingBox())!;
+    await card.getByRole('checkbox', { name: 'Select Demo board', exact: true }).check();
+    await expect(toolbar.getByTestId('bulk-count')).toHaveText('1 selected');
+    await expect(toolbar.getByTestId('bulk-delete')).toHaveText('Delete 1');
+    const toolbarAfter = (await toolbar.boundingBox())!;
+    expect(toolbarAfter.y).toBe(toolbarBefore.y);
+    expect(toolbarAfter.height).toBe(toolbarBefore.height);
+    expect((await card.boundingBox())!.y).toBe(cardBefore.y);
+    await expect(card.locator('[data-tpl-poster] img')).toBeVisible();
     await page.screenshot({ path: info.outputPath('playlist-template-toolbar.png'), fullPage: true });
     await page.goto(`/${TENANT}/screens`);
     await expect(page.locator('[data-tpl-poster] img').first()).toBeVisible();
@@ -137,124 +147,121 @@ test('an address that must not leave the building is never sent to the screensho
   expect(requests).toBe(0);
 });
 
-// ── Images: the grid keeps its slow rotation; everywhere else, hover only ───
+// ── Images: the library card is still at rest and steps on hover; everywhere else, hover only ───
 
 /**
- * The playlist library's slideshow that is actually ON SCREEN, read in the page.
+ * The Playlists page is the filmstrip gallery (b61944bc8, 2026-11-07: "Look B (filmstrip) is the
+ * page; remove … the v1 library"). An image playlist's card shows its own pictures, whole, on one
+ * stage (`PlaylistGalleryV2` `CrossFade`, `data-testid="card-crossfade"`): one frame per picture,
+ * the one on show at opacity 1. Its motion rule (1a7e304d5, owner-chosen look): "Desktop hover
+ * cross-fades through the items, one per 3 s; no timer otherwise, off under reduced motion" — so
+ * the v1 table's slideshow, which rotated by itself every 7 s and went quick under the pointer, is
+ * gone from this page, and these three tests (which asserted it, and went red with b61944bc8) now
+ * hold the gallery's rule instead.
  *
- * ListView keeps TWO copies of every thumbnail in the DOM — the ≥1024 px table
- * and the compact cards under it — and hides one with CSS, so counting every
- * slideshow in the document reads 6 frames for a 3-image playlist (the hidden
- * copy never runs). Frames are found by their COMPUTED transition (opacity over
- * 0.9 s — the browser serialises the inline `900ms` as `0.9s`, so a selector on
- * the style string matches in jsdom and nowhere else) and counted only when they
- * have a box.
+ * The frame on show is read in the page from the COMPUTED opacity; mid-fade no frame is at 1 and
+ * this reads -1, so every wait polls until a fade has finished.
  */
-const slideshowFrames = (page: Page) => page.evaluate(() => {
-  const frames = Array.from(document.querySelectorAll<HTMLElement>('div')).filter(div => {
-    const style = getComputedStyle(div);
-    return style.transitionProperty === 'opacity' && style.transitionDuration === '0.9s' && div.getClientRects().length > 0;
-  });
-  return { count: frames.length, shown: frames.findIndex(frame => getComputedStyle(frame).opacity === '1') };
-});
-const slideshowIndex = async (page: Page) => (await slideshowFrames(page)).shown;
+const libraryCard = (page: Page) => page.getByTestId('playlist-card-v2').filter({ hasText: 'Demo board' });
+const pictureOnShow = (card: Locator) =>
+  card.getByTestId('card-crossfade').evaluate(stage => Array.from(stage.children).findIndex(frame => getComputedStyle(frame).opacity === '1'));
+/** One per 3 s on hover (PlaylistGalleryV2 `CYCLE_MS`), each cross-fade 900 ms (`duration-[900ms]`). */
+const HOVER_STEP_MS = 3000;
 
 type Fade = { type: string; at: number; seconds: number };
+/** From here on, keep the browser's own transition events on the card's stage, and when the pointer arrived. */
+const recordFades = (card: Locator) => card.evaluate(root => {
+  const w = window as unknown as { __fades: Fade[]; __entered: number | null };
+  w.__fades = [];
+  w.__entered = null;
+  root.addEventListener('mouseenter', event => { w.__entered = event.timeStamp; });
+  const stage = root.querySelector('[data-testid="card-crossfade"]') as HTMLElement;
+  for (const type of ['transitionrun', 'transitionend']) {
+    stage.addEventListener(type, event => {
+      const e = event as TransitionEvent;
+      if (e.propertyName === 'opacity') w.__fades.push({ type, at: e.timeStamp, seconds: e.elapsedTime });
+    });
+  }
+});
+const readFades = (page: Page) => page.evaluate(() => {
+  const w = window as unknown as { __fades: Fade[]; __entered: number | null };
+  return { fades: w.__fades, entered: w.__entered };
+});
 
-test('the playlist library’s image slideshow rotates by itself, slowly (7 s hold, 900 ms cross-fade), exactly as it always has', async ({ page }) => {
+async function openImageLibrary(page: Page) {
   await setup(page, false, 'images');
   await page.route('https://preview.example.test/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WEBSITE_SHOT }));
   await page.goto(`/${TENANT}/playlists`);
-  // The slideshow on screen holds all three pictures (the compact cards' copy is hidden and never runs).
-  await expect.poll(async () => (await slideshowFrames(page)).count, { timeout: 15000 }).toBe(3);
-  // From here, keep the browser's own transition events: when each cross-fade starts and how long it runs.
-  await page.evaluate(() => {
-    const w = window as unknown as { __fades: Fade[] };
-    w.__fades = [];
-    for (const type of ['transitionrun', 'transitionend']) {
-      document.addEventListener(type, event => {
-        const e = event as TransitionEvent;
-        const target = e.target as HTMLElement;
-        if (e.propertyName === 'opacity' && getComputedStyle(target).transitionDuration === '0.9s' && target.getClientRects().length > 0) w.__fades.push({ type, at: e.timeStamp, seconds: e.elapsedTime });
-      }, true);
-    }
-  });
-  expect(await slideshowIndex(page)).toBe(0);
-  // Well past the quick hover cadence (350 ms to a first step, then a picture every 1.45 s), and still on the
-  // first picture: at rest, with no pointer on it, this is the calm 7 s rotation.
-  await page.waitForTimeout(3500);
-  expect(await slideshowIndex(page)).toBe(0);
-  await expect.poll(() => slideshowIndex(page), { timeout: 10000 }).toBe(1);
-  await expect.poll(() => slideshowIndex(page), { timeout: 12000 }).toBe(2);
+  const card = libraryCard(page);
+  // All three pictures are on the card's stage, the first one on show.
+  await expect(card.getByTestId('card-crossfade').locator(':scope > div')).toHaveCount(3, { timeout: 15000 });
+  await expect.poll(() => pictureOnShow(card)).toBe(0);
+  await recordFades(card);
+  return card;
+}
+
+test('the playlist library’s image card holds its first picture at rest — no timer, no cross-fade, however long it is left', async ({ page }) => {
+  await page.mouse.move(0, 0); // nowhere near the card
+  const card = await openImageLibrary(page);
+  // Longer than the old library's 7 s rest rotation: had any rest timer survived, a picture would have changed.
+  await page.waitForTimeout(7500);
+  expect(await pictureOnShow(card)).toBe(0);
+  expect((await readFades(page)).fades).toEqual([]);
+});
+
+test('hovering a playlist library card cross-fades through its pictures, one every 3 s over 900 ms — and leaving puts the first picture back', async ({ page }, info) => {
+  const card = await openImageLibrary(page);
+  await card.hover();
+  // Calm, never a fast carousel: the next picture comes after one 3 s step, then the next after another.
+  await expect.poll(() => pictureOnShow(card), { timeout: HOVER_STEP_MS + 3000 }).toBe(1);
+  await expect.poll(() => pictureOnShow(card), { timeout: HOVER_STEP_MS + 3000 }).toBe(2);
   await page.waitForTimeout(300); // let the last transitionend land
-  const fades = await page.evaluate(() => (window as unknown as { __fades: Fade[] }).__fades);
-  // Every cross-fade the browser ran lasted exactly 900 ms (two per rotation: one picture in, one out)…
+  await page.screenshot({ path: info.outputPath('library-card-hover.png'), fullPage: true });
+  const { fades, entered } = await readFades(page);
+  // Every cross-fade the browser ran lasted exactly 900 ms (two per step: one picture in, one out)…
   const ended = fades.filter(fade => fade.type === 'transitionend');
   expect(ended.length).toBeGreaterThanOrEqual(4);
   for (const fade of ended) expect(fade.seconds).toBeCloseTo(0.9, 2);
-  // …and the picture changes every 7 s: the gap between the first two rotations.
+  // …the first step came one 3 s step after the pointer arrived (a timer cannot fire early; the upper
+  // bound leaves a loaded runner room), and the next one 3 s after that.
   const starts = fades.filter(fade => fade.type === 'transitionrun').map(fade => fade.at);
-  const rotations = starts.filter((at, i) => i === 0 || at - starts[i - 1] > 500);
-  expect(rotations.length).toBeGreaterThanOrEqual(2);
-  expect(rotations[1] - rotations[0]).toBeGreaterThan(6500);
-  expect(rotations[1] - rotations[0]).toBeLessThan(7500);
-});
+  const steps = starts.filter((at, i) => i === 0 || at - starts[i - 1] > 500);
+  expect(entered).not.toBeNull();
+  expect(steps.length).toBeGreaterThanOrEqual(2);
+  expect(steps[0] - entered!).toBeGreaterThan(HOVER_STEP_MS - 200);
+  expect(steps[0] - entered!).toBeLessThan(HOVER_STEP_MS + 1500);
+  expect(steps[1] - steps[0]).toBeGreaterThan(HOVER_STEP_MS - 500);
+  expect(steps[1] - steps[0]).toBeLessThan(HOVER_STEP_MS + 500);
 
-// The quick cadence is 350 ms to the first step + a 250 ms fade = the second picture is ON SHOW ~600 ms
-// after the pointer lands (the old 2.5 s hold + 300 ms fade took 2.8 s). Every wait below is 2 s, so it
-// fails against the old cadence and still leaves a loaded CI runner generous room.
-const QUICK_STEP_TIMEOUT = 2000;
-
-test('hovering the playlist library’s image slideshow makes THAT thumbnail quick — and leaving hands it back to the slow rotation, on the picture it is showing', async ({ page }, info) => {
-  await setup(page, false, 'images');
-  await page.route('https://preview.example.test/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WEBSITE_SHOT }));
-  await page.goto(`/${TENANT}/playlists`);
-  // The slideshow on screen (the compact cards' copy is hidden by CSS and never runs).
-  const slideshow = page.locator('[data-image-slideshow]:visible').first();
-  await expect(slideshow).toHaveAttribute('data-preview-state', 'rest', { timeout: 15000 });
-  // The quick walk only steps to a picture that has arrived: let all three load first (a real person's pointer
-  // arrives seconds after the page, not milliseconds).
-  await expect.poll(() => slideshow.evaluate(el => Array.from(el.querySelectorAll('img')).filter(image => image.complete && image.naturalWidth > 0).length), { timeout: 15000 }).toBe(3);
-  const fadeOf = () => slideshow.evaluate(el => getComputedStyle(el.querySelector('div.absolute') as HTMLElement).transitionDuration);
-  expect(await fadeOf()).toBe('0.9s'); // at rest: the slow cross-fade
-  // Indices are read, not assumed: the slow clock is 7 s, and a loaded runner may already have moved it.
-  const start = Number(await slideshow.getAttribute('data-preview-index'));
-  const at = (steps: number) => String((start + steps) % 3);
-
-  await slideshow.hover();
-  // The pointer rests ~350 ms, then the thumbnail steps at once — against the 7 s a picture it takes at rest.
-  await expect(slideshow).toHaveAttribute('data-preview-state', 'quick', { timeout: QUICK_STEP_TIMEOUT });
-  await expect(slideshow).toHaveAttribute('data-preview-index', at(1), { timeout: QUICK_STEP_TIMEOUT });
-  expect(await fadeOf()).toBe('0.25s'); // the browser's own computed fade, not the style string we asked for
-  // …and a picture every ~1.45 s after that (1.2 s held + a 250 ms fade).
-  await expect(slideshow).toHaveAttribute('data-preview-index', at(2), { timeout: 2500 });
-  await page.screenshot({ path: info.outputPath('library-slideshow-quick.png'), fullPage: true });
-
-  // Leaving: back to the slow rotation, ON THE PICTURE IT WAS SHOWING (never snapped back to the first).
+  // Leaving puts the first picture back, and nothing keeps running behind it.
   await page.mouse.move(0, 0);
-  await expect(slideshow).toHaveAttribute('data-preview-state', 'rest', { timeout: QUICK_STEP_TIMEOUT });
-  const shown = await slideshow.getAttribute('data-preview-index');
-  expect(shown).not.toBeNull();
-  expect(await fadeOf()).toBe('0.9s');
-  // Calm again: well over a quick step's worth of time later, nothing has moved (the slow clock is 7 s).
-  await page.waitForTimeout(3000);
-  await expect(slideshow).toHaveAttribute('data-preview-index', shown!);
+  await expect.poll(() => pictureOnShow(card)).toBe(0);
+  await page.waitForTimeout(300); // the return fade's own events have landed
+  const runs = async () => (await readFades(page)).fades.filter(fade => fade.type === 'transitionrun').length;
+  const runsAfterLeaving = await runs();
+  // Longer than a step: had leaving not cleared the hover timer, another fade would have started.
+  await page.waitForTimeout(HOVER_STEP_MS + 600);
+  expect(await pictureOnShow(card)).toBe(0);
+  expect(await runs()).toBe(runsAfterLeaving);
 });
 
-test('a pointer that only crosses the library slideshow leaves no trace — the slow rotation keeps its own clock', async ({ page }) => {
-  await setup(page, false, 'images');
-  await page.route('https://preview.example.test/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WEBSITE_SHOT }));
-  await page.goto(`/${TENANT}/playlists`);
-  const slideshow = page.locator('[data-image-slideshow]:visible').first();
-  await expect(slideshow).toHaveAttribute('data-preview-state', 'rest', { timeout: 15000 });
-  const box = (await slideshow.boundingBox())!;
-  // Cross it fast — in, across and out well inside the 350 ms rest.
-  await page.mouse.move(box.x - 20, box.y + box.height / 2);
-  await page.mouse.move(box.x + box.width + 20, box.y + box.height / 2, { steps: 6 });
-  await page.waitForTimeout(600); // longer than the rest: had it counted as a hover, it would have gone quick by now
-  await expect(slideshow).toHaveAttribute('data-preview-state', 'rest');
-  expect(await slideshow.evaluate(el => getComputedStyle(el.querySelector('div.absolute') as HTMLElement).transitionDuration)).toBe('0.9s');
+test('a pointer that only crosses a playlist library card leaves no trace — no step, and no timer left behind', async ({ page }) => {
+  const card = await openImageLibrary(page);
+  const box = (await card.boundingBox())!;
+  // Cross it fast: in, across and out in well under one 3 s step.
+  await page.mouse.move(box.x - 10, box.y + box.height / 2);
+  await page.mouse.move(box.x + box.width + 10, box.y + box.height / 2, { steps: 6 });
+  // Longer than a step: had leaving not cleared the hover timer, the card would have moved on by now.
+  await page.waitForTimeout(HOVER_STEP_MS + 600);
+  expect(await pictureOnShow(card)).toBe(0);
+  expect((await readFades(page)).fades).toEqual([]);
 });
+
+// Elsewhere (dashboard, screen rows and details) the quick cadence is 350 ms to the first step + a 250 ms
+// fade = the second picture is ON SHOW ~600 ms after the pointer lands (the old 2.5 s hold + 300 ms fade took
+// 2.8 s). Every wait below is 2 s, so it fails against the old cadence and still leaves a loaded CI runner
+// generous room.
+const QUICK_STEP_TIMEOUT = 2000;
 
 test('uploaded images stay still at rest and walk through QUICKLY on hover — across the dashboard, screen rows and details', async ({ page }, info) => {
   await setup(page, false, 'images');

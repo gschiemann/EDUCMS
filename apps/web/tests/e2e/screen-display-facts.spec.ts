@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { emptyScreenDiagnostics, screenDiagnosticsScreenId } from '../fixtures/api-contract';
 
 /**
  * "Panel and playback pacing" on the screen drawer's Overview (2026-10-18,
@@ -134,7 +135,10 @@ async function openDrawerFor(page: Page, screenId: string, firstName: string) {
               evidence: 'unknown', concurrencyEvidence: 'unknown', evidenceAt: null, classScreens: 0, stale: false,
             },
           }
-            : bodies[path] ?? [];
+            // The deep link opens on Settings, whose Diagnostics section reads a view object
+            // (2026-11-08); `[]` crashes the page before the Overview tab can be chosen.
+            : screenDiagnosticsScreenId(path) ? emptyScreenDiagnostics()
+              : bodies[path] ?? [];
     return route.fulfill({ contentType: 'application/json', headers, body: JSON.stringify(body) });
   });
   // `?screen=` is the page's own deep link: it opens that screen's drawer — on the Settings tab, so ask for the Overview.
