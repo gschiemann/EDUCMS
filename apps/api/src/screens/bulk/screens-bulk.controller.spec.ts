@@ -486,11 +486,11 @@ describe('bulk update — the owner’s fleet push rules', () => {
     expect((await h.c.update(admin(), { screenIds: ['a'] })).results[0]).toMatchObject({ outcome: 'sent' });
   });
 
-  it('the explicit override sends it, and every FORCE_APK_UPDATE row and the summary record what it set aside', async () => {
+  it('the explicit override (SUPER_ADMIN) sends it, and every FORCE_APK_UPDATE row and the summary record what it set aside', async () => {
     freezeClock(CHICAGO_NOON);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const h = harness([stale('a'), stale('b', { hardwareModel: 'maxhub-l55vec' })]);
-    const out = await h.c.update(admin(), { screenIds: ['a', 'b'], overrideMassPushRules: true });
+    const out = await h.c.update(admin(A, { role: 'SUPER_ADMIN' }), { screenIds: ['a', 'b'], overrideMassPushRules: true });
     expect(out.summary).toMatchObject({ sent: 2, failed: 0 });
     const rows = audits(h.prisma);
     const pushes = rows.filter((x: any) => x.action === 'FORCE_APK_UPDATE');
@@ -501,6 +501,18 @@ describe('bulk update — the owner’s fleet push rules', () => {
       expect(JSON.parse(x.details)).toMatchObject({ overrideMassPushRules: true, massPushRulesOverridden: ['hardware-class', 'off-hours'] });
     }
     expect(warn.mock.calls.some((c) => String(c[0]).includes('mass-push rules OVERRIDDEN (hardware-class, off-hours)'))).toBe(true);
+  });
+
+  it('the override from anyone but a SUPER_ADMIN is a 403 before any database read; nothing is sent or audited', async () => {
+    for (const role of ['SCHOOL_ADMIN', 'DISTRICT_ADMIN']) {
+      const h = harness([stale('a'), stale('b')]);
+      expect(await refusalOf(h.c.update(admin(A, { role }), { screenIds: ['a', 'b'], overrideMassPushRules: true }))).toMatchObject({
+        status: 403,
+        body: { code: 'BULK_MASS_PUSH_OVERRIDE_FORBIDDEN' },
+      });
+      expect(h.prisma.client.screen.findMany).not.toHaveBeenCalled();
+      expect(audits(h.prisma).filter((x: any) => x.action === 'FORCE_APK_UPDATE')).toHaveLength(0);
+    }
   });
 
   it('a compliant update records that no override was needed; a malformed override is a 400 before any database read', async () => {

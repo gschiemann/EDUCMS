@@ -10,7 +10,7 @@ import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '.
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { CLEAR_UPDATE_QUARANTINE_AUDIT_ACTION, QUARANTINE_NO_ROLLBACK_NOTE, publishClearUpdateQuarantine } from './quarantine-command';
 import { companionTapVerdict, isCompanionTapReport } from '../player-ota/companion-tap-report';
-import { enforceUpdatePushRules, updatePushOverride } from './update-push-rules';
+import { assertMassPushOverrideAllowed, enforceUpdatePushRules, updatePushOverride } from './update-push-rules';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
@@ -5116,9 +5116,11 @@ export class ScreensController {
     // one hardware class, and 22:00–06:00 in every screen's own time zone. A
     // refusal marks, publishes and audits nothing; the explicit
     // `overrideMassPushRules: true` (never sent by the dashboard) sets both
-    // aside and is recorded on the audit row below.
+    // aside and is recorded on the audit row below. Only a SUPER_ADMIN may send
+    // it (403 before anything is read).
     const override = updatePushOverride(body);
-    const overridden = await enforceUpdatePushRules(this.prisma, tenantId, 'all', { override });
+    assertMassPushOverrideAllowed(override, req.user?.role);
+    const overridden = await enforceUpdatePushRules(this.prisma, tenantId, 'all', { override, actorRole: req.user?.role });
     if (overridden.length) {
       console.warn(
         `[force-update] tenant=${tenantId} every screen, with the mass-push rules OVERRIDDEN ` +
@@ -5129,22 +5131,46 @@ export class ScreensController {
     // /update-check from each one gets the latest APK (gated 30 min).
     // Safe even when tenant.autoUpdatePlayerEnabled is false — the
     // force flag is the explicit opt-in for THIS push only.
-    await this.prisma.client.screen.updateMany({
-      where: { tenantId },
-      data: {
-        forceApkUpdatePendingAt: new Date(),
-        // A new push starts a fresh tracked record (push-tracking.ts).
-        ...FRESH_PUSH_STATE,
-        // OTA-02: an operator deliberately re-pushing IS the "resolved,
-        // try again" signal. It is one of only two things that clears the
-        // sticky OTA failure stamp (the other is a confirmed install).
-        lastOtaErrorAt: null,
-        lastOtaErrorMessage: null,
-        lastOtaErrorAuthenticated: false,
-      } as any,
-    }).catch((e) => {
-      console.warn('[force-update] forceApkUpdatePendingAt write failed', (e as Error).message);
-    });
+    //
+    // 2026-11-16 — the mark and its FORCE_APK_UPDATE audit row commit in ONE
+    // transaction: a push is never recorded without the row that says who sent
+    // it (and whether the fleet rules were set aside), and a failed write
+    // publishes nothing and answers an error instead of `ok`.
+    try {
+      await this.prisma.client.$transaction(async (tx: any) => {
+        await tx.screen.updateMany({
+          where: { tenantId },
+          data: {
+            forceApkUpdatePendingAt: new Date(),
+            // A new push starts a fresh tracked record (push-tracking.ts).
+            ...FRESH_PUSH_STATE,
+            // OTA-02: an operator deliberately re-pushing IS the "resolved,
+            // try again" signal. It is one of only two things that clears the
+            // sticky OTA failure stamp (the other is a confirmed install).
+            lastOtaErrorAt: null,
+            lastOtaErrorMessage: null,
+            lastOtaErrorAuthenticated: false,
+          } as any,
+        });
+        await tx.auditLog.create({
+          data: {
+            action: 'FORCE_APK_UPDATE',
+            targetType: 'tenant',
+            targetId: tenantId,
+            tenantId,
+            userId: req.user.id,
+            // The owner's explicit override, and the rules it set aside (none = not needed).
+            details: JSON.stringify({ scope: 'tenant', overrideMassPushRules: override, massPushRulesOverridden: overridden }),
+          },
+        });
+      });
+    } catch (e) {
+      console.warn('[force-update] push write failed; nothing sent', (e as Error).message);
+      throw new HttpException(
+        { code: 'SCREEN_FORCE_UPDATE_FAILED', message: 'The update could not be recorded. Nothing was sent.' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
     const signed = this.signer.signMessage('CHECK_FOR_UPDATES', {
       scope: 'tenant',
       scopeId: tenantId,
@@ -5155,17 +5181,6 @@ export class ScreensController {
     } catch (e) {
       console.warn('[force-update] redis publish failed', (e as Error).message);
     }
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'FORCE_APK_UPDATE',
-        targetType: 'tenant',
-        targetId: tenantId,
-        tenantId,
-        userId: req.user.id,
-        // The owner's explicit override, and the rules it set aside (none = not needed).
-        details: JSON.stringify({ scope: 'tenant', overrideMassPushRules: override, massPushRulesOverridden: overridden }),
-      },
-    }).catch(() => { /* audit best-effort */ });
     return { ok: true, scope: 'tenant' };
   }
 
