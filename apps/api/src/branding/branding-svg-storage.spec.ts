@@ -257,3 +257,110 @@ describe('BrandingController.manualAdopt — pasted SVG URL also routes through 
     expect(path).toMatch(/\.svg$/);
   });
 });
+
+// An SVG carrying active content. The stored file must be the sanitized one.
+const ACTIVE_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" onload="alert(1)">' +
+  '<script>alert(2)</script>' +
+  '<path d="M10 10 H 390 V 90 H 10 Z" fill="#e8112d"/>' +
+  '<rect x="20" y="20" width="60" height="60" fill="#0b6efd"/>' +
+  '</svg>' +
+  '<!-- padding so the 200-char minimum-length validator passes -->';
+
+function uploadedText(mock: StorageMock, i = 0): string {
+  return Buffer.from(mock.uploadLogo.mock.calls[i][1]).toString('utf8');
+}
+
+describe('branding-logos bucket only ever receives sanitized SVG', () => {
+  it('adopt (inline SVG) stores the sanitized SVG, not the input', async () => {
+    const { storage, mock } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+    await controller.adopt(req, {
+      sourceUrl: 'https://example.com',
+      logos: [{ url: '', kind: 'svg-inline', score: 90, isSvg: true, svgInline: ACTIVE_SVG }],
+      palette: { primary: '#e8112d' },
+    } as any);
+    expect(mock.uploadLogo).toHaveBeenCalledTimes(1);
+    const stored = uploadedText(mock);
+    expect(stored).toContain('<path');
+    expect(stored).not.toMatch(/<script/i);
+    expect(stored).not.toMatch(/onload/i);
+  });
+
+  it('adopt vector fallback stores the sanitized SVG', async () => {
+    const { storage, mock } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+    await controller.adopt(req, {
+      sourceUrl: 'https://example.com',
+      logos: [
+        { url: 'https://example.com/og-image.png', kind: 'og', score: 60, isSvg: false },
+        { url: '', kind: 'svg-inline', score: 90, isSvg: true, svgInline: ACTIVE_SVG },
+      ],
+      palette: { primary: '#e8112d' },
+    } as any);
+    expect(mock.uploadLogo).toHaveBeenCalledTimes(1);
+    const stored = uploadedText(mock);
+    expect(stored).not.toMatch(/<script/i);
+    expect(stored).not.toMatch(/onload/i);
+  });
+
+  it('manualAdopt data URL stores the sanitized SVG', async () => {
+    const { storage, mock } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+    await controller.manualAdopt(req, {
+      displayName: 'Example Co',
+      primaryHex: '#123456',
+      logoDataUrl: `data:image/svg+xml;base64,${Buffer.from(ACTIVE_SVG).toString('base64')}`,
+    });
+    expect(mock.uploadLogo).toHaveBeenCalledTimes(1);
+    const stored = uploadedText(mock);
+    expect(stored).toContain('<path');
+    expect(stored).not.toMatch(/<script/i);
+    expect(stored).not.toMatch(/onload/i);
+  });
+
+  it('manualAdopt pasted URL stores the sanitized SVG', async () => {
+    const { storage, mock } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+    safeFetchMock.mockResolvedValueOnce({
+      status: 200,
+      body: Buffer.from(ACTIVE_SVG, 'utf-8'),
+      contentType: 'image/svg+xml',
+      finalUrl: 'https://example.com/logo.svg',
+    });
+    await controller.manualAdopt(req, {
+      displayName: 'Example Co',
+      primaryHex: '#123456',
+      logoUrl: 'https://example.com/logo.svg',
+    });
+    expect(mock.uploadLogo).toHaveBeenCalledTimes(1);
+    const stored = uploadedText(mock);
+    expect(stored).not.toMatch(/<script/i);
+    expect(stored).not.toMatch(/onload/i);
+  });
+
+  it('an HTML page that merely contains an <svg> is never stored as image/svg+xml', async () => {
+    const { storage, mock } = makeStorageMock();
+    const { prisma } = makePrismaMock();
+    const controller = makeController(storage, prisma);
+    safeFetchMock.mockResolvedValueOnce({
+      status: 200,
+      body: Buffer.from('<html><body><svg><path d="M0 0"/></svg><p>hi</body></html>', 'utf-8'),
+      contentType: 'image/svg+xml',
+      finalUrl: 'https://example.com/logo.svg',
+    });
+    await expect(
+      controller.manualAdopt(req, {
+        displayName: 'Example Co',
+        primaryHex: '#123456',
+        logoUrl: 'https://example.com/logo.svg',
+      }),
+    ).rejects.toThrow();
+    const svgCalls = mock.uploadLogo.mock.calls.filter((c) => c[2] === 'image/svg+xml');
+    expect(svgCalls).toHaveLength(0);
+  });
+});

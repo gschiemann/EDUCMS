@@ -33,6 +33,8 @@
  * the offline scanner used to misclassify as per-screen outages).
  */
 
+import { buildOriginTarget } from './origin-target';
+
 export interface Env {
   ORIGIN_URL: string;
   /**
@@ -137,7 +139,11 @@ function cacheTtl(path: string): number | null {
 
 async function proxyToOrigin(req: Request, env: Env): Promise<Response> {
   const url = new URL(req.url);
-  const target = new URL(url.pathname + url.search, env.ORIGIN_URL);
+  // Always ORIGIN_URL's origin — see origin-target.ts.
+  const target = buildOriginTarget(url.pathname, url.search, env.ORIGIN_URL);
+  if (!target) {
+    return new Response('Bad request', { status: 400, headers: { 'content-type': 'text/plain' } });
+  }
 
   // Reconstruct the request against the origin. cf preserves the
   // hop-by-hop trickiness for us — no need to strip Host etc.

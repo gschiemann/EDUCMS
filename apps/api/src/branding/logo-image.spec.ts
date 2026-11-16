@@ -9,12 +9,26 @@
  * day it failed) and decode them against an independent reference: Python's
  * PIL produced the pixel hash below.
  */
+// isomorphic-dompurify pulls an ESM-only jsdom dependency jest cannot load;
+// stub it with a small stripper (same approach as branding-svg-storage.spec.ts).
+jest.mock('isomorphic-dompurify', () => ({
+  __esModule: true,
+  default: {
+    sanitize: (raw: string) =>
+      String(raw)
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/\son\w+="[^"]*"/gi, '')
+        .replace(/\son\w+='[^']*'/gi, ''),
+  },
+}));
+
 import { createHash } from 'crypto';
 import sharp from 'sharp';
 import {
   decodeIcoDib,
   icoToPng,
   isIco,
+  isSvgDocument,
   normalizeLogoImage,
   sniffLogoImageKind,
 } from './logo-image';
@@ -224,7 +238,49 @@ describe('normalizeLogoImage — the bucket only ever sees types it allows', () 
     const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>');
     const out = await normalizeLogoImage(svg, 'text/plain');
     expect(out).toMatchObject({ contentType: 'image/svg+xml', ext: 'svg' });
-    expect(out.body).toBe(svg);
+    expect(out.body.toString('utf8')).toContain('<path');
+  });
+
+  it('stores the sanitized SVG, never the input bytes', async () => {
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script><path d="M0 0h1v1z"/></svg>',
+    );
+    const out = await normalizeLogoImage(svg, 'image/svg+xml');
+    expect(out.contentType).toBe('image/svg+xml');
+    const text = out.body.toString('utf8');
+    expect(text).toContain('<path');
+    expect(text).not.toMatch(/<script/i);
+    expect(text).not.toMatch(/onload/i);
+  });
+
+  it('does not treat an HTML page that contains an <svg> as an SVG', async () => {
+    const html = Buffer.from('<html><body><svg><path d="M0 0"/></svg></body></html>');
+    expect(sniffLogoImageKind(html)).not.toBe('svg');
+    await expect(normalizeLogoImage(html, 'image/svg+xml')).rejects.toThrow();
+  });
+});
+
+describe('isSvgDocument — decided by parsing', () => {
+  it.each([
+    ['<svg xmlns="http://www.w3.org/2000/svg"/>'],
+    ['<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>'],
+    ['﻿<svg><g/></svg>'],
+    ['<!-- c --><svg><g/></svg><!-- trailing -->'],
+    ['<svg:svg xmlns:svg="http://www.w3.org/2000/svg"/>'],
+  ])('accepts %j', (s) => {
+    expect(isSvgDocument(Buffer.from(s))).toBe(true);
+  });
+
+  it.each([
+    ['<html><svg></svg></html>', 'svg nested in another root'],
+    ['hello <svg></svg>', 'leading text'],
+    ['<p>x</p><svg></svg>', 'two roots'],
+    ['<svg><path></svg>', 'malformed'],
+    ['<?xml version="1.0"?><html/>', 'xml but not svg'],
+    ['<svgfoo/>', 'name prefix only'],
+    ['', 'empty'],
+  ])('rejects %j (%s)', (s) => {
+    expect(isSvgDocument(Buffer.from(s))).toBe(false);
   });
 
   it('re-encodes a format the bucket cannot store (TIFF) as PNG', async () => {

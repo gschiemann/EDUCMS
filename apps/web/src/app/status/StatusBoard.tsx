@@ -100,11 +100,13 @@ async function takeSnapshot(): Promise<Snapshot> {
   );
 
   // File storage
-  const transport = storage?.body?.storage?.transport;
+  // The endpoint answers a status string only: 'ok' (primary transport),
+  // 'degraded' (backup transport, still 200) or 'down' (503).
+  const storageStatus = storage?.body?.status;
   components.push(
     !storage
       ? { name: 'storage', detail: 'unknownApi', tone: 'unknown' }
-      : storage.httpOk && transport === 'primary'
+      : storage.httpOk && storageStatus === 'ok'
         ? { name: 'storage', detail: 'storageOk', tone: 'ok' }
         : storage.httpOk
           ? { name: 'storage', detail: 'storageBackup', tone: 'degraded' }

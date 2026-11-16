@@ -52,6 +52,20 @@ import {
 import * as instagram from './instagram';
 import * as facebook from './facebook';
 import { publicApiBase } from '../../security/public-api-base';
+import {
+  bindingMatches,
+  mintBindingNonce,
+  setBrowserBinding,
+  takeBrowserBinding,
+  type OAuthBindingSpec,
+} from '../../security/oauth-browser-binding';
+
+/** Browser binding for the public callback (see oauth-browser-binding.ts). */
+const SOCIAL_OAUTH_BINDING: OAuthBindingSpec = {
+  cookie: 'venueos_social_oauth',
+  path: '/api/v1/integrations/social/oauth',
+  sessionKey: 'socialOAuthNonce',
+};
 
 /** The operator has 10 minutes to finish Meta's approve screen. */
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -61,6 +75,8 @@ interface StateEntry {
   tenantId: string;
   userId: string;
   provider: SocialProviderId;
+  /** Nonce mirrored into the browser's cookie at authorize. */
+  browserNonce?: string;
   expiresAt: number;
 }
 
@@ -108,7 +124,11 @@ export class SocialOAuthController {
     AppRole.DISTRICT_ADMIN,
     AppRole.SCHOOL_ADMIN,
   )
-  async authorize(@Req() req: any, @Param('provider') provider: string) {
+  async authorize(
+    @Req() req: any,
+    @Param('provider') provider: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     if (!isSocialProviderId(provider)) {
       throw new HttpException(
         {
@@ -136,12 +156,15 @@ export class SocialOAuthController {
     }
 
     const state = randomBytes(32).toString('hex');
+    const browserNonce = mintBindingNonce();
     await this.putState(state, {
       tenantId: req.user.tenantId,
       userId: req.user.id,
       provider,
+      browserNonce,
       expiresAt: Date.now() + STATE_TTL_MS,
     });
+    setBrowserBinding(req, res, SOCIAL_OAUTH_BINDING, browserNonce);
     const redirectUri = resolveRedirectUri(req, provider);
     const url =
       provider === 'instagram'
@@ -160,6 +183,8 @@ export class SocialOAuthController {
     @Query() query: Record<string, string>,
   ) {
     const webReturn = resolveWebReturnUrl();
+    // The handshake ends here whatever the outcome — clear the binding first.
+    const browserNonce = takeBrowserBinding(req, res, SOCIAL_OAUTH_BINDING);
     // The provider segment lands in a Location header — never reflect an
     // unvalidated path segment.
     const safeProvider = isSocialProviderId(provider) ? provider : 'unknown';
@@ -186,6 +211,11 @@ export class SocialOAuthController {
     // A nonce minted for Instagram cannot be replayed at the Facebook
     // callback.
     if (entry.provider !== provider) return fail('provider-mismatch');
+    // Browser binding: the browser finishing the flow must be the one that
+    // started it (nonce cookie / session copy set at authorize).
+    if (!bindingMatches(entry.browserNonce, browserNonce)) {
+      return fail('browser-mismatch');
+    }
 
     const redirectUri = resolveRedirectUri(req, provider);
     try {
@@ -313,6 +343,7 @@ export class SocialOAuthController {
             tenantId: entry.tenantId,
             userId: entry.userId,
             provider: entry.provider,
+            browserNonce: entry.browserNonce || '',
           }),
           'PX',
           STATE_TTL_MS,
@@ -358,6 +389,9 @@ export class SocialOAuthController {
                 tenantId: parsed.tenantId,
                 userId: parsed.userId,
                 provider: parsed.provider,
+                browserNonce: parsed.browserNonce
+                  ? String(parsed.browserNonce)
+                  : undefined,
                 expiresAt: 0,
               };
             }
