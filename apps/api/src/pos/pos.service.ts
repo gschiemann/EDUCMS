@@ -13,7 +13,7 @@
  * 2026-05-25 — Square wired end-to-end (OAuth + catalog poll +
  * webhook + idempotency + audit). See providers/square.ts.
  */
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { POS_PROVIDERS, getPosProvider, type PosConnectionDto } from '@cms/api-types';
@@ -26,6 +26,16 @@ import {
   loadConciergePosContext,
   loadPosBoundMenu,
 } from './concierge-pos-context';
+
+/** A provider store/merchant id is already connected to another tenant. */
+export class PosStoreAlreadyConnectedError extends ConflictException {
+  constructor(providerName: string) {
+    super({
+      code: 'POS_STORE_ALREADY_CONNECTED',
+      message: `This ${providerName} account is already connected to another organization. Disconnect it there first, or contact support.`,
+    });
+  }
+}
 
 @Injectable()
 export class PosService {
@@ -426,6 +436,11 @@ export class PosService {
   }) {
     const provider = getPosProvider(opts.providerId);
     if (!provider) throw new BadRequestException(`${opts.providerId} provider missing from catalog`);
+    // One merchant account, one tenant: refuse to bind a store id that is
+    // already connected to a different tenant.
+    if (await this.findOtherTenantForStore(opts.providerId, opts.storeId, opts.tenantId)) {
+      throw new PosStoreAlreadyConnectedError(provider.name);
+    }
     const creds = {
       accessToken: opts.accessToken,
       refreshToken: opts.refreshToken,
@@ -763,8 +778,12 @@ export class PosService {
    *  merchant id but no tenant context. We walk Square connections and
    *  decrypt — small set (one row per tenant), acceptable overhead. */
   async findConnectionByMerchantId(merchantId: string) {
+    // Oldest first, so that if two rows ever carried the same merchant id the
+    // answer is stable (the first tenant to connect it) rather than whatever
+    // order the database happens to return.
     const rows = await (this.prisma.client as any).posProviderConnection.findMany({
       where: { providerId: 'square' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
     for (const r of rows) {
       try {
@@ -773,6 +792,32 @@ export class PosService {
           encryptedDataKey: r.encryptedDataKey,
         });
         if (creds.merchantId === merchantId) return r;
+      } catch {
+        /* skip — corrupt row */
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The tenant (other than `tenantId`) that already holds a `providerId`
+   * connection for this store/merchant id, or null. A store id identifies
+   * one merchant account at the provider; it may be connected to one tenant
+   * only, because inbound provider events are routed to a tenant by it.
+   */
+  async findOtherTenantForStore(providerId: string, storeId: string, tenantId: string): Promise<string | null> {
+    if (!storeId) return null;
+    const rows = await (this.prisma.client as any).posProviderConnection.findMany({
+      where: { providerId, NOT: { tenantId } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    for (const r of rows) {
+      try {
+        const creds = openCredentials({
+          encryptedCreds: r.encryptedCreds,
+          encryptedDataKey: r.encryptedDataKey,
+        });
+        if (creds.storeId === storeId || creds.merchantId === storeId) return r.tenantId as string;
       } catch {
         /* skip — corrupt row */
       }

@@ -65,9 +65,9 @@ describe('V-1 POS OAuth callback store host', () => {
   });
 
   async function callback(provider: string, storeIdAtAuthorize: string | undefined, query: Record<string, string>) {
-    await (controller as any).putState('st', { tenantId: 't1', userId: 'u1', provider, storeId: storeIdAtAuthorize });
+    await (controller as any).putState('st', { tenantId: 't1', userId: 'u1', provider, storeId: storeIdAtAuthorize, browserNonce: 'bn' });
     const res = makeRes();
-    await controller.callback(req, res, provider, { code: 'c', state: 'st', ...query });
+    await controller.callback({ ...req, cookies: { venueos_pos_oauth: 'bn' } }, res, provider, { code: 'c', state: 'st', ...query });
     return res;
   }
 
