@@ -711,6 +711,9 @@ export class TelemetryController {
             tenantId: screen.tenantId,
             kind: 'update-applied',
             detail: {
+              // Includes `clockMeasured` / `clockOffsetMs` (2026-11-14) when the
+              // player sent them; an older player's row simply lacks both keys,
+              // which is distinct from "measured: false".
               ...body.update,
               // The bundle this report rode in on — the one now running.
               runningBundleId: body.versions?.bundleId ?? null,

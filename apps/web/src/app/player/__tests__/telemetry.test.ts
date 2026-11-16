@@ -569,6 +569,16 @@ describe('off-hours update block (2026-10-10)', () => {
     expect('update' in buildTelemetryBody({ update: null } as never)).toBe(false);
   });
 
+  it('the server-clock evidence rides only when the record had it (2026-11-14)', () => {
+    expect(Object.keys(buildTelemetryBody({ update: evidence } as never).update!)).not.toContain('clockMeasured');
+    expect(buildTelemetryBody({ update: { ...evidence, clockMeasured: true, clockOffsetMs: 14_400_000.6 } } as never).update)
+      .toMatchObject({ clockMeasured: true, clockOffsetMs: 14_400_001 });
+    expect(buildTelemetryBody({ update: { ...evidence, clockMeasured: false, clockOffsetMs: 7 } } as never).update)
+      .toMatchObject({ clockMeasured: false, clockOffsetMs: null });
+    expect(buildTelemetryBody({ update: { ...evidence, clockMeasured: true, clockOffsetMs: Number.NaN } } as never).update)
+      .toMatchObject({ clockMeasured: true, clockOffsetMs: null });
+  });
+
   it('updateReportRefused: only a 400 to a report that carried it', () => {
     const withUpdate = buildTelemetryBody({ update: evidence } as never);
     const without = buildTelemetryBody({} as never);
