@@ -145,12 +145,15 @@ The restore recipe is in the workflow's header. A failed run opens an `ops` issu
 (`scheduled-failure-issue.yml`), and `node scripts/ops-sweep.mjs` checks that the newest
 successful backup is under 36 hours old.
 
-**Restore drill: GAP.** No restore of one of these artifacts into a throwaway database is
-recorded, automated or scheduled. It is tracked in `docs/governance/MECHANISMS.md` (row #29
-"rollback"; Phase 1 item 10 — a weekly restore of the latest backup into a throwaway
-database with row-count assertions). Until a drill has run, treat the backup as unproven:
-an untested backup is a hope, not a plan. When one runs, log its date, duration and any
-gotchas in this file.
+**Restore drill: automated, pass record unverified here.** `.github/workflows/db-restore-drill.yml`
+(weekly, Sundays 19:47 UTC, since 2026-11-01) takes the newest successful DB Backup
+artifact, decrypts it, `pg_restore`s it into a Postgres service container on the runner
+(never production), and asserts that five application tables came back with rows; a red
+run opens an `ops` issue through `scheduled-failure-issue.yml`. That the workflow exists
+is not evidence that it passes: whether the backup is restorable is answered only by the
+workflow's run history in GitHub Actions (`gh run list --workflow db-restore-drill.yml`),
+which this file cannot show. Check the latest run there before relying on the backup.
+It is tracked in `docs/governance/MECHANISMS.md` (row #29 "rollback"; Phase 1 item 10).
 
 > The Supabase PITR and weekly-`pg_dump` sections below pre-date that workflow. The
 > workflow's own header (2026-07-30) says the org was moving Pro → Free and that the Free

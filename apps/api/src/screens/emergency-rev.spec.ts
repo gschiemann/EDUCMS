@@ -677,6 +677,35 @@ describe('GET /screens/:id/emergency-rev', () => {
     expect(findUnique).not.toHaveBeenCalled();
   });
 
+  it('a burst of requests that fail device auth never consumes the real screen\'s floor', async () => {
+    const redis = makeRedis();
+    const { controller } = makeController(LIVE_ROW, redis);
+    noteScreenEmergencyState(SCREEN_A, { tenantId: TENANT_A, sig: 'calm', active: false });
+
+    const anon = { headers: {}, ip: '203.0.113.9', socket: { remoteAddress: '203.0.113.9' } } as any;
+    const wrongSubject = {
+      headers: { authorization: `Bearer ${deviceToken('some-other-screen')}` },
+      ip: '203.0.113.9',
+      socket: { remoteAddress: '203.0.113.9' },
+    } as any;
+    const forged = {
+      headers: { authorization: `Bearer ${jwt.sign({ sub: SCREEN_A, kind: 'device', ep: 0 }, 'not-the-secret')}` },
+      ip: '203.0.113.9',
+      socket: { remoteAddress: '203.0.113.9' },
+    } as any;
+    for (let i = 0; i < 20; i++) {
+      const res = makeRes();
+      await controller.getEmergencyRev(SCREEN_A, [anon, wrongSubject, forged][i % 3], res as any);
+      expect(res.statusCode).toBe(401);
+    }
+
+    // The real screen's very next authenticated poll is served, not 429'd.
+    const real = makeRes();
+    await controller.getEmergencyRev(SCREEN_A, makeReq(SCREEN_A), real as any);
+    expect(real.statusCode).toBe(200);
+    expect((real.body as { rev: string }).rev).toEqual(expect.any(String));
+  });
+
   it('answers from the in-process epoch when Redis is unreachable', async () => {
     const redis = makeRedis();
     redis.setDown(true);

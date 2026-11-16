@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Logger, Optional } from '@nestjs/common';
 import { Redis } from 'ioredis';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { deviceSecretKeyCandidates } from '../security/key-ring';
 import { bindWsSignatureToChannel, verifyWsHmac } from '../security/ws-signature';
 import {
@@ -49,6 +49,69 @@ export function hashRevokedToken(token: string): string {
 /** 30 days — the rememberMe ceiling; matches the Redis TTLs. */
 const REVOKED_MIRROR_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// ───────────────────────────────────────────────────────────────────
+// REVOCATION CONTINUITY (2026-11-14 — security review F1).
+//
+// THE HOLE. Every lookup above trusted a Redis MISS as "not revoked" and only
+// consulted the Postgres mirror when Redis ERRORED. Redis can lose keys without
+// erroring — a restart without persistence, a failover to an empty replica,
+// FLUSHALL, or eviction under memory pressure — and then every role downgrade,
+// `canTriggerPanic` removal and logout written before the loss stopped being
+// enforced until the token expired on its own (a user access token: 1 h; a
+// device token: up to 180 days, though `Screen.credentialEpoch` also holds those).
+//
+// THE FIX. A continuity marker, `REVOCATION_CONTINUITY_KEY`, with NO expiry.
+// It exists only once Redis provably holds every unexpired row of the Postgres
+// mirror. Every revocation lookup reads it in the SAME pipeline as the
+// revocation key (one round trip, as before), and:
+//   • marker present → the Redis answer stands (hit = revoked, miss = clear);
+//   • marker ABSENT  → Redis has lost data, so a miss proves nothing: the
+//     lookup takes the existing durable path (30 s cache; SEC-012 posture
+//     when Postgres is down too) and starts ONE restore.
+// The restore copies every unexpired mirror row back into Redis — invalid-before
+// markers to their own keys (monotonic: never lowers a newer marker), revoked
+// tokens to `REVOKED_TOKEN_HASH_SET` as sha256 (the mirror never held raw
+// tokens) — and sets the marker only if Redis was not wiped again meanwhile
+// (the run's own token must still be there, checked atomically).
+//
+// FAILURE DIRECTION: toward Postgres. A failed restore leaves the marker
+// absent, so lookups keep reading the durable store — the Redis-outage path
+// that already exists — and the next miss retries the restore (at most once
+// per `RESTORE_RETRY_MS` per process).
+//
+// RESIDUAL: eviction of individual keys that carry a TTL (`volatile-*`
+// policies) can remove a revocation without touching the marker (no TTL). Redis
+// must run `maxmemory-policy noeviction`; the boot check below logs an ERROR
+// when it can read the policy and it is anything else.
+// ───────────────────────────────────────────────────────────────────
+
+/** Present (no TTL) only while Redis holds every unexpired mirror row. */
+export const REVOCATION_CONTINUITY_KEY = 'revocation:continuity';
+/** sha256 of revoked bearer tokens restored from the Postgres mirror. */
+export const REVOKED_TOKEN_HASH_SET = 'jwt_revoked_hashes';
+/** The running restore's id; the marker is set only if it survives the run. */
+export const REVOCATION_RESTORE_RUN_KEY = 'revocation:restore_run';
+
+/**
+ * Raise the per-user marker to ARGV[1] with TTL ARGV[2] seconds, never lower
+ * it: a marker written after the data loss may already be newer.
+ */
+export const RESTORE_INVALID_BEFORE_LUA =
+  "local cur = tonumber(redis.call('GET', KEYS[1])) " +
+  'if (not cur) or cur < tonumber(ARGV[1]) then ' +
+  "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]) return 1 end return 0";
+
+/**
+ * Set the continuity marker only if this run's id is still in KEYS[1] — i.e.
+ * Redis was not wiped while the restore ran (a wipe would also drop
+ * half-restored rows, so marking it intact then would re-open the hole).
+ */
+export const MARK_CONTINUITY_LUA =
+  "if redis.call('GET', KEYS[1]) == ARGV[1] then " +
+  "redis.call('SET', KEYS[2], ARGV[2]) redis.call('DEL', KEYS[1]) return 1 end return 0";
+
+const RESTORE_PAGE_SIZE = 1_000;
+
 /**
  * The ONLY channel families the fan-out subscriber listens on (see the
  * psubscribe in onModuleInit) and therefore the only ones that may reach
@@ -81,6 +144,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   // Opportunistic prune of expired mirror rows — at most once/hour per
   // process, piggybacked on the (rare) mirror writes. No cron needed.
   private lastMirrorPruneAt = 0;
+  // Revocation continuity (F1): one restore at a time per process, and at
+  // most one attempt per RESTORE_RETRY_MS while the marker stays absent.
+  private static readonly RESTORE_RETRY_MS = 30_000;
+  private restoreInFlight: Promise<boolean> | null = null;
+  private lastRestoreAttemptAt = 0;
 
   // Same key + dev-fallback the signer uses, so HMAC verify matches signing
   // byte-for-byte. This is the SERVER-SIDE emergency gate: every message
@@ -184,6 +252,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         await this.subscriber!.connect();
         this.connected = true;
         this.logger.log('Redis connected successfully');
+        // F1 revocation continuity: restore the mirror into Redis if the
+        // marker is gone, and report an eviction policy that could drop
+        // revocations. Fire-and-forget — boot must never wait on it.
+        void this.checkRevocationContinuityAtBoot();
 
         this.subscriber!.on('message', this.handleRedisMessage.bind(this));
         await this.subscriber!.psubscribe('tenant:*', 'group:*', 'device:*');
@@ -272,10 +344,29 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
+      // F4 (2026-11-14): forward ONLY what the signature covers, plus the
+      // signature. Any other top-level field on a Redis message was never
+      // signed, so it must not reach a screen. The WS gateway already picked
+      // these fields; SSE wrote the whole parsed object.
+      const signed = parsed as {
+        eventId: string;
+        timestamp: number;
+        type: string;
+        payload: unknown;
+        signature: string;
+      };
+      const envelope = {
+        eventId: signed.eventId,
+        timestamp: signed.timestamp,
+        type: signed.type,
+        payload: signed.payload,
+        signature: signed.signature,
+      };
+
       // Fan to BOTH transports. Either may be unset (e.g. WS gateway
       // not yet wired, or SSE service not present in test env).
-      if (this.gateway) this.gateway.broadcastToScope(type, id, parsed);
-      if (this.sse) this.sse.broadcastToScope(type, id, parsed);
+      if (this.gateway) this.gateway.broadcastToScope(type, id, envelope);
+      if (this.sse) this.sse.broadcastToScope(type, id, envelope);
     } catch (e) {
       this.logger.error(`Failed to parse redis message on channel ${channel}:`, e);
     }
@@ -449,7 +540,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * Used by JwtAuthGuard / SSE / WS gateway for token revocation checks.
    *
    * Fallback semantics (2026-07-10 durable-revocation fix, SEC-012 posture):
-   * - Redis up            → Redis answer, byte-identical to before, NO DB read.
+   * - Redis up, continuity marker present → Redis answer, NO DB read.
+   * - Redis up, marker ABSENT (Redis lost data — F1, 2026-11-14) → a hit is
+   *   still a revocation; a miss takes the Postgres path below and starts
+   *   one restore (see REVOCATION_CONTINUITY_KEY).
    * - Redis down/erroring → for `jwt_revoked_list` only: Postgres
    *   `revoked_credentials` lookup (30s in-memory cached) instead of the
    *   old blanket `false`.
@@ -493,9 +587,21 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async checkTokenRevoked(token: string): Promise<RevocationCertainty> {
     if (this.connected && this.publisher) {
       try {
-        return (await this.publisher.sismember('jwt_revoked_list', token)) === 1
-          ? 'revoked'
-          : 'clear';
+        // One round trip: the raw-token set, the restored-hash set and the
+        // continuity marker (F1 — see REVOCATION_CONTINUITY_KEY).
+        const [inRaw, inRestored, intact] = await this.readPipeline((p) =>
+          p
+            .sismember('jwt_revoked_list', token)
+            .sismember(REVOKED_TOKEN_HASH_SET, hashRevokedToken(token))
+            .exists(REVOCATION_CONTINUITY_KEY),
+        );
+        // A hit is a revocation whatever the marker says.
+        if (inRaw === 1 || inRestored === 1) return 'revoked';
+        if (intact === 1) return 'clear';
+        // Marker absent: Redis lost data, so this miss proves nothing.
+        this.startRevocationRestore(
+          'token lookup found the continuity marker absent',
+        );
       } catch {
         // Redis answered with an error — fall through to the durable store.
       }
@@ -695,8 +801,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * marker is set. Used by JwtAuthGuard to reject pre-revocation tokens.
    *
    * Fallback semantics (2026-07-10 durable-revocation fix, SEC-012 posture):
-   * - Redis up               → Redis answer, byte-identical to before,
-   *   NO DB read.
+   * - Redis up, continuity marker present → Redis answer, NO DB read.
+   * - Redis up, marker ABSENT (F1, 2026-11-14) → a present marker is still
+   *   enforced; "no marker" takes the Postgres path and starts one restore.
    * - Redis configured but erroring → Postgres mirror lookup (30s
    *   cached). If Postgres ALSO fails, THROW — the guard fails CLOSED,
    *   exactly as before.
@@ -727,10 +834,26 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   > {
     if (this.publisher) {
       try {
-        const raw = await this.publisher.get(this.tokenInvalidBeforeKey(userId));
-        if (raw == null) return { certainty: 'confirmed', invalidBefore: null };
-        const n = parseInt(raw, 10);
-        return { certainty: 'confirmed', invalidBefore: Number.isFinite(n) ? n : null };
+        // One round trip: the marker key and the continuity marker (F1).
+        const [raw, intact] = await this.readPipeline((p) =>
+          p
+            .get(this.tokenInvalidBeforeKey(userId))
+            .exists(REVOCATION_CONTINUITY_KEY),
+        );
+        if (raw != null) {
+          // A present marker is enforced whatever the continuity marker says.
+          const n = parseInt(raw as string, 10);
+          return {
+            certainty: 'confirmed',
+            invalidBefore: Number.isFinite(n) ? n : null,
+          };
+        }
+        if (intact === 1)
+          return { certainty: 'confirmed', invalidBefore: null };
+        // Marker absent: Redis lost data, so "no marker" proves nothing.
+        this.startRevocationRestore(
+          'invalid-before lookup found the continuity marker absent',
+        );
       } catch {
         // Redis errored — fall through to the durable mirror.
       }
@@ -768,6 +891,196 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
     this.fallbackCacheSet(cacheKey, epoch);
     return epoch;
+  }
+
+  // ── Revocation continuity (F1, 2026-11-14) ────────────────────────────
+
+  /**
+   * Run read commands in ONE round trip and return their results in order.
+   * Throws if the pipeline or ANY command in it failed — the callers treat
+   * that exactly like the Redis error they already handle (durable store).
+   */
+  private async readPipeline(
+    build: (p: ReturnType<Redis['pipeline']>) => ReturnType<Redis['pipeline']>,
+  ): Promise<unknown[]> {
+    const results = await build(this.publisher!.pipeline()).exec();
+    if (!results) throw new Error('redis pipeline returned no results');
+    return results.map(([err, value]) => {
+      if (err) throw err;
+      return value;
+    });
+  }
+
+  /**
+   * Start ONE restore of the Postgres mirror into Redis, unless one is running
+   * or the last attempt was under RESTORE_RETRY_MS ago. Never throws, never
+   * awaited by a request — the request that noticed already reads Postgres.
+   */
+  private startRevocationRestore(reason: string): void {
+    if (this.restoreInFlight) return;
+    const now = Date.now();
+    if (now - this.lastRestoreAttemptAt < RedisService.RESTORE_RETRY_MS) return;
+    this.lastRestoreAttemptAt = now;
+    this.logger.warn(
+      `Revocation continuity marker absent (${reason}) — Redis lost revocation data; ` +
+        'lookups read the Postgres mirror until the restore completes',
+    );
+    this.restoreInFlight = this.restoreRevocationsFromDurable()
+      .then((ok) => {
+        // Only a FAILED attempt throttles the next one; after a success a new
+        // loss (marker gone again) restores at once.
+        if (ok) this.lastRestoreAttemptAt = 0;
+        return ok;
+      })
+      .catch((e) => {
+        this.logger.error(
+          `Revocation restore failed — lookups stay on the Postgres mirror and the next ` +
+            `miss retries: ${e instanceof Error ? e.message : e}`,
+        );
+        return false;
+      })
+      .finally(() => {
+        this.restoreInFlight = null;
+      });
+  }
+
+  /**
+   * Copy every unexpired row of the Postgres mirror into Redis, then set the
+   * continuity marker — atomically, and only if Redis was not wiped while this
+   * ran. Returns whether the marker was set. Throws on a store failure (the
+   * caller logs it; the marker stays absent, so lookups keep reading Postgres).
+   *
+   * Exposed for tests and the boot check; requests use startRevocationRestore.
+   */
+  async restoreRevocationsFromDurable(): Promise<boolean> {
+    if (!this.publisher || !this.prismaService) return false;
+    const runId = randomUUID();
+    // Expires on its own if this process dies mid-run; a later run writes its own.
+    await this.publisher.set(REVOCATION_RESTORE_RUN_KEY, runId, 'EX', 15 * 60);
+
+    let cursor: string | undefined;
+    let restoredUsers = 0;
+    let restoredTokens = 0;
+    let maxTokenTtlSec = 0;
+    for (;;) {
+      const nowMs = Date.now();
+      const rows = await this.prismaService.client.revokedCredential.findMany({
+        where: {
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date(nowMs) } }],
+        },
+        select: {
+          id: true,
+          kind: true,
+          key: true,
+          value: true,
+          expiresAt: true,
+        },
+        orderBy: { id: 'asc' },
+        take: RESTORE_PAGE_SIZE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      if (rows.length === 0) break;
+
+      const pipe = this.publisher.pipeline();
+      let queued = 0;
+      for (const row of rows) {
+        const ttlSec = row.expiresAt
+          ? Math.ceil((row.expiresAt.getTime() - nowMs) / 1000)
+          : Math.ceil(REVOKED_MIRROR_TTL_MS / 1000);
+        if (ttlSec <= 0) continue;
+        if (row.kind === REVOKED_KIND_USER_INVALID_BEFORE) {
+          const epoch = parseInt(row.value ?? '', 10);
+          if (!Number.isFinite(epoch)) continue;
+          pipe.eval(
+            RESTORE_INVALID_BEFORE_LUA,
+            1,
+            this.tokenInvalidBeforeKey(row.key),
+            String(epoch),
+            String(ttlSec),
+          );
+          restoredUsers++;
+          queued++;
+        } else if (row.kind === REVOKED_KIND_JTI) {
+          pipe.sadd(REVOKED_TOKEN_HASH_SET, row.key);
+          maxTokenTtlSec = Math.max(maxTokenTtlSec, ttlSec);
+          restoredTokens++;
+          queued++;
+        }
+      }
+      if (queued > 0) {
+        const results = await pipe.exec();
+        for (const [err] of results ?? []) {
+          if (err) throw err;
+        }
+      }
+      cursor = rows[rows.length - 1].id;
+      if (rows.length < RESTORE_PAGE_SIZE) break;
+    }
+
+    // Extend-only expiry on the restored-hash set, the same rule `sadd` keeps
+    // for `jwt_revoked_list`: never shorten what protects a longer-lived token.
+    if (maxTokenTtlSec > 0) {
+      const current = await this.publisher.ttl(REVOKED_TOKEN_HASH_SET);
+      if (current === -1 || (current >= 0 && current < maxTokenTtlSec)) {
+        await this.publisher.expire(REVOKED_TOKEN_HASH_SET, maxTokenTtlSec);
+      }
+    }
+
+    const marked = await this.publisher.eval(
+      MARK_CONTINUITY_LUA,
+      2,
+      REVOCATION_RESTORE_RUN_KEY,
+      REVOCATION_CONTINUITY_KEY,
+      runId,
+      new Date().toISOString(),
+    );
+    if (marked === 1) {
+      this.logger.log(
+        `Revocation continuity restored from the Postgres mirror ` +
+          `(${restoredUsers} user markers, ${restoredTokens} revoked tokens)`,
+      );
+      return true;
+    }
+    this.logger.warn(
+      'Revocation restore finished but Redis was wiped while it ran — marker left absent; ' +
+        'the next lookup retries',
+    );
+    return false;
+  }
+
+  /**
+   * Boot-time half of F1: restore if the marker is absent, and report an
+   * eviction policy that could drop individual revocation keys. Never throws.
+   */
+  private async checkRevocationContinuityAtBoot(): Promise<void> {
+    if (!this.publisher) return;
+    try {
+      const reply = await this.publisher.config('GET', 'maxmemory-policy');
+      const policy: unknown = Array.isArray(reply)
+        ? (reply as unknown[])[1]
+        : undefined;
+      if (typeof policy === 'string' && policy !== 'noeviction') {
+        this.logger.error(
+          `Redis maxmemory-policy is '${policy}': under memory pressure Redis may evict ` +
+            'individual revocation keys without any error, un-revoking those sessions until ' +
+            "they expire. Set it to 'noeviction'.",
+        );
+      }
+    } catch {
+      // Managed Redis often refuses CONFIG — nothing to report then.
+    }
+    try {
+      if ((await this.publisher.exists(REVOCATION_CONTINUITY_KEY)) !== 1) {
+        this.startRevocationRestore('boot');
+        await this.restoreInFlight;
+      }
+    } catch (e) {
+      this.logger.warn(
+        `Revocation continuity check at boot failed (lookups read Postgres until it passes): ${
+          e instanceof Error ? e.message : e
+        }`,
+      );
+    }
   }
 
   // ── Fallback-path plumbing (Redis-down only — never on the hot path) ──

@@ -2,6 +2,7 @@ import { Controller, Get, Query, UseGuards, Request } from '@nestjs/common';
 import { LicenseService } from './license.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
+import { DenyDevicePrincipalGuard } from '../auth/deny-device-principal.guard';
 import { LICENSE_TIERS, getLicenseTier, recommendedTiersForVertical } from '@cms/api-types';
 
 /** Tenant-facing license endpoint — current tier, seats used, expiry. */
@@ -10,7 +11,9 @@ import { LICENSE_TIERS, getLicenseTier, recommendedTiersForVertical } from '@cms
 export class LicenseController {
   constructor(private readonly license: LicenseService) {}
 
+  // A screen credential never reads the tenant's license / seat usage.
   @Get('me')
+  @UseGuards(DenyDevicePrincipalGuard)
   async me(@Request() req: any) {
     return this.license.summary(req.user.tenantId);
   }
@@ -20,6 +23,7 @@ export class LicenseController {
    * returns the canonical CurrentLicense DTO the billing UI expects.
    */
   @Get('current')
+  @UseGuards(DenyDevicePrincipalGuard)
   async current(@Request() req: any) {
     const summary: any = await this.license.summary(req.user.tenantId);
     if (!summary) return null;

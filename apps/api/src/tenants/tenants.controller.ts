@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
+import { DenyDevicePrincipalGuard } from '../auth/deny-device-principal.guard';
 import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import {
@@ -91,6 +92,7 @@ export class TenantsController {
    * - Others: just their own tenant
    */
   @Get('accessible')
+  @UseGuards(DenyDevicePrincipalGuard) // the dashboard's switcher; no screen calls it
   async listAccessible(@Request() req: any) {
     const role = req.user.role as string;
     const tenantId = req.user.tenantId as string;
@@ -957,6 +959,7 @@ export class TenantsController {
   }
 
   @Get()
+  @UseGuards(DenyDevicePrincipalGuard) // tenant settings for the dashboard; no screen calls it
   async getTenantInfo(@Request() req: any) {
     const tenantId = req.user.tenantId;
     const tenant = await this.prisma.client.tenant.findUnique({

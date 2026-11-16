@@ -553,6 +553,14 @@ export const SCREEN_TELEMETRY_ONLY_FIELDS = new Set([
     'managerHealthReport',
     'managerHealthReportAt',
     'lastCrashAuthenticated',
+    // 2026-11-16 — the panel's hardware serial and which read produced it
+    // (screens/hardware-serial.ts), carried by the signed native heartbeat.
+    // Written only on a change, but the first write is a fleet-wide wave the
+    // morning an APK carrying it lands — off this list every screen would
+    // clear the process-wide manifest cache once. Dashboard-only; no manifest
+    // branch reads either, and none may.
+    'hardwareSerial',
+    'hardwareSerialSource',
 ]);
 
 export type ManifestCacheEntry =

@@ -420,6 +420,15 @@ class HeartbeatService : Service() {
                         com.educms.player.health.ProcessHealth.headerValue(applicationContext)
                             ?.let { setRequestProperty(com.educms.player.health.ProcessHealthReport.HEADER, it) }
                     }.onFailure { PlayerLogger.w(TAG, "process health report unavailable: ${it.message}") }
+                    // 2026-11-16 — the panel's hardware serial (diagnostics.HardwareSerial):
+                    // read once per process, best effort, on THIS IO thread. Its own
+                    // header, only on the signed request; it can never cost the reports above.
+                    if (nativeAllowed) runCatching {
+                        setRequestProperty(
+                            com.educms.player.diagnostics.HardwareSerialPolicy.HEADER,
+                            com.educms.player.diagnostics.HardwareSerial.headerValue(applicationContext),
+                        )
+                    }.onFailure { PlayerLogger.w(TAG, "hardware serial report unavailable: ${it.message}") }
                 }
                 // Bound the entire exchange, including a body that trickles
                 // forever inside readTimeout. A stuck native heartbeat must

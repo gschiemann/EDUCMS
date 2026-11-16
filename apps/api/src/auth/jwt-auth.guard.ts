@@ -53,6 +53,60 @@ import { USER_JWT_ALGORITHMS } from './jwt-algorithms';
 export const API_KEY_DENIED_PATH_PREFIXES: readonly string[] = ['/api/v1/emergency'];
 
 /**
+ * Identity, credential and tenant-control surfaces that no API key may reach,
+ * whatever its role or scopes — including an UNRESTRICTED key (scopes = NULL).
+ *
+ * Each of these either hands out privilege or belongs to a human session:
+ *   /api/v1/api-keys              — a key that can mint keys defeats expiry and revocation
+ *   /api/v1/users                 — accounts, roles, capability grants, MFA resets
+ *   /api/v1/auth                  — sign-in, sessions, MFA, passkeys, SSO sign-in
+ *   /api/v1/support-access        — granting the vendor access to the tenant
+ *   /api/v1/integrations/clever   — the roster feed that provisions accounts
+ *   /api/v1/tenants/switch        — moving a session between tenants
+ * plus any route under `/api/v1/tenants` whose path contains `/sso` (the
+ * tenant's login-path configuration and domain proof) or `mfa-enforced` (the
+ * tenant's two-factor policy) — see `isApiKeyIdentityDeniedPath`.
+ *
+ * Like the emergency prefix, this is checked before scopes so no grant can
+ * reach it, and it is prefix-based so a new route under one of these families
+ * is covered the day it merges.
+ */
+export const API_KEY_IDENTITY_DENIED_PATH_PREFIXES: readonly string[] = [
+  '/api/v1/api-keys',
+  '/api/v1/users',
+  '/api/v1/auth',
+  '/api/v1/support-access',
+  '/api/v1/integrations/clever',
+  '/api/v1/tenants/switch',
+];
+
+/**
+ * Normalise a request path for the deny checks only: lower-cased, query
+ * stripped, percent-decoding applied (when well-formed) and repeated slashes
+ * collapsed. Every transformation can only make a deny MATCH more often.
+ */
+export function normalizeApiKeyDenyPath(path: string): string {
+  let p = String(path || '').split('?')[0];
+  try {
+    p = decodeURIComponent(p);
+  } catch {
+    /* malformed escape — keep the raw form */
+  }
+  return p.replace(/\/+/g, '/').toLowerCase();
+}
+
+/** True when an api-key identity must be refused on this path, regardless of scopes. */
+export function isApiKeyIdentityDeniedPath(path: string): boolean {
+  const p = normalizeApiKeyDenyPath(path);
+  if (API_KEY_IDENTITY_DENIED_PATH_PREFIXES.some((prefix) => p.startsWith(prefix))) return true;
+  if (p.startsWith('/api/v1/tenants')) {
+    const rest = p.slice('/api/v1/tenants'.length);
+    if (rest.includes('/sso') || rest.includes('mfa-enforced')) return true;
+  }
+  return false;
+}
+
+/**
  * How long an identical scope-denial is suppressed from the audit log, per
  * replica (ms).
  *
@@ -224,7 +278,8 @@ export class JwtAuthGuard implements CanActivate {
       // an api-key identity on an emergency request, and BEFORE scopes so no
       // grant can reach it.
       const path = this.requestPath(request);
-      if (API_KEY_DENIED_PATH_PREFIXES.some((p) => path.startsWith(p))) {
+      const denyPath = normalizeApiKeyDenyPath(path);
+      if (API_KEY_DENIED_PATH_PREFIXES.some((p) => path.startsWith(p) || denyPath.startsWith(p))) {
         this.guardLogger.warn(
           `API key ${verified.id} (tenant ${verified.tenantId}) was refused on ${path} — ` +
             `emergency actions require a human session.`,
@@ -236,6 +291,24 @@ export class JwtAuthGuard implements CanActivate {
         throw new ForbiddenException(
           'API keys cannot trigger or clear emergency actions. These require a signed-in ' +
             'user with emergency permissions.',
+        );
+      }
+
+      // Identity, credential and tenant-control surfaces: refused for every
+      // api-key identity, before scopes, so no grant (and no unrestricted
+      // key) can reach them.
+      if (isApiKeyIdentityDeniedPath(path)) {
+        this.guardLogger.warn(
+          `API key ${verified.id} (tenant ${verified.tenantId}) was refused on ${path} — ` +
+            `account and sign-in settings require a signed-in user.`,
+        );
+        this.recordApiKeyUse(request, verified, path, 'DENIED', {
+          scopes: keyScopes,
+          reason: 'identity-path',
+        });
+        throw new ForbiddenException(
+          'API keys cannot manage users, API keys, sign-in or security settings. ' +
+            'These require a signed-in user.',
         );
       }
 

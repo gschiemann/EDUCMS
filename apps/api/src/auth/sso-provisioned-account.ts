@@ -27,7 +27,19 @@
  */
 export const SSO_PROVISIONED_NO_PASSWORD_HASH = 'clever-sso-no-password';
 
-/** True when this account has no password of its own and never should. */
+/**
+ * True when this account has no password of its own and never should.
+ *
+ * Every password this product sets is stored as an argon2 encoded hash, which
+ * always begins `$argon2`. Anything else is not a password: the Clever
+ * sentinel above, the `sso:<random>` placeholder `SsoService` writes when it
+ * provisions an account from an OIDC assertion, or an empty / absent value.
+ * All of them answer `true`, so every caller (the password-reset request and
+ * completion, passkey enrollment and sign-in, password step-up) treats any
+ * externally-provisioned account the same way.
+ */
 export function isSsoProvisionedNoPassword(passwordHash: string | null | undefined): boolean {
-  return passwordHash === SSO_PROVISIONED_NO_PASSWORD_HASH;
+  if (typeof passwordHash !== 'string' || passwordHash.length === 0) return true;
+  if (passwordHash === SSO_PROVISIONED_NO_PASSWORD_HASH) return true;
+  return !passwordHash.startsWith('$argon2');
 }

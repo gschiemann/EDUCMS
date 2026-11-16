@@ -90,8 +90,12 @@ on:
 # which version a SHA corresponds to. Dependabot understands this format and
 # will still offer bumps (see .github/dependabot.yml).
 
+# Read-only by default (2026-11-16). Only the `publish-release` job below,
+# which creates the GitHub Release, is granted `contents: write`. The job that
+# holds the signing key (`build-apk`) runs with a read-only token, so no action
+# in it can write to the repository.
 permissions:
-  contents: write   # softprops/action-gh-release needs write to create Releases
+  contents: read
 
 concurrency:
   group: android-player-apk-${{ github.ref }}
@@ -102,8 +106,17 @@ jobs:
     name: Build APK (release-signed when secrets are present)
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: read
+    outputs:
+      player_apk_name: ${{ steps.locate.outputs.name }}
+      manager_apk_name: ${{ steps.locate-manager.outputs.name }}
+      manager_version: ${{ steps.locate-manager.outputs.manager_version }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Nothing in this job pushes; do not leave the token in .git/config.
+          persist-credentials: false
 
       - name: Set up JDK 17
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
@@ -163,33 +176,6 @@ jobs:
           fi
           ls -la apps/player/gradlew apps/player/gradle/wrapper/gradle-wrapper.jar
           chmod +x apps/player/gradlew
-
-      # Materialize the release keystore from the repo secret. The private key
-      # never exists in the repo — only as RELEASE_KEYSTORE_BASE64, which is
-      # write-only in GitHub (it cannot be read back, so this is NOT a backup;
-      # the owner's copies are the backup — see apps/player/RELEASE_SIGNING.md).
-      #
-      # If the secret is absent the file is simply not created, hasReleaseSigning
-      # stays false, and the build falls back to assembleDebug below. That keeps
-      # a fork or a secretless environment building instead of hard-failing.
-      - name: Materialize release keystore
-        id: keystore
-        env:
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-        run: |
-          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
-            echo "::warning::RELEASE_KEYSTORE_BASE64 not set — falling back to a DEBUG build."
-            echo "available=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/venueos-release.jks"
-          # Sanity-check the decode: a PKCS12/JKS store starts with 0x30 0x82.
-          head -c 2 "$RUNNER_TEMP/venueos-release.jks" | xxd -p | grep -q '^3082' || {
-            echo "::error::Decoded keystore is not a valid key store — check RELEASE_KEYSTORE_BASE64."
-            exit 1
-          }
-          echo "available=true" >> $GITHUB_OUTPUT
-          echo "Keystore materialized ($(stat -c%s "$RUNNER_TEMP/venueos-release.jks") bytes)."
 
       # ─── HARDWARE QUALIFICATION GATE (2026-09-02, P0-4) ───────────────
       # RELEASE PATH ONLY. On a `player-v*` / `manager-v*` tag this runs
@@ -315,6 +301,38 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+      # Materialize the release keystore from the repo secret. The private key
+      # never exists in the repo — only as RELEASE_KEYSTORE_BASE64, which is
+      # write-only in GitHub (it cannot be read back, so this is NOT a backup;
+      # the owner's copies are the backup — see apps/player/RELEASE_SIGNING.md).
+      #
+      # If the secret is absent the file is simply not created, hasReleaseSigning
+      # stays false, and the build falls back to assembleDebug below. That keeps
+      # a fork or a secretless environment building instead of hard-failing.
+      #
+      # Placed immediately before the assemble (2026-11-16): the key file exists
+      # on disk only for the Build APK step — not while the guards, tests and
+      # lint run — and the step right after the build deletes it. What gets
+      # signed, and by which key, is unchanged.
+      - name: Materialize release keystore
+        id: keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "::warning::RELEASE_KEYSTORE_BASE64 not set — falling back to a DEBUG build."
+            echo "available=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/venueos-release.jks"
+          # Sanity-check the decode: a PKCS12/JKS store starts with 0x30 0x82.
+          head -c 2 "$RUNNER_TEMP/venueos-release.jks" | xxd -p | grep -q '^3082' || {
+            echo "::error::Decoded keystore is not a valid key store — check RELEASE_KEYSTORE_BASE64."
+            exit 1
+          }
+          echo "available=true" >> $GITHUB_OUTPUT
+          echo "Keystore materialized ($(stat -c%s "$RUNNER_TEMP/venueos-release.jks") bytes)."
+
       - name: Build APK
         env:
           PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://venue-os.app/player' }}
@@ -357,6 +375,12 @@ jobs:
           ./gradlew --no-daemon --stacktrace "$TASK" -PplayerBaseUrl="$PLAYER_BASE_URL" "${FIELD_ARGS[@]}" 2>&1 | tee gradle-build.log
           status=${PIPESTATUS[0]}
           exit $status
+
+      # The key file is needed by the assemble only. Remove it as soon as that
+      # step ends, pass or fail, so no later step (or action) can read it.
+      - name: Remove release keystore
+        if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/venueos-release.jks"
 
       - name: Dump gradle log tail on failure
         if: failure()
@@ -450,6 +474,7 @@ jobs:
           NEW_PATH="apps/player/app/build/outputs/apk/${VARIANT}/${NEW_NAME}"
           mv "$APK" "$NEW_PATH"
           echo "apk=$NEW_PATH" >> $GITHUB_OUTPUT
+          echo "name=$NEW_NAME" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           ls -la "$NEW_PATH"
 
@@ -505,6 +530,7 @@ jobs:
           MGR_NEW_PATH="apps/player/manager/build/outputs/apk/${VARIANT}/${MGR_NEW}"
           mv "$MGR_APK" "$MGR_NEW_PATH"
           echo "apk=$MGR_NEW_PATH" >> $GITHUB_OUTPUT
+          echo "name=$MGR_NEW" >> $GITHUB_OUTPUT
           echo "version=$MVERSION" >> $GITHUB_OUTPUT
           ls -la "$MGR_NEW_PATH"
 
@@ -549,6 +575,67 @@ jobs:
             "${{ steps.locate.outputs.apk }}" \
             "${{ steps.locate-manager.outputs.apk }}"
 
+      - name: Build summary
+        run: |
+          echo "### VenueOS Player APK built ✓" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download from the **Artifacts** section above (\`venueos-player-apk\`)." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Player base URL:** \`${PLAYER_BASE_URL:-https://venue-os.app/player}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Side-load on Android: Settings → Apps → Special access → Install unknown apps → enable for your file manager → tap the .apk." >> $GITHUB_STEP_SUMMARY
+        env:
+          PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://venue-os.app/player' }}
+
+  # ─── PUBLISH (2026-11-16) ─────────────────────────────────────────
+  # Split out of build-apk so the signing key and a write-capable token never
+  # share a job. This job holds `contents: write` (to create the Release) and
+  # the storage secrets; it never sees the keystore or its passwords. It
+  # publishes exactly the artifacts build-apk uploaded, after every guard in
+  # build-apk (tests, lint, debuggable) has passed — `needs` makes a red build
+  # skip this job, as the old in-job `if:` ordering did.
+  publish-release:
+    name: Publish GitHub Release (player-v tags)
+    needs: [build-apk]
+    if: startsWith(github.ref, 'refs/tags/player-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # softprops/action-gh-release needs write to create Releases
+    steps:
+      # For scripts/upload-apks-to-storage.mjs. Nothing here pushes.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node (for the storage publish)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Download Player APK artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: venueos-player-apk
+          path: dist/player
+
+      - name: Download Manager APK artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: venueos-manager-apk
+          path: dist/manager
+
+      - name: Confirm the downloaded files are the ones build-apk named
+        env:
+          PLAYER_APK: dist/player/${{ needs.build-apk.outputs.player_apk_name }}
+          MANAGER_APK: dist/manager/${{ needs.build-apk.outputs.manager_apk_name }}
+        run: |
+          set -eu
+          for f in "$PLAYER_APK" "$MANAGER_APK"; do
+            [ -s "$f" ] || { echo "::error::missing artifact file $f"; exit 1; }
+            ls -la "$f"
+          done
+
       # On tag push (player-v*) attach the APK to a GitHub Release so
       # /api/v1/player/apk/latest can resolve it without any Railway env
       # config. The controller auto-picks arm64-v8a first, falls back to
@@ -561,19 +648,18 @@ jobs:
       # ignores the manager asset by name (pickApkAsset), so the fleet is
       # never handed the companion as a Player update.
       - name: Attach APKs to GitHub Release (on tag push)
-        if: startsWith(github.ref, 'refs/tags/player-v')
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
-            ${{ steps.locate.outputs.apk }}
-            ${{ steps.locate-manager.outputs.apk }}
+            dist/player/${{ needs.build-apk.outputs.player_apk_name }}
+            dist/manager/${{ needs.build-apk.outputs.manager_apk_name }}
           tag_name: ${{ github.ref_name }}
           name: Player ${{ github.ref_name }}
           body: |
             VenueOS Player kiosk APK — one release unit.
 
             The Player APK carries the companion Manager APK (version
-            `${{ steps.locate-manager.outputs.manager_version }}`) in its assets and
+            `${{ needs.build-apk.outputs.manager_version }}`) in its assets and
             installs it on the device only when that version is newer than the
             one installed. The standalone Manager APK attached here is the same
             bytes, for the bootstrap fallback and the hardware checklist; it is
@@ -617,12 +703,11 @@ jobs:
       # the job here would instead leave a TAGGED release with no APK
       # anywhere, which is strictly worse.
       - name: Publish APKs to object storage (immutable, private bucket)
-        if: startsWith(github.ref, 'refs/tags/player-v')
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          MANAGER_VERSION: ${{ steps.locate-manager.outputs.manager_version }}
+          MANAGER_VERSION: ${{ needs.build-apk.outputs.manager_version }}
         run: |
           if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
             echo "::warning::SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY repo secrets are not set — skipping the storage publish. The release still ships; the fleet downloads it through the API byte proxy (Railway pays the egress). Set both secrets, then backfill with: node scripts/upload-apks-to-storage.mjs --from-releases"
@@ -632,26 +717,13 @@ jobs:
           # both are mirrored. The uploader never overwrites: a Manager whose
           # version did not move in this release is already in the bucket and
           # is reported as "already published", not rewritten.
-          node scripts/upload-apks-to-storage.mjs --file "${{ steps.locate.outputs.apk }}" --kind player
-          node scripts/upload-apks-to-storage.mjs --file "${{ steps.locate-manager.outputs.apk }}" --kind manager --version "$MANAGER_VERSION"
+          node scripts/upload-apks-to-storage.mjs --file "dist/player/${{ needs.build-apk.outputs.player_apk_name }}" --kind player
+          node scripts/upload-apks-to-storage.mjs --file "dist/manager/${{ needs.build-apk.outputs.manager_apk_name }}" --kind manager --version "$MANAGER_VERSION"
 
       - name: Note the storage publish in the summary
-        if: startsWith(github.ref, 'refs/tags/player-v')
         run: |
           echo "### APK delivery" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "The GitHub Release above is the version catalogue. A delivery copy is published to the private \`apks\` storage bucket, and \`/api/v1/player/apk/v/<versionCode>\` 302s to a signed URL for it once the digest matches — watch the flip with \`grep 'apk-delivery' \` in the Railway logs (\`served=redirect\` vs \`served=proxy\`)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "If the publish step warned or failed, the fleet is unaffected (it falls back to the API byte proxy). Re-run it with \`node scripts/upload-apks-to-storage.mjs --from-releases\`." >> $GITHUB_STEP_SUMMARY
-
-      - name: Build summary
-        run: |
-          echo "### VenueOS Player APK built ✓" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download from the **Artifacts** section above (\`venueos-player-apk\`)." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Player base URL:** \`${PLAYER_BASE_URL:-https://venue-os.app/player}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Side-load on Android: Settings → Apps → Special access → Install unknown apps → enable for your file manager → tap the .apk." >> $GITHUB_STEP_SUMMARY
-        env:
-          PLAYER_BASE_URL: ${{ github.event.inputs.playerBaseUrl != '' && github.event.inputs.playerBaseUrl || 'https://venue-os.app/player' }}

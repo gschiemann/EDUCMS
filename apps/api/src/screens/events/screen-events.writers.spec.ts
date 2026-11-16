@@ -341,19 +341,24 @@ describe('ota-installed · player-ota update-check (persistReportedVersion)', ()
     return { t, report };
   }
 
-  it('a build the screen had not reported before: one row (anonymous or not), none for the repeat, none without a tenant', async () => {
+  it('a build the screen had not reported before: one row from a device-authenticated report, none for the repeat, none without a tenant', async () => {
     const { t, report } = otaHarness({ id: 'scr-o', tenantId: 'ten-1', playerVersionCode: 10129, forceApkUpdatePendingAt: null, forceApkUpdateTargetVersionCode: null });
-    await report({ deviceAuthenticated: false });
+    await report({ deviceAuthenticated: true });
     await report({ deviceAuthenticated: true });
     await flush();
     expect(t.rows('ota-installed')).toEqual([
       expect.objectContaining({
         screenId: 'scr-o', tenantId: 'ten-1', cause: 'version-change', source: 'device', versionCode: 10141,
-        detail: { from: 10129, to: 10141, version: '1.1.41', authenticated: false },
+        detail: { from: 10129, to: 10141, version: '1.1.41', authenticated: true },
       }),
     ]);
+    // (2026-11-16) an anonymous update-check records no version, so no row.
+    const anonymous = otaHarness({ id: 'scr-a', tenantId: 'ten-1', playerVersionCode: 10129, forceApkUpdatePendingAt: null });
+    await anonymous.report({ deviceAuthenticated: false });
+    await flush();
+    expect(anonymous.t.rows()).toEqual([]);
     const unpaired = otaHarness({ id: 'scr-u', tenantId: null, playerVersionCode: 10129 });
-    await unpaired.report({ deviceAuthenticated: false });
+    await unpaired.report({ deviceAuthenticated: true });
     await flush();
     expect(unpaired.t.rows()).toEqual([]);
   });

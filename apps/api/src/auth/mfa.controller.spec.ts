@@ -63,7 +63,9 @@ interface FakeUser {
    * softer world than production and would hide exactly the regressions this
    * file exists to catch.
    */
-  tenant: { mfaEnforced: boolean | null } | null;
+  tenant: { mfaEnforced?: boolean | null; archivedAt?: Date | null } | null;
+  deletedAt?: Date | null;
+  status?: string | null;
 }
 
 function makeUser(overrides: Partial<FakeUser> = {}): FakeUser {
@@ -527,6 +529,59 @@ describe('MfaController', () => {
       await expect(
         controller.challenge({ mfaToken: 't', backupCode: 'USEDCODE' }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+
+    describe('issues no session to an account that may not sign in', () => {
+      async function challengeWith(overrides: Partial<FakeUser>) {
+        const { secretBase32 } = generateTotpSecret();
+        prisma.client.user.findUnique.mockResolvedValue(
+          makeUser({
+            mfaTotpSecret: sealMfaSecret(secretBase32),
+            mfaTotpVerifiedAt: new Date(),
+            ...overrides,
+          }),
+        );
+        jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', purpose: MFA_CHALLENGE_PURPOSE });
+        jest.spyOn(Date, 'now').mockReturnValue(FIXED_NOW);
+        const code = computeTotpCodeForSecret(secretBase32, FIXED_NOW);
+        return controller.challenge({ mfaToken: 't', code });
+      }
+
+      it.each<[string, Partial<FakeUser>]>([
+        ['a DISABLED account', { status: 'DISABLED' }],
+        ['an INVITED account', { status: 'INVITED' }],
+        ['a soft-deleted account', { deletedAt: new Date() }],
+        ['an account whose tenant is archived', { tenant: { mfaEnforced: true, archivedAt: new Date() } }],
+      ])('refuses %s with a valid code', async (_label, overrides) => {
+        await expect(challengeWith(overrides)).rejects.toMatchObject({
+          response: { code: 'MFA_TOKEN_INVALID' },
+        });
+        expect(auth.login).not.toHaveBeenCalled();
+      });
+
+      it('refuses a backup code for a DISABLED account without consuming it', async () => {
+        const hash = await argon2.hash('ABCDEFGH', cryptoPlatformConfig);
+        prisma.client.user.findUnique.mockResolvedValue(
+          makeUser({
+            mfaTotpSecret: sealMfaSecret(generateTotpSecret().secretBase32),
+            mfaTotpVerifiedAt: new Date(),
+            mfaBackupCodes: [{ hash, createdAt: 'x' }],
+            status: 'DISABLED',
+          }),
+        );
+        jwt.verifyAsync.mockResolvedValue({ sub: 'user-1', purpose: MFA_CHALLENGE_PURPOSE });
+        await expect(controller.challenge({ mfaToken: 't', backupCode: 'ABCDEFGH' })).rejects.toThrow(
+          UnauthorizedException,
+        );
+        expect(prisma.client.user.update).not.toHaveBeenCalled();
+        expect(auth.login).not.toHaveBeenCalled();
+      });
+
+      it('loads the account with its tenant joined, so the archived-tenant gate can run', async () => {
+        await challengeWith({ status: 'ACTIVE' });
+        const select = prisma.client.user.findUnique.mock.calls[0][0].select;
+        expect(select).toMatchObject({ deletedAt: true, status: true, tenant: { select: { archivedAt: true } } });
+      });
     });
   });
 

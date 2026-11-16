@@ -202,3 +202,87 @@ describe('EmergencyOverlay — several alerts, each with its own all-clear', () 
     expect(allClearEmergency).not.toHaveBeenCalled();
   });
 });
+
+// 2026-11-14 — operator report: "I can type the emergency word and hit enter to
+// trigger it but when I type it to clear it I can't hit enter". The trigger
+// modal's confirm field had the keyboard path (a11y §18-1); the all-clear did
+// not. Enter now runs the same guarded all-clear — never past the gate.
+describe('EmergencyOverlay — Enter in the CLEAR field', () => {
+  const pressEnter = async (init: Partial<KeyboardEventInit> = {}) => {
+    await act(async () => {
+      fireEvent.keyDown(screen.getByPlaceholderText('Type CLEAR'), { key: 'Enter', code: 'Enter', ...init });
+    });
+  };
+
+  it('CLEAR + Enter sends the same all-clear the button sends', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([LOBBY]).mockResolvedValue([]);
+    allClearEmergency.mockResolvedValue({ success: true });
+    await renderOverlay();
+    await screen.findByText('Medical — Lobby, 1 screen');
+
+    fireEvent.change(screen.getByPlaceholderText('Type CLEAR'), { target: { value: 'clear' } });
+    await pressEnter();
+
+    expect(allClearEmergency).toHaveBeenCalledTimes(1);
+    expect(allClearEmergency).toHaveBeenCalledWith(
+      expect.objectContaining({ overrideId: 'ovr_lobby', scopeType: 'device', scopeId: 's-lobby', schoolId: 't1', token: 'tok' }),
+    );
+    await waitFor(() => expect(useUIStore.getState().isEmergencyActive).toBe(false));
+  });
+
+  it('Enter before the full word does nothing', async () => {
+    fetchActiveAlerts.mockResolvedValue([LOBBY]);
+    await renderOverlay();
+    await screen.findByText('Medical — Lobby, 1 screen');
+
+    for (const partial of ['', 'C', 'CLEA', 'CLEARX']) {
+      fireEvent.change(screen.getByPlaceholderText('Type CLEAR'), { target: { value: partial } });
+      await pressEnter();
+    }
+    expect(allClearEmergency).not.toHaveBeenCalled();
+  });
+
+  it('with several alerts, Enter does nothing until one is chosen — then ends exactly that one', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([GYM, LOBBY]).mockResolvedValue([LOBBY]);
+    allClearEmergency.mockResolvedValue({ success: true });
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+
+    fireEvent.change(screen.getByPlaceholderText('Type CLEAR'), { target: { value: 'CLEAR' } });
+    await pressEnter();
+    expect(allClearEmergency).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Lockdown — Gym group, 6 screens/ }));
+    await pressEnter();
+    expect(allClearEmergency).toHaveBeenCalledTimes(1);
+    expect(allClearEmergency).toHaveBeenCalledWith(expect.objectContaining({ overrideId: 'ovr_gym', scopeId: 'g-gym' }));
+  });
+
+  it('an Enter that commits an IME composition is not a submit', async () => {
+    fetchActiveAlerts.mockResolvedValue([LOBBY]);
+    await renderOverlay();
+    await screen.findByText('Medical — Lobby, 1 screen');
+
+    fireEvent.change(screen.getByPlaceholderText('Type CLEAR'), { target: { value: 'CLEAR' } });
+    await pressEnter({ isComposing: true });
+    // Safari: the committing Enter arrives after compositionend, isComposing
+    // false, keyCode 229.
+    await pressEnter({ keyCode: 229 });
+    expect(allClearEmergency).not.toHaveBeenCalled();
+  });
+
+  it('a held-down Enter sends ONE all-clear, not one per key repeat', async () => {
+    fetchActiveAlerts.mockResolvedValue([LOBBY]);
+    let finish: (v: unknown) => void = () => undefined;
+    allClearEmergency.mockImplementation(() => new Promise((r) => { finish = r; }));
+    await renderOverlay();
+    await screen.findByText('Medical — Lobby, 1 screen');
+
+    fireEvent.change(screen.getByPlaceholderText('Type CLEAR'), { target: { value: 'CLEAR' } });
+    await pressEnter();
+    await pressEnter({ repeat: true });
+    await pressEnter({ repeat: true });
+    expect(allClearEmergency).toHaveBeenCalledTimes(1);
+    await act(async () => finish({ success: true }));
+  });
+});
