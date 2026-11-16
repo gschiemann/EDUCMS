@@ -441,45 +441,10 @@ jobs:
       - name: extract-zip stays out of the production graph
         run: node scripts/check-extract-zip-unreachable.cjs
 
-  secret-scan:
-    name: Secret Leak Scan (gitleaks)
-    # Operational gap O2 (2026-05-25): no automated secret-leak gate
-    # — a future agent commit could leak a token (Stripe, Supabase
-    # service-role, Anthropic API key, Twilio, etc.) and we'd find
-    # out from a billing alert hours/days later. gitleaks scans the
-    # diff on PRs and full history on master push. Sub-30s runtime
-    # against this repo size; fails the job on any HIGH-confidence
-    # finding so a tagged secret can't merge without explicit override.
-    runs-on: ubuntu-latest
-    needs: [changes]
-    # Never on a merge group: the pinned gitleaks-action (v2, ff98106e…) supports
-    # only push / pull_request / workflow_dispatch / schedule and exits 1 on any
-    # other event ("ERROR: The [merge_group] event is not yet supported" — its
-    # dist/index.js at that commit), which would redden every queue entry. Nothing
-    # is lost: the queued commits are the PR's own, already scanned when the
-    # pull_request run diffed them.
-    if: ${{ github.event_name != 'merge_group' && (github.event_name != 'pull_request' || needs.changes.outputs.code == 'true') }}
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          # gitleaks needs the full history on master push so it can
-          # scan everything that's been added since the last
-          # known-clean commit. On PRs it scans the diff only — fast
-          # by default.
-          fetch-depth: 0
-
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
-        env:
-          # gitleaks-action looks for GITHUB_TOKEN by default; we
-          # pass the workflow's auto-issued token (read-only above).
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # GITLEAKS_ENABLE_UPLOAD_ARTIFACT defaults to true; that's
-          # fine — failures upload a SARIF artifact for triage.
+  # The gitleaks "Secret Leak Scan (gitleaks)" job lives in secret-scan.yml
+  # (2026-11-16). This workflow's push trigger skips docs-only commits through
+  # paths-ignore, and a secret in a markdown file is still a secret, so the scan
+  # runs from a workflow with no path filter on any event.
 
   security-scan:
     name: Container Security Scanning

@@ -119,13 +119,12 @@ import {
  *   Creek" demo district (prior-session memory: seeded 2026-07-31). Its
  *   seed script AND its research notes are BOTH deliberately gitignored —
  *   ".gitignore: docs/research/2026-07-31-walnut-creek-demo-district/ and
- *   packages/database/prisma/seed-walnut-creek-demo.mjs" — with a commit
- *   message spelling out why: "untrack the Walnut Creek demo folder — it
- *   carries a live password" (commit b1203bb6). Verified absent via two
- *   independent methods: `git log --all` finds zero commits that ever
- *   added such a file, and .gitignore lists the exact paths with that
- *   commit message. So no slug/name pattern for Walnut Creek exists
- *   anywhere in tracked code for this endpoint to key off. Do NOT guess a
+ *   packages/database/prisma/seed-walnut-creek-demo.mjs". The research
+ *   folder was tracked briefly: `git log --all` shows it added in commit
+ *   ffddbdc4 and untracked again in commit b1203bb6, and .gitignore has
+ *   listed both paths since. Neither path is in the current tree, so no
+ *   slug/name pattern for Walnut Creek exists anywhere in tracked code
+ *   for this endpoint to key off. Do NOT guess a
  *   pattern here — if Walnut Creek tenants need excluding, archive them
  *   (same one-line fix as Springfield above) rather than hardcoding a
  *   slug prefix nobody can verify from this worktree.

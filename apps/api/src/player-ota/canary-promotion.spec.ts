@@ -11,14 +11,21 @@
  *     cycle, erased a genuine ERROR before the soak expired.
  */
 
-import { CanaryAutoPromote, evaluateCanaryPromotion } from './canary-auto-promote';
+import { CanaryAutoPromote, evaluateCanaryPromotion as evaluateRaw } from './canary-auto-promote';
 import { readDrillConfig } from '../emergency/drill/synthetic-drill.config';
 
 const SET_AT = new Date('2026-08-01T00:00:00Z');
 const DURING = new Date('2026-08-01T06:00:00Z');
 const BEFORE = new Date('2026-07-20T00:00:00Z');
 
-const healthy = (id: string) => ({ id, playerVersionAt: DURING });
+/** The build being rolled out (1.1.29 → 10129, the APK's own encoding). */
+const TARGET = 10129;
+
+const healthy = (id: string) => ({ id, playerVersionAt: DURING, playerVersionCode: TARGET });
+
+/** Every pre-existing case evaluates against TARGET unless it says otherwise. */
+const evaluateCanaryPromotion = (o: Omit<Parameters<typeof evaluateRaw>[0], 'targetVersionCode'> & { targetVersionCode?: number | null }) =>
+  evaluateRaw({ targetVersionCode: TARGET, ...o });
 
 describe('evaluateCanaryPromotion', () => {
   it('promotes when the cohort is non-empty, installs are confirmed, and there are no errors', () => {
@@ -56,7 +63,7 @@ describe('evaluateCanaryPromotion', () => {
     // vetoes outright — no rate threshold applies.
     const cohort = [
       ...Array.from({ length: 20 }, (_, i) => healthy(`ok${i}`)),
-      { id: 'bad', playerVersionAt: DURING, lastOtaErrorAt: DURING, lastOtaErrorAuthenticated: true },
+      { id: 'bad', playerVersionAt: DURING, playerVersionCode: TARGET, lastOtaErrorAt: DURING, lastOtaErrorAuthenticated: true },
     ];
     const v = evaluateCanaryPromotion({ cohort, canarySetAt: SET_AT });
     expect(v.promote).toBe(false);
@@ -69,7 +76,7 @@ describe('evaluateCanaryPromotion', () => {
     // block a tenant's patch rollout indefinitely, every 5 minutes, forever.
     const cohort = [
       ...Array.from({ length: 20 }, (_, i) => healthy(`ok${i}`)),
-      { id: 'bad', playerVersionAt: DURING, lastOtaErrorAt: DURING, lastOtaErrorAuthenticated: false },
+      { id: 'bad', playerVersionAt: DURING, playerVersionCode: TARGET, lastOtaErrorAt: DURING, lastOtaErrorAuthenticated: false },
     ];
     const v = evaluateCanaryPromotion({ cohort, canarySetAt: SET_AT });
     expect(v.promote).toBe(true);
@@ -80,8 +87,8 @@ describe('evaluateCanaryPromotion', () => {
     const cohort = [
       healthy('ok1'),
       healthy('ok2'),
-      { id: 'b1', playerVersionAt: DURING, lastOtaErrorAt: DURING },
-      { id: 'b2', playerVersionAt: DURING, lastOtaErrorAt: DURING },
+      { id: 'b1', playerVersionAt: DURING, playerVersionCode: TARGET, lastOtaErrorAt: DURING },
+      { id: 'b2', playerVersionAt: DURING, playerVersionCode: TARGET, lastOtaErrorAt: DURING },
     ];
     const v = evaluateCanaryPromotion({ cohort, canarySetAt: SET_AT });
     expect(v.promote).toBe(false);
@@ -96,6 +103,7 @@ describe('evaluateCanaryPromotion', () => {
       {
         id: 'bad',
         playerVersionAt: DURING,
+        playerVersionCode: TARGET,
         lastOtaState: 'CHECKING',      // overwritten by the device
         lastOtaAt: DURING,
         lastOtaErrorAt: DURING,        // …but the failure is still recorded
@@ -106,14 +114,14 @@ describe('evaluateCanaryPromotion', () => {
   });
 
   it('ignores errors that predate the canary window', () => {
-    const cohort = [healthy('a'), { id: 'b', playerVersionAt: DURING, lastOtaErrorAt: BEFORE }];
+    const cohort = [healthy('a'), { id: 'b', playerVersionAt: DURING, playerVersionCode: TARGET, lastOtaErrorAt: BEFORE }];
     const v = evaluateCanaryPromotion({ cohort, canarySetAt: SET_AT });
     expect(v.promote).toBe(true);
     expect(v.errorCount).toBe(0);
   });
 
   it('honours the legacy lastOtaState column for a canary armed across the deploy boundary', () => {
-    const cohort = [healthy('a'), { id: 'b', playerVersionAt: DURING, lastOtaState: 'ERROR', lastOtaAt: DURING }];
+    const cohort = [healthy('a'), { id: 'b', playerVersionAt: DURING, playerVersionCode: TARGET, lastOtaState: 'ERROR', lastOtaAt: DURING }];
     const v = evaluateCanaryPromotion({ cohort, canarySetAt: SET_AT, maxAnonymousErrorRate: 0.2 });
     expect(v.promote).toBe(false);
   });
@@ -122,6 +130,40 @@ describe('evaluateCanaryPromotion', () => {
     const cohort = [healthy('a'), healthy('b')];
     expect(evaluateCanaryPromotion({ cohort, canarySetAt: SET_AT, minCohort: 5 }).promote).toBe(false);
     expect(evaluateCanaryPromotion({ cohort, canarySetAt: SET_AT, minCohort: 2 }).promote).toBe(true);
+  });
+
+  it('a report of an OLDER version during the soak is not a confirmed install of the rolled-out build', () => {
+    // Any version report used to count: a screen still on the previous build
+    // (or a report naming any version at all) read as "the install landed".
+    const v = evaluateCanaryPromotion({
+      cohort: [
+        { id: 'a', playerVersionAt: DURING, playerVersionCode: TARGET - 1 },
+        { id: 'b', playerVersionAt: DURING, playerVersionCode: null },
+        { id: 'c', playerVersionAt: DURING },
+      ],
+      canarySetAt: SET_AT,
+    });
+    expect(v.promote).toBe(false);
+    expect(v.successCount).toBe(0);
+    expect(v.reason).toBe('no-confirmed-install-in-cohort');
+  });
+
+  it('counts a screen at or past the target, reported after the canary was armed', () => {
+    const at = evaluateCanaryPromotion({ cohort: [{ id: 'a', playerVersionAt: DURING, playerVersionCode: TARGET }], canarySetAt: SET_AT });
+    expect(at.promote).toBe(true);
+    const past = evaluateCanaryPromotion({ cohort: [{ id: 'a', playerVersionAt: DURING, playerVersionCode: TARGET + 1 }], canarySetAt: SET_AT });
+    expect(past.promote).toBe(true);
+    // The right version, but reported BEFORE the canary was armed: not evidence.
+    const stale = evaluateCanaryPromotion({ cohort: [{ id: 'a', playerVersionAt: BEFORE, playerVersionCode: TARGET }], canarySetAt: SET_AT });
+    expect(stale.promote).toBe(false);
+  });
+
+  it('an unknown rollout target never promotes (fails closed: the canary keeps soaking)', () => {
+    for (const targetVersionCode of [null, 0, NaN]) {
+      const v = evaluateCanaryPromotion({ cohort: [healthy('a')], canarySetAt: SET_AT, targetVersionCode });
+      expect(v.promote).toBe(false);
+      expect(v.reason).toBe('rollout-target-version-unknown');
+    }
   });
 
   it('defaults the minimum to 1 so small K-12 tenants are not stranded in canary forever', () => {
@@ -148,7 +190,7 @@ describe('CanaryAutoPromote.tick — the synthetic drill hold (emergency/drill/,
     const tenant = { id: 'customer', name: 'Customer', canaryFleetPercent: 50, canarySetAt: new Date(NOW - 48 * 3600_000), canaryAutoPromote: true, canarySoakHours: 24 };
     // A customer screen of the SAME hardware class as the bench unit, installed during the soak.
     const screens = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
-      id: `scr-${i}`, lastOtaState: 'INSTALLED', lastOtaAt: new Date(NOW - 3600_000), lastOtaErrorAt: null, lastOtaErrorAuthenticated: null, playerVersionAt: new Date(NOW - 3600_000),
+      id: `scr-${i}`, lastOtaState: 'INSTALLED', lastOtaAt: new Date(NOW - 3600_000), lastOtaErrorAt: null, lastOtaErrorAuthenticated: null, playerVersionAt: new Date(NOW - 3600_000), playerVersionCode: TARGET,
       hardwareModel: null, displayCapabilities: { build: { manufacturer: 'Goodview', model: 'M55GUQ', device: 't982', sdk: 30 } },
     }));
     const client = {
@@ -157,6 +199,7 @@ describe('CanaryAutoPromote.tick — the synthetic drill hold (emergency/drill/,
       auditLog: { findMany: jest.fn(async () => results), create: jest.fn(async () => ({})) },
     };
     const svc = new CanaryAutoPromote({ client } as any);
+    svc.targetVersionCode = async () => TARGET;
     svc.drillConfig = () => readDrillConfig({ NODE_ENV: 'production', EMERGENCY_DRILL_SCREENS: BENCH, EMERGENCY_DRILL_MODE: mode } as NodeJS.ProcessEnv);
     return { svc, client };
   }
@@ -178,5 +221,47 @@ describe('CanaryAutoPromote.tick — the synthetic drill hold (emergency/drill/,
     const off = harness([result('FAIL', NOW - 3600_000)], 'on');
     off.svc.drillConfig = () => readDrillConfig({ NODE_ENV: 'production', EMERGENCY_DRILL_SCREENS: BENCH, EMERGENCY_DRILL_MODE: 'on', EMERGENCY_DRILL_CRON_DISABLED: '1' } as NodeJS.ProcessEnv);
     expect((await off.svc.tick()).promoted).toBe(1);
+  });
+});
+
+describe('CanaryAutoPromote.tick — the rollout target version', () => {
+  const NOW = Date.now();
+  function harness(screenCode: number | null, target: () => Promise<number | null>) {
+    const tenant = { id: 't', name: 'T', canaryFleetPercent: 100 - 1, canarySetAt: new Date(NOW - 48 * 3600_000), canaryAutoPromote: true, canarySoakHours: 24 };
+    const screens = Array.from({ length: 8 }, (_, i) => ({
+      id: `s-${i}`, lastOtaState: 'INSTALLED', lastOtaAt: new Date(NOW - 3600_000), lastOtaErrorAt: null, lastOtaErrorAuthenticated: null,
+      playerVersionAt: new Date(NOW - 3600_000), playerVersionCode: screenCode, hardwareModel: null, displayCapabilities: null,
+    }));
+    const client = {
+      tenant: { findMany: jest.fn(async () => [tenant]), update: jest.fn(async () => ({})) },
+      screen: { findMany: jest.fn(async () => screens) },
+      auditLog: { findMany: jest.fn(async () => []), create: jest.fn(async () => ({})) },
+    };
+    const svc = new CanaryAutoPromote({ client } as any);
+    svc.targetVersionCode = target;
+    svc.drillConfig = () => readDrillConfig({ NODE_ENV: 'production' } as NodeJS.ProcessEnv);
+    return { svc, client };
+  }
+
+  it('selects playerVersionCode and promotes when the cohort is on the target build', async () => {
+    const h = harness(TARGET, async () => TARGET);
+    expect(await h.svc.tick()).toEqual({ scanned: 1, promoted: 1, blocked: 0 });
+    expect((h.client.screen.findMany.mock.calls[0] as any)[0].select.playerVersionCode).toBe(true);
+    const row = (h.client.auditLog.create.mock.calls[0] as any)[0].data;
+    expect(JSON.parse(row.details).targetVersionCode).toBe(TARGET);
+  });
+
+  it('holds when the cohort only reported an older build', async () => {
+    const h = harness(TARGET - 1, async () => TARGET);
+    expect(await h.svc.tick()).toEqual({ scanned: 1, promoted: 0, blocked: 1 });
+    expect(h.client.tenant.update).not.toHaveBeenCalled();
+  });
+
+  it('holds when the rollout target cannot be resolved', async () => {
+    const h = harness(TARGET, async () => {
+      throw new Error('release lookup down');
+    });
+    expect(await h.svc.tick()).toEqual({ scanned: 1, promoted: 0, blocked: 1 });
+    expect(h.client.tenant.update).not.toHaveBeenCalled();
   });
 });

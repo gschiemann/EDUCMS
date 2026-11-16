@@ -39,6 +39,26 @@
  * the wrong local hour — the honest fix is a display schedule (or a
  * tenant-level zone in the manifest, a recorded follow-up).
  *
+ * WHICH CLOCK (2026-11-14, `updateClock.ts`; incident
+ * `docs/handoffs/2026-11-14-houston-video-wall-off-hours.md` — a box ~4 h
+ * slow applied "nightly" updates at 07:45 local):
+ *   - nightly reads the SERVER-corrected clock (`Date.now() + offset`), and
+ *     only once the offset was really measured and the device clock has not
+ *     stepped since; otherwise it waits (`clock-unverified`) and the page
+ *     re-measures. Nothing else on the device runs this window, so true local
+ *     time is the only right answer.
+ *   - display-off reads the DEVICE clock on purpose: the two executors that
+ *     actually darken the glass — the web soft-blank runner
+ *     (`softScheduleRef.current?.tick(Date.now())`) and the APK's
+ *     `DisplayScheduler.kt` (`System.currentTimeMillis()`) — both run on it,
+ *     so the device clock is the one that says whether the panel is dark NOW.
+ *     The corrected clock there would declare "off" while a skewed box still
+ *     shows content. `softBlank` is an observation and needs no clock.
+ *   - idle is an observation of the glass; no clock.
+ *   - the reload floor is an interval between two `Date.now()` stamps of this
+ *     document; a constant skew cancels, and moving it to the corrected clock
+ *     would let a first offset measurement (0 → +4 h) defeat the floor.
+ *
  * NEVER: during an emergency or drill; while a large file is downloading;
  * on an operator-paused screen; on a sync-locked group mid-timeline (the
  * group would need one coordinated point — not built; sync must be off);
@@ -57,6 +77,7 @@ import {
   resolveZone,
   type SoftWindow,
 } from './softSchedule';
+import { serverNowMs, type UpdateClock } from './updateClock';
 
 export type UpdateWindowKind = 'display-off' | 'idle' | 'nightly';
 /**
@@ -177,8 +198,14 @@ export interface UpdateDecisionInput {
   prepared: boolean;
   prepareAttempts: number;
   cacheDrive: CacheDriveState;
+  /** The DEVICE clock (`Date.now()`): the reload floor and the display-off windows read it. */
   nowMs: number;
-  /** Last bundle-drift reload this document fired (0 = never) and the floor. */
+  /**
+   * The server clock as measured (`updateClock.readUpdateClock`). The nightly
+   * window reads `nowMs + offset`, and refuses while it is unverified.
+   */
+  clock: UpdateClock;
+  /** Last bundle-drift reload this document fired (0 = never) and the floor (device clock). */
   lastReloadAtMs: number;
   minReloadGapMs: number;
   screenId: string | null;
@@ -211,6 +238,7 @@ export type UpdateDecision =
         | 'downloading'
         | 'paused'
         | 'sync-locked'
+        | 'clock-unverified'
         | 'outside-window';
     };
 
@@ -234,12 +262,15 @@ export function decideUpdateApply(input: UpdateDecisionInput): UpdateDecision {
     return { action: 'wait', reason: 'paused' };
   }
   // (a) the display is OFF: scheduled off, or the blank overlay is up.
+  // Device clock on purpose — the executors that darken the panel run on it.
   const scheduledOff = !!input.windows && desiredOnAt(input.windows, input.nowMs) === false;
   if (scheduledOff || input.softBlank) return { action: 'apply', window: 'display-off', boundary: 'now' };
   // (b) nothing on the glass (the existing idle rule).
   if (bundleReloadIdle(input.evidence)) return { action: 'apply', window: 'idle', boundary: 'now' };
-  // (c) the nightly window, at an item boundary.
-  if (nightlyWindowOpen(input.zone.zone, input.nowMs, nightlyJitterMs(input.screenId))) {
+  // (c) the nightly window, at an item boundary — on the SERVER's clock only.
+  const serverNow = serverNowMs(input.clock, input.nowMs);
+  if (serverNow === null) return { action: 'wait', reason: 'clock-unverified' };
+  if (nightlyWindowOpen(input.zone.zone, serverNow, nightlyJitterMs(input.screenId))) {
     if (input.syncActive) return { action: 'wait', reason: 'sync-locked' };
     return { action: 'apply', window: 'nightly', boundary: input.hasItemBoundary ? 'item' : 'now' };
   }
@@ -276,6 +307,13 @@ export interface UpdateAppliedRecord {
    * and never arms the convergence hold.
    */
   reason?: string;
+  /**
+   * The server clock the window was decided on (2026-11-14): measured or not,
+   * and server − device in ms (null when not measured). Absent on a record an
+   * older bundle wrote — then the report carries neither key.
+   */
+  clockMeasured?: boolean;
+  clockOffsetMs?: number | null;
 }
 
 /** Did this record come from an off-hours bundle update (not a borrowed cover)? */
@@ -322,6 +360,10 @@ export interface UpdateEvidenceReport {
   coverMs: number | null;
   /** The new document runs a different bundle than the one that reloaded. */
   converged: boolean;
+  /** Was the server clock offset measured when the window was decided (absent: an older bundle applied it)? */
+  clockMeasured?: boolean;
+  /** server − device clock, ms, as measured then (null when not measured) — proves device skew directly. */
+  clockOffsetMs?: number | null;
 }
 
 export function buildUpdateEvidence(record: UpdateAppliedRecord, myIdentity: string | null): UpdateEvidenceReport {
@@ -340,5 +382,14 @@ export function buildUpdateEvidence(record: UpdateAppliedRecord, myIdentity: str
     blankMs: span(record.navigatedAtMs, record.coverAtMs),
     coverMs: span(record.coverAtMs, record.contentAtMs),
     converged: !!myIdentity && !!record.from && myIdentity !== record.from,
+    ...(typeof record.clockMeasured === 'boolean'
+      ? {
+          clockMeasured: record.clockMeasured,
+          clockOffsetMs:
+            record.clockMeasured && typeof record.clockOffsetMs === 'number' && Number.isFinite(record.clockOffsetMs)
+              ? Math.round(record.clockOffsetMs)
+              : null,
+        }
+      : {}),
   };
 }

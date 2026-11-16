@@ -55,7 +55,8 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
    native implementation (`heartbeat/NativePowerOnPolicy.kt`); a build without it — Player 1.1.23 was one when this rule was written — has no such unattended wake command transport.
 7. **Manifest schedule order is deterministic** (`effective-schedule.ts`: screen-pin > group,
    priority desc, newest startTime, stable id) and the player applies the first window-open
-   replace winner — "any template wins" must never come back. Template apply signatures include
+   replace winner — "any template wins" must never come back. (One exception, rule 20: a media
+   playlist this screen has proved it cannot show is stepped past, in the same order.) Template apply signatures include
    `contentRev`; template identity alone is not a content version.
 8. **Escalation math must be provably reachable**: any N-fires-in-window rule needs
    window ≥ (N-1)×cooldown + generous jitter slack, with a test using realistic sweep
@@ -252,6 +253,73 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
     home" (without device owner the Home key leaves the app anyway). Do not re-attach
     `OperatorPinGate.kt` to the native bridge. Report:
     `docs/handoffs/2026-11-09-player-stability/05-screen-pin.md`.
+
+20. **A playlist with nothing this screen can show gives the screen to the next scheduled
+    playlist — as the LAST RESORT; the admins are told when it starts and when it is over, and it
+    comes back by itself (2026-11-13/14)** (`playlistFallback.ts`, pure,
+    `__tests__/playlistFallback.test.ts`; `apps/web/tests/e2e/player-bad-file.spec.ts`). The
+    owner's ruling: "that should be the last option right and then it should notify the admin,
+    no one wants the incorrect content to ever be playing on their screen."
+    **Last resort.** The order is still the server's (rule 7): the first window-open replace
+    playlist wins — unless the "Content unavailable" card has been on the glass for **two
+    minutes** on it (`FALLBACK_DWELL_MS`, counted by `FallbackDwell`), by which time the page's
+    own recoveries (skip the broken item, re-mount the last good file in place, the 30-second
+    retry) have run and failed; then it is set aside and the NEXT one in the same order takes the
+    screen. Only time with the card up counts; a break of up to 60 s with nothing proven playing
+    neither restarts the count nor adds to it; the count starts over the moment a slide proves
+    it is showing, when the card has been off longer than that, when the playlist or its content
+    changes, and under any alert / stop — so a 20-second outage never falls back. The clock is
+    `performance.now()`; there is no setting, URL parameter or flag that shortens it (the e2e
+    moves Playwright's page clock). The dwell watches what a COMMIT put on the glass
+    (`FallbackCommitted`, recorded where content is committed — a playlist deferred for its
+    download is not on the glass yet, and a playlist already set aside is never set aside again
+    while its backup downloads). With no other playlist scheduled, or when every one is set
+    aside, nothing changes: the card, proven as `idle:content-unavailable`. A template is never
+    set aside but may be the fallback. One `PLAYLIST_FALLBACK` log line per change.
+    **It comes back by itself.** Keyed by playlist + content signature, in memory: a re-publish
+    is tried at once, a page reload starts clean, otherwise the first choice is tried again
+    after 15, 30, 60, then 120 minutes (`FALLBACK_RETRY_STEPS_MS`) — unless every file of it is
+    still provably out (`FallbackHopeless`: a type the screen cannot show, blocked by the
+    playback circuit breaker, out of the rotation after a failure); then it stays aside, is asked
+    again every minute and goes up the moment one file could play — a retry is never put on the
+    glass only to show the card. It counts as BACK after it has played for five minutes with
+    the card never up (`RecoveryProof`, `FALLBACK_RECOVERY_MS`, the same hold the customer alert
+    emails use); only then is its back-off history forgotten.
+    **It is reported, never presented as healthy.** From the moment the backup is PROVEN on the
+    glass (content showing, not the card) the page keeps an episode (`nextFallbackEpisode`;
+    persisted in localStorage `edu_playlist_fallback_episode_v1` so a reload does not lose how it
+    ends) and every routine telemetry report carries `playlistFallback: { fromPlaylistId,
+    toPlaylistId, forMs, state }` — `backup`, `retrying` (the first choice back on the glass
+    being tried), then `recovered` for ten minutes — ids, a duration and a state, never a name;
+    held back 10 minutes after an older API refuses the key, like `softBlank`. The API
+    (`apps/api/src/telemetry/playlist-fallback.ts`, `playlist-fallback.spec.ts`) treats it as
+    hostile input: both ids must be playlists of the screen's OWN tenant (anything else reads as
+    "nothing reported"), the names are read server-side; a start, another backup and an end each
+    write the immutable audit row (`PLAYER_PLAYLIST_FALLBACK` / `PLAYER_PLAYLIST_FALLBACK_ENDED`,
+    with the reason) BEFORE the state moves, at most one per screen per 90 s; `backup` ↔
+    `retrying` moves only the column; the same episode again costs no query and no write. State:
+    `Screen.playlistFallback` (telemetry-only column). The bell (in-app, `NotificationsService`)
+    says "A screen is showing its backup playlist" once per episode when a backup is on the glass,
+    and "A screen is back on its scheduled playlist" once when that episode recovered — never on
+    a retry, a reload or a report that merely stops; at most six episode starts per screen per
+    UTC day reach the bell. The Screens page and the organisation dashboard read the column:
+    amber "Showing backup playlist · Can't play <name>", in Needs attention — never the green
+    "Current" / "Showing content ✓" (`screenOps.ts` `backup-playlist`, `RenderTrustChip`); while
+    `retrying`, the render proof says what is on the glass. No EMAIL: the customer alert emails
+    (`notifications/customer-alerts/`, shadow mode) have no such kind, and a screen on its backup
+    proves `pl:` playing, so their NO_CONTENT rule does not fire for it either.
+    **NEVER for an emergency.** No set-aside, retry or episode change while any alert state is up
+    (raised, held, pending, pushed — a banner too — or an emergency playlist on the glass); an
+    emergency manifest's playlists are never candidates; the re-apply is a cached one
+    (`fromCache`), so it can raise but never release (rule 11). The ledger cannot move under an
+    alert, so the all-clear resumes what was on the glass before it. The native-video descriptor
+    is the server winner's and `committedNativeVideo` refuses it for any other items, so a
+    fallback playlist plays on the web engine.
+    **Kill switch:** `PLAYLIST_FALLBACK_DISABLED` → `playback.playlistFallback: 'off'` in the
+    manifest (absent by default, so no ETag moves): the first choice always plays, nothing is
+    set aside or reported. Not covered: a playlist that plays badly without ever reaching the
+    card (constant stalls) stays on the glass; a playlist whose large file never finishes
+    downloading shows the download splash, not the card, so it never falls back.
 
 ## Frame-Locked Multi-Screen Sync (2026-07-28)
 

@@ -151,7 +151,29 @@
       "voiceOff": "静音",
       "voiceOnHint": "此手机将朗读警报状态。",
       "voiceOffHint": "此手机不会发出声音。点按可朗读警报状态。",
-      "voiceOnConfirm": "语音播报已开启。此手机将发出声音。"
+      "voiceOnConfirm": "语音播报已开启。此手机将发出声音。",
+      "checkingSignIn": "正在检查登录…",
+      "checkingSignInHint": "正在检查您的登录状态。现在即可长按按钮——检查完成后警报会立即发出。",
+      "unreachableHint": "无法连接 VenueOS 检查您的登录状态。长按按钮仍会尝试发送——如果失败，请人工通知安保人员。",
+      "signInTitle": "登录后即可使用紧急按钮",
+      "signInLead": "此手机尚未登录 VenueOS。",
+      "signInBody": "如果现在正发生紧急情况，请人工通知安保人员。之后请登录一次并勾选“保持登录状态”，让此手机随时待命。",
+      "signInButton": "登录",
+      "errSignInNeeded": "此手机未登录。请立即人工通知安保人员——您的警报未发出。登录后即可从此手机发送警报。",
+      "errSignInTimeout": "未能及时检查您的登录状态。请立即人工通知安保人员——您的警报未发出。",
+      "keepReadyBody": "让此手机随时应对紧急情况——从此手机发送警报无需登录。",
+      "keepReadyButton": "保持待命",
+      "keepReadyDismiss": "暂不",
+      "keepReadyDone": "此手机已随时待命应对紧急情况。",
+      "keepReadyStale": "要让此手机保持待命，请先重新登录——必须是新的登录。",
+      "keepReadyUnavailable": "目前无法让手机保持待命。您在此处的登录仍然有效。",
+      "keepReadyFailed": "无法让此手机保持待命。您在此处的登录仍然有效。",
+      "phoneReady": "此手机已随时待命（{label}）",
+      "turnOff": "关闭",
+      "turnOffTitle": "要关闭此手机上的紧急功能吗？",
+      "turnOffMessage": "此手机需要登录后才能再次发送警报。",
+      "turnOffConfirm": "关闭",
+      "endNeedsSignIn": "要结束警报，需要在此手机上完整登录。"
     },
     "broadcast": {
       "title": "广播",
@@ -506,7 +528,8 @@
     "phoneSetupLater": "你可以稍后在“我的账户”中为这台设备添加通行密钥。",
     "setupDoneSignIn": "你的账户已设置完成。请用新的邮箱和密码登录。",
     "security": "安全",
-    "requestInfo": "索取信息"
+    "requestInfo": "索取信息",
+    "panicSignIn": "您正在登录以在此手机上使用紧急按钮。请勾选“保持登录状态”，让它随时待命。"
   },
   "account": {
     "title": "我的账户",
@@ -1635,7 +1658,20 @@
         "actionsFor": "{email} 的操作",
         "accessNoScreensYet": "尚无屏幕：{locations}",
         "ssoLoadFailed": "无法加载 SSO 配置",
-        "ssoOidcOption": "OpenID Connect（Google Workspace、Microsoft Entra ID、Okta、Auth0）"
+        "ssoOidcOption": "OpenID Connect（Google Workspace、Microsoft Entra ID、Okta、Auth0）",
+        "panicPhonesButton": "紧急手机",
+        "panicPhonesTitle": "紧急手机",
+        "panicPhonesHint": "此人保持待命、无需登录即可发送警报的手机。关闭后立即生效。",
+        "panicPhonesCannotSend": "此人目前无法发送警报，因此其手机会被拒绝。",
+        "panicPhonesNone": "没有待命的手机。",
+        "panicPhonesLoadFailed": "无法加载此人的手机。",
+        "panicPhoneActive": "· 自 {since} 起待命 · 最近使用 {lastUsed}",
+        "panicPhoneRevoked": "· 已于 {on} 关闭",
+        "panicPhoneOff": "关闭",
+        "panicPhoneOffTitle": "要关闭 {email} 的这部紧急手机吗？",
+        "panicPhoneOffMessage": "它会立即停止工作。此人只能在该手机上登录后重新设置。",
+        "panicPhoneOffConfirm": "关闭",
+        "panicPhoneOffFailed": "无法关闭此手机，请重试。"
       },
       "overview": {
         "readinessTitle": "配置就绪情况",
@@ -2564,6 +2600,9 @@
       "backgroundSoFar": "正在下载另一个文件 · 已下载 {loaded}",
       "unavailable": "内容不可用",
       "unavailableDetail": "所有已排期的文件都无法加载。屏幕会持续重试；若一直如此，请检查播放列表中的文件。",
+      "backupPlaylist": "正在显示备用播放列表",
+      "backupPlaylistEvidence": "无法播放“{from}”",
+      "backupPlaylistDetail": "此屏幕报告无法播放“{from}”中的任何内容，因此改为显示“{to}”。请检查“{from}”中的文件。屏幕会自行再次尝试“{from}”，在您修改它后会立即重试。",
       "loading": "正在加载内容",
       "loadingDetail": "屏幕已获取排程，正在打开第一个项目。",
       "connecting": "屏幕已开启 · 正在连接",
@@ -3388,6 +3427,17 @@
       "logPurged": "{days} 天后已删除",
       "download": "下载",
       "downloadFailed": "无法打开日志，请重试。"
+    },
+    "hardwareSerial": {
+      "label": "序列号",
+      "notAvailable": "不可用",
+      "notExposed": "此屏幕的 Android 系统不允许应用读取其序列号。",
+      "notReported": "尚未上报——此屏幕需要更新的播放器应用。",
+      "source": "读取自{source}",
+      "srcDeviceOwner": "设备所有者",
+      "srcBuildSerial": "Android 版本信息",
+      "srcGetSerial": "Android 电话状态权限",
+      "srcProp": "系统属性 {key}"
     }
   },
   "selection": {
@@ -7794,6 +7844,8 @@
       "supportInvited": "{org} 已向 VenueOS 授予支持访问",
       "kioskHelp": "访客需要帮助——{screen}",
       "videoStutter": "{screen} 上的视频卡顿",
+      "backupPlaylist": "有一块屏幕正在显示备用播放列表",
+      "backupPlaylistEnded": "有一块屏幕已恢复播放排定的播放列表",
       "noHeartbeat": "自 {time} 起未收到心跳信号。",
       "noHeartbeatUnknown": "尚无心跳记录。",
       "noHeartbeatAt": "{site}：自 {time} 起未收到“{screen}”的心跳信号。",
@@ -7820,6 +7872,10 @@
       "kioskHelpBody": "一位访客在自助终端上点击了“请求帮助”。",
       "videoStutterConcurrencyBody": "“{screen}”同时播放多个视频时，“{file}”会卡顿。播放不会中断；换用更轻量的副本也无法解决。",
       "videoStutterNoCopyBody": "“{screen}”播放“{file}”时卡顿，且没有更轻量的副本可切换。播放不会中断。",
+      "backupPlaylistBody": "{screen} 无法播放“{from}”中的任何内容，因此正在显示“{to}”。请检查“{from}”中的文件。",
+      "backupPlaylistBodyNoScreen": "有一块屏幕无法播放“{from}”中的任何内容，因此正在显示“{to}”。请检查“{from}”中的文件。",
+      "backupPlaylistEndedBody": "{screen} 已恢复播放排定的播放列表“{playlist}”。",
+      "backupPlaylistEndedBodyNoScreen": "有一块屏幕已恢复播放排定的播放列表“{playlist}”。",
       "duration": {
         "days": "{count} 天",
         "hours": "{count} 小时",

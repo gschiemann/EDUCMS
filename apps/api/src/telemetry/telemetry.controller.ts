@@ -41,6 +41,15 @@ import {
   type StoredVideoSample,
 } from './file-playback';
 import { pushIsActive, pushSatisfiedByReport } from '../player-ota/push-tracking';
+import { Prisma } from '@cms/database';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  executePlaylistFallbackPlan,
+  planPlaylistFallback,
+  storedPlaylistFallback,
+  type FallbackDb,
+  type FallbackNotice,
+} from './playlist-fallback';
 import { ScreenEventsService } from '../screens/events/screen-events.service';
 import {
   nativeEngineEvents,
@@ -114,6 +123,9 @@ export class TelemetryController {
     // start / stop / swap and applied bundle updates, as this report shows
     // them. Optional: hand-built specs record nothing.
     @Optional() private readonly ledger?: ScreenEventsService,
+    // Backup-playlist notice (2026-11-13). Global module; optional so a
+    // hand-built spec without it still records the state and the audit row.
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /**
@@ -354,6 +366,9 @@ export class TelemetryController {
             credentialEpochRotatedAt: true,
             // Only read to skip a no-op clear of the soft-blank stamp.
             softBlankAt: true,
+            // Only read to tell a CHANGE of the backup-playlist state from
+            // the steady state (which then costs no query and no write).
+            playlistFallback: true,
           },
         }),
       { label: 'screen.findUnique[telemetry]' },
@@ -573,6 +588,35 @@ export class TelemetryController {
       data.softBlankAt = null;
     }
 
+    // ── 7. PLAYLIST FALLBACK EPISODE (2026-11-13/14, playlist-fallback.ts) ─
+    // The screen says the scheduled playlist could show nothing and a backup
+    // took the glass (state backup), that the scheduled one is being tried
+    // again (retrying), or that it has played again for five minutes
+    // (recovered). Compared with the row read above: the same episode again
+    // is the steady state — no query, no write. A change is verified (both
+    // playlists inside the screen's OWN tenant, names read here — the device
+    // sends ids only) and recorded (the immutable audit row) BEFORE the
+    // column moves; it rides the one write below. If the record cannot be
+    // made the column is left as it was and the next report tries again.
+    let fallbackNotices: FallbackNotice[] = [];
+    const fallbackPlan = planPlaylistFallback(
+      storedPlaylistFallback(screen.playlistFallback),
+      body.playlistFallback ?? null,
+      !!screen.tenantId,
+    );
+    if (fallbackPlan.kind !== 'none' && screen.tenantId) {
+      const outcome = await executePlaylistFallbackPlan(
+        // ten-ok: every query in it is scoped to `tenantId`, the screen's live tenant.
+        this.prisma.client as unknown as FallbackDb,
+        fallbackPlan,
+        { tenantId: screen.tenantId, screenId, screenName: screen.name ?? null, now },
+      );
+      if (outcome.column !== undefined) {
+        data.playlistFallback = outcome.column ? (outcome.column as unknown as Prisma.InputJsonValue) : Prisma.DbNull;
+      }
+      fallbackNotices = outcome.notices;
+    }
+
     // ── ONE write (or none) ─────────────────────────────────────────────
     if (Object.keys(data).length > 0) {
       assertColumnsAllowed(data);
@@ -588,6 +632,17 @@ export class TelemetryController {
           }),
         { label: 'screen.update[telemetry]' },
       );
+    }
+
+    // Tell the organisation (the bell, in-app — never an email from here):
+    // after the state is stored, once per episode start and once per
+    // recovery (the dedupe keys name the episode). `notify` never throws; a
+    // lost notification leaves the audit row and the Screens page saying the
+    // same thing.
+    if (screen.tenantId) {
+      for (const notice of fallbackNotices) {
+        await this.notifications?.notify({ tenantId: screen.tenantId, kind: 'INFO', link: '/screens', ...notice });
+      }
     }
 
     // The ack is the only moment we can prove a refresh command completed —
@@ -711,6 +766,9 @@ export class TelemetryController {
             tenantId: screen.tenantId,
             kind: 'update-applied',
             detail: {
+              // Includes `clockMeasured` / `clockOffsetMs` (2026-11-14) when the
+              // player sent them; an older player's row simply lacks both keys,
+              // which is distinct from "measured: false".
               ...body.update,
               // The bundle this report rode in on — the one now running.
               runningBundleId: body.versions?.bundleId ?? null,
@@ -862,6 +920,7 @@ export const TELEMETRY_COLUMNS: ReadonlySet<string> = new Set([
   'lastVideoReportAt',
   'pendingRefreshAt',
   'softBlankAt',
+  'playlistFallback',
 ]);
 
 function assertColumnsAllowed(data: Record<string, unknown>): void {

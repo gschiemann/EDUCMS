@@ -35,7 +35,7 @@ import {
   outcomeFromStatus,
   initialTelemetryDelayMs,
   shouldPostEarly, loopReportRefused, loopReportDue, LOOP_REPORT_RETRY_MS,
-  softBlankRefused, softBlankOnGlass } from '../telemetry';
+  softBlankRefused, softBlankOnGlass, playlistFallbackRefused } from '../telemetry';
 
 const NOW = 1_700_000_000_000;
 
@@ -569,6 +569,16 @@ describe('off-hours update block (2026-10-10)', () => {
     expect('update' in buildTelemetryBody({ update: null } as never)).toBe(false);
   });
 
+  it('the server-clock evidence rides only when the record had it (2026-11-14)', () => {
+    expect(Object.keys(buildTelemetryBody({ update: evidence } as never).update!)).not.toContain('clockMeasured');
+    expect(buildTelemetryBody({ update: { ...evidence, clockMeasured: true, clockOffsetMs: 14_400_000.6 } } as never).update)
+      .toMatchObject({ clockMeasured: true, clockOffsetMs: 14_400_001 });
+    expect(buildTelemetryBody({ update: { ...evidence, clockMeasured: false, clockOffsetMs: 7 } } as never).update)
+      .toMatchObject({ clockMeasured: false, clockOffsetMs: null });
+    expect(buildTelemetryBody({ update: { ...evidence, clockMeasured: true, clockOffsetMs: Number.NaN } } as never).update)
+      .toMatchObject({ clockMeasured: true, clockOffsetMs: null });
+  });
+
   it('updateReportRefused: only a 400 to a report that carried it', () => {
     const withUpdate = buildTelemetryBody({ update: evidence } as never);
     const without = buildTelemetryBody({} as never);
@@ -709,5 +719,27 @@ describe('softBlank report (2026-11-02)', () => {
     expect(softBlankRefused(400, { softBlank: false })).toBe(true);
     expect(softBlankRefused(400, {})).toBe(false);
     expect(softBlankRefused(200, { softBlank: true })).toBe(false);
+  });
+});
+
+describe('playlistFallback report (2026-11-13/14)', () => {
+  const block = { fromPlaylistId: 'pl-4k', toPlaylistId: 'pl-everyday', forMs: 61_000, state: 'backup' as const };
+
+  it('rides only while an episode lasts; absent otherwise', () => {
+    expect(buildTelemetryBody({ playlistFallback: block }).playlistFallback).toEqual(block);
+    expect(buildTelemetryBody({ playlistFallback: { ...block, state: 'recovered' } }).playlistFallback).toMatchObject({ state: 'recovered' });
+    expect(buildTelemetryBody({ playlistFallback: null })).not.toHaveProperty('playlistFallback');
+    expect(buildTelemetryBody({})).not.toHaveProperty('playlistFallback');
+  });
+
+  it('carries exactly the four keys the strict server schema accepts', () => {
+    const sent = buildTelemetryBody({ playlistFallback: { ...block, name: 'Lunch menu' } as never }).playlistFallback;
+    expect(Object.keys(sent as object).sort()).toEqual(['forMs', 'fromPlaylistId', 'state', 'toPlaylistId']);
+  });
+
+  it('a 400 that carried it holds it back (an API from before the key)', () => {
+    expect(playlistFallbackRefused(400, { playlistFallback: block })).toBe(true);
+    expect(playlistFallbackRefused(400, {})).toBe(false);
+    expect(playlistFallbackRefused(200, { playlistFallback: block })).toBe(false);
   });
 });

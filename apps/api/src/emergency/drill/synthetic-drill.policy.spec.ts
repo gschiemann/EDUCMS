@@ -394,6 +394,77 @@ describe('the three links', () => {
     expect(g2.verdict).toBe('PASS');
   });
 
+  describe('the first-paint race (2026-11-14: every bench persistence FAIL of 2026-11-09/10)', () => {
+    /** The healthy run, with extra samples / rows spliced in as the real drills recorded them. */
+    function healthyWith(extraSamples: PaneSample[], extraRows: Array<{ atMs: number; action: string; identity: string | null }>) {
+      const o = observe({ at: healthy });
+      return gradeRun({
+        paneIds: ['p1'],
+        expected: { rule: 'identity', identity: IDENTITY },
+        dispatchAtMs: T0,
+        clearAtMs: o.clearAt,
+        samples: new Map([['p1', [...o.samples, ...extraSamples].sort((a, b) => a.atMs - b.atMs)]]),
+        transitions: new Map([['p1', [...o.pane.transitions, ...extraRows].sort((a, b) => a.atMs - b.atMs)]]),
+        cleared: true,
+      });
+    }
+
+    it('GUQ55: a `pending` read of the SAME alert 62 ms after the first paint is one paint reported twice → PASS', () => {
+      const g = healthyWith([{ atMs: T0 + 1_262, hash: `pending|em:${IDENTITY}`, renderedAtMs: T0 + 1_262 }], []);
+      expect(g.verdict).toBe('PASS');
+      expect(g.panes[0].violation).toBeNull();
+    });
+
+    it('FUH43-L: a `no paint proof` row of the SAME alert 5 ms after the first paint → PASS', () => {
+      const g = healthyWith([], [{ atMs: T0 + 1_205, action: PLAYER_NO_PAINT_ACTION, identity: IDENTITY }]);
+      expect(g.verdict).toBe('PASS');
+    });
+
+    it('still FAIL: the same `pending` arriving 4 s after the first paint (outside the race)', () => {
+      const g = healthyWith([{ atMs: T0 + 5_300, hash: `pending|em:${IDENTITY}`, renderedAtMs: T0 + 5_300 }], []);
+      expect(g).toMatchObject({ verdict: 'FAIL', failedLink: 'persistence' });
+      expect(g.panes[0].violation?.why).toBe('changed');
+    });
+
+    it('still FAIL: a `pending` of a DIFFERENT alert inside the race window', () => {
+      const other = overrideAlertPaintIdentity({ type: 'lockdown', severity: 'CRITICAL', isDrill: false });
+      const g = healthyWith([{ atMs: T0 + 1_262, hash: `pending|em:${other}`, renderedAtMs: T0 + 1_262 }], []);
+      expect(g).toMatchObject({ verdict: 'FAIL', failedLink: 'persistence' });
+    });
+
+    it('still FAIL: content (a dropped board) inside the race window', () => {
+      const g = healthyWith([{ atMs: T0 + 1_262, hash: 'pl:0|10000|x', renderedAtMs: T0 + 1_262 }], []);
+      expect(g).toMatchObject({ verdict: 'FAIL', failedLink: 'persistence' });
+      expect(g.panes[0].violation?.why).toBe('dropped');
+    });
+
+    it('still FAIL: `unconfirmed` of the same alert inside the race window', () => {
+      const g = healthyWith([{ atMs: T0 + 1_262, hash: `unconfirmed|em:${IDENTITY}`, renderedAtMs: T0 + 1_262 }], []);
+      expect(g).toMatchObject({ verdict: 'FAIL', failedLink: 'persistence' });
+    });
+
+    it('still FAIL: a `no paint proof` row of the same alert 10 s after the first paint', () => {
+      const g = healthyWith([], [{ atMs: T0 + 11_200, action: PLAYER_NO_PAINT_ACTION, identity: IDENTITY }]);
+      expect(g).toMatchObject({ verdict: 'FAIL', failedLink: 'persistence' });
+      expect(g.panes[0].violation?.why).toBe('paint-lost');
+    });
+
+    it('the race never excuses a missing +60 s re-proof', () => {
+      const o = observe({ at: [...healthy.slice(0, 2), [150_000, (p, at) => p.postContent(at)]] });
+      const g = gradeRun({
+        paneIds: ['p1'],
+        expected: { rule: 'identity', identity: IDENTITY },
+        dispatchAtMs: T0,
+        clearAtMs: o.clearAt,
+        samples: new Map([['p1', [...o.samples, { atMs: T0 + 1_262, hash: `pending|em:${IDENTITY}`, renderedAtMs: T0 + 1_262 }].sort((a, b) => a.atMs - b.atMs)]]),
+        transitions: new Map([['p1', o.pane.transitions]]),
+        cleared: true,
+      });
+      expect(g).toMatchObject({ verdict: 'FAIL', failedLink: 'persistence' });
+      expect(g.panes[0].reason).toBe('no-painted-proof-after-60s');
+    });
+  });
+
   it('the earliest failed link across panes is named (delivery before render)', () => {
     const a = observe({ at: [[400, (p, at) => p.postEmergency(at, false)]] });
     const b = observe({ at: [] });

@@ -6,6 +6,9 @@ import { LEASE, LeaderLeaseService, leadThisTick } from '../realtime/leader-leas
 // hardware class (Article 34; emergency/drill/, mode `on` only).
 import { readDrillConfig } from '../emergency/drill/synthetic-drill.config';
 import { drillHardwareClass, loadCanaryDrillHolds } from '../emergency/drill/synthetic-drill.policy';
+// The build a canary is rolling out is the latest published `player-v*`
+// release — the same resolver the update-check offer uses.
+import { resolveLatestReleaseInfo } from './player-ota.controller';
 
 /**
  * ─── OTA-02 (2026-08-03): the promotion gate, rebuilt ──────────────────
@@ -51,6 +54,7 @@ export interface CanaryCohortScreen {
   lastOtaErrorAt?: Date | string | null;
   lastOtaErrorAuthenticated?: boolean | null;
   playerVersionAt?: Date | string | null;
+  playerVersionCode?: number | null;
 }
 
 export interface CanaryPromotionVerdict {
@@ -96,10 +100,20 @@ const asMs = (v: Date | string | null | undefined): number | null => {
 export function evaluateCanaryPromotion(opts: {
   cohort: CanaryCohortScreen[];
   canarySetAt: Date;
+  /**
+   * versionCode of the build being rolled out (the latest published
+   * `player-v*` release, `major*10000 + minor*100 + patch` — the same
+   * encoding the APK reports). Null/unknown = no promotion.
+   */
+  targetVersionCode: number | null;
   minCohort?: number;
   maxAnonymousErrorRate?: number;
 }): CanaryPromotionVerdict {
   const { cohort, canarySetAt } = opts;
+  const target =
+    typeof opts.targetVersionCode === 'number' && Number.isFinite(opts.targetVersionCode) && opts.targetVersionCode > 0
+      ? opts.targetVersionCode
+      : null;
   const minCohort = opts.minCohort ?? 1;
   const maxRate = opts.maxAnonymousErrorRate ?? 0.2;
   const setAtMs = canarySetAt.getTime();
@@ -118,13 +132,17 @@ export function evaluateCanaryPromotion(opts: {
   });
   const authenticatedErrors = errors.filter((s) => s.lastOtaErrorAuthenticated === true);
 
-  // Positive evidence: the screen reported a version AFTER the canary was
-  // armed. That is the same "the install actually landed" proof the
-  // force-flag clear uses, applied to the promotion decision.
-  const successes = cohort.filter((s) => {
-    const at = asMs(s.playerVersionAt);
-    return at !== null && at >= setAtMs;
-  });
+  // Positive evidence: the screen's stored version is AT LEAST the build
+  // being rolled out, and that version was reported AFTER the canary was
+  // armed. A report of any older version is not evidence the rollout landed.
+  const successes =
+    target === null
+      ? []
+      : cohort.filter((s) => {
+          const at = asMs(s.playerVersionAt);
+          const code = typeof s.playerVersionCode === 'number' ? s.playerVersionCode : null;
+          return at !== null && at >= setAtMs && code !== null && code >= target;
+        });
 
   const base = {
     cohortSize: cohort.length,
@@ -148,6 +166,9 @@ export function evaluateCanaryPromotion(opts: {
         ...base,
       };
     }
+  }
+  if (target === null) {
+    return { promote: false, reason: 'rollout-target-version-unknown', ...base };
   }
   if (successes.length === 0) {
     return { promote: false, reason: 'no-confirmed-install-in-cohort', ...base };
@@ -191,6 +212,15 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
   private running = false;
   /** Seam for tests: the synthetic drill's config (its kill switch and mode decide the hold). */
   drillConfig = () => readDrillConfig(process.env);
+  /**
+   * Seam for tests: versionCode of the build being rolled out (the latest
+   * published Player release). Null when it cannot be resolved — then no
+   * tenant is promoted this tick (fails closed: the canary keeps soaking).
+   */
+  targetVersionCode = async (): Promise<number | null> => {
+    const info = await resolveLatestReleaseInfo();
+    return info?.derivedVersionCode ?? null;
+  };
 
   constructor(
     private readonly prisma: PrismaService,
@@ -257,6 +287,19 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
             })
           : new Map();
 
+      // The rollout target, resolved at most once per tick and only when a
+      // tenant actually reaches evaluation. A failed lookup is "unknown".
+      let target: number | null | undefined;
+      const rolloutTarget = async (): Promise<number | null> => {
+        if (target === undefined) {
+          target = await this.targetVersionCode().catch((e) => {
+            this.logger.warn(`[canary] rollout target lookup failed: ${e?.message ?? e}`);
+            return null;
+          });
+        }
+        return target;
+      };
+
       for (const t of tenants as any[]) {
         const setAt: Date | null = t.canarySetAt;
         const soakHours: number = t.canarySoakHours ?? 24;
@@ -283,6 +326,7 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
             lastOtaErrorAt: true,
             lastOtaErrorAuthenticated: true,
             playerVersionAt: true,
+            playerVersionCode: true,
             hardwareModel: true,
             displayCapabilities: true,
           } as any,
@@ -307,6 +351,7 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
         const verdict = evaluateCanaryPromotion({
           cohort: canaryScreens,
           canarySetAt: new Date(setAt),
+          targetVersionCode: await rolloutTarget(),
           minCohort: MIN_CANARY_COHORT(),
           maxAnonymousErrorRate: MAX_ANONYMOUS_ERROR_RATE(),
         });
@@ -345,6 +390,7 @@ export class CanaryAutoPromote implements OnModuleInit, OnModuleDestroy {
               // compared to anything — an empty cohort promoted on zero
               // health evidence and the audit row looked identical.
               confirmedInstalls: verdict.successCount,
+              targetVersionCode: target ?? null,
               errorsInCohort: verdict.errorCount,
               authenticatedErrors: verdict.authenticatedErrorCount,
               setAt: setAt.toISOString(),

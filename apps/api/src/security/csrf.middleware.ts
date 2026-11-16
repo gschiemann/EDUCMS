@@ -145,6 +145,13 @@ const EXEMPT_PATHS: Array<(path: string) => boolean> = [
   // withholds it from any cross-site POST.
   (p) => p === '/api/v1/auth/session/refresh',
   (p) => p === '/api/v1/auth/session/revoke',
+  // Panic phones (2026-11-14) — the same argument, exactly: the web origin's
+  // `/api/panic/*` route handlers call these server to server, the panic
+  // credential arrives in the BODY from that server (it lives in an HttpOnly
+  // cookie on the web origin, never on this one), and every route also
+  // requires SESSION_BFF_SECRET (fail closed). `/panic-device/enroll` is NOT
+  // here: it is Bearer-authenticated and takes the Bearer bypass below.
+  (p) => /^\/api\/v1\/panic-device\/(status|targets|active|trigger|revoke)$/.test(p),
   // SSO callbacks: SAML POSTs come from the IdP, not our origin, so they
   // can't carry a CSRF cookie. Authenticity is established by the SAML
   // assertion signature (verified by passport-saml). Same for OIDC

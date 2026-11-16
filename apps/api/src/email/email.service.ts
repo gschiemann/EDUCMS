@@ -32,7 +32,10 @@ export function friendlyRoleLabel(role: string): string {
   return VERTICAL_ROLE_LABELS.CORPORATE[role] ?? role.toLowerCase().replace(/_/g, ' ');
 }
 
-/** How one dispatch ended — `SENT_UNVERIFIED` is the shared-sender case (see #dispatch). */
+/** What the durable `email_logs` row holds in place of a link's one-time token. */
+export const REDACTED_TOKEN = '[redacted]';
+
+/** How one dispatch ended —`SENT_UNVERIFIED` is the shared-sender case (see #dispatch). */
 export type EmailDispatchStatus = 'SENT' | 'SENT_UNVERIFIED' | 'FAILED';
 
 @Injectable()
@@ -61,19 +64,26 @@ export class EmailService {
 
   async sendPasswordReset(params: { to: string; resetToken: string }): Promise<void> {
     const subject = 'Reset your VenueOS password';
-    const resetUrl = `${this.appUrl}/reset-password/${encodeURIComponent(params.resetToken)}`;
-    const body = [
+    // The durable `email_logs` row records the link with the token replaced
+    // by `[redacted]`: a database read must never hold a usable reset link.
+    const lines = (token: string) => [
       `We received a request to reset your password.`,
       ``,
       `Click the link below within one hour to choose a new password:`,
-      resetUrl,
+      `${this.appUrl}/reset-password/${token}`,
       ``,
       `If you didn't request this, you can safely ignore this email.`,
       ``,
       `— The VenueOS team`,
-    ].join('\n');
+    ];
 
-    await this.#enqueue({ to: params.to, subject, body, kind: 'PASSWORD_RESET' });
+    await this.#enqueue({
+      to: params.to,
+      subject,
+      body: lines(encodeURIComponent(params.resetToken)).join('\n'),
+      kind: 'PASSWORD_RESET',
+      logBody: lines(REDACTED_TOKEN).join('\n'),
+    });
   }
 
   async sendUserInvite(params: {
@@ -84,19 +94,26 @@ export class EmailService {
     inviteToken: string;
   }): Promise<void> {
     const subject = `${params.inviterEmail} invited you to ${params.tenantName} on VenueOS`;
-    const acceptUrl = `${this.appUrl}/accept-invite/${encodeURIComponent(params.inviteToken)}`;
-    const body = [
+    // Like the reset link: the durable row records the link with the token
+    // replaced by `[redacted]`; the real message is what is dispatched.
+    const lines = (token: string) => [
       `${params.inviterEmail} invited you to join ${params.tenantName} on VenueOS as ${friendlyRoleLabel(params.role)}.`,
       ``,
       `Accept your invitation and choose a password:`,
-      acceptUrl,
+      `${this.appUrl}/accept-invite/${token}`,
       ``,
       `This invitation expires in 7 days.`,
       ``,
       `— The VenueOS team`,
-    ].join('\n');
+    ];
 
-    await this.#enqueue({ to: params.to, subject, body, kind: 'INVITE' });
+    await this.#enqueue({
+      to: params.to,
+      subject,
+      body: lines(encodeURIComponent(params.inviteToken)).join('\n'),
+      kind: 'INVITE',
+      logBody: lines(REDACTED_TOKEN).join('\n'),
+    });
   }
 
   /**

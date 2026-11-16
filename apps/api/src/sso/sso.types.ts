@@ -76,5 +76,7 @@ export interface SsoCallbackProfile {
   nameId?: string;
   displayName?: string | null;
   groups?: string[];
+  /** OIDC `email_verified`: true / false as stated by the IdP, undefined when not stated. */
+  emailVerified?: boolean;
   raw?: unknown;
 }

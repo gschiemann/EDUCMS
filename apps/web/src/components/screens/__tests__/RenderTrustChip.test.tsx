@@ -98,6 +98,21 @@ describe('RenderTrustChip — downloads and the player\'s own states (2026-09-27
     noGreen(el.closest('span')!);
   });
 
+  it('on its backup playlist: amber and named, never the green tick', () => {
+    chip('pl:0|10000|x', { backupPlaylist: { from: '4k', to: 'Everyday', fromPlaylistId: 'a', toPlaylistId: 'b' } });
+    const el = rtl.getByText(/Showing backup playlist · Can’t play “4k”/);
+    expect(el.closest('span')!.className).toMatch(/amber/);
+    noGreen(el.closest('span')!);
+    expect(rtl.queryByText(/Showing content ✓/)).toBeNull();
+    expect(el.closest('span')!.getAttribute('title')).toMatch(/so it is showing “Everyday” instead/);
+  });
+
+  it('a louder state is not softened by the backup state', () => {
+    chip('idle:content-unavailable', { backupPlaylist: { from: '4k', to: 'Everyday', fromPlaylistId: 'a', toPlaylistId: 'b' } });
+    expect(rtl.getByText('Content unavailable')).toBeInTheDocument();
+    expect(rtl.queryByText(/Showing backup playlist/)).toBeNull();
+  });
+
   it('connecting and loading say exactly that', () => {
     chip('idle:connecting');
     expect(rtl.getByText('Screen on · connecting')).toBeInTheDocument();

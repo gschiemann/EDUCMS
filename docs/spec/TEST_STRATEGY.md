@@ -21,7 +21,7 @@ enforcement is the same theater pattern that burned us elsewhere.
 | Frontend E2E | **Playwright** (Chromium) | `apps/web/playwright.config.ts` |
 | Cross-browser canary | Node scripts run under **WebKit** | `apps/web/tests/cross-browser/{holiday-bridge,celebrations-bridge,prod-smoke}.cjs` |
 | Accessibility | **axe-core** baseline | `.github/workflows/a11y.yml` |
-| Secret scanning | **gitleaks** (pre-commit + CI) | `.husky/pre-commit`; `.github/workflows/ci.yml:142` |
+| Secret scanning | **gitleaks** (pre-commit + CI) | `.husky/pre-commit`; `.github/workflows/secret-scan.yml` |
 | Local preflight | `pnpm preflight` (lockfile + workspace builds + api + web) | root `package.json` |
 
 Convention: tests live next to source as `*.spec.ts` (docs/ORIENTATION.md, Conventions).

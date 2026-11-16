@@ -125,6 +125,7 @@ import {
   buildUpdateEvidence,
   convergenceHoldUntil as convergenceHoldUntilFn,
   decideUpdateApply,
+  isBundleUpdateRecord,
   parseDisplayWindows,
   parseUpdateAppliedRecord,
   resolveUpdateZone,
@@ -132,6 +133,15 @@ import {
   type UpdateEvidenceReport,
   type UpdateWindowKind,
 } from './offHoursUpdate';
+import {
+  clockEvidence,
+  createClockRelearnState,
+  finishClockRelearn,
+  planClockRelearn,
+  readUpdateClock,
+  serverClockSample,
+  type ServerClockSample,
+} from './updateClock';
 import { captureCoverFrame, removeUpdateCover, writeUpdateCover, reloadCoverRecord, BLACK_COVER_FRAME, type ReloadCoverReason } from './updateCover';
 import {
   hasShownContentBefore,
@@ -195,6 +205,7 @@ import {
   mediaCapsRefused,
   updateReportRefused,
   softBlankRefused,
+  playlistFallbackRefused,
   softBlankOnGlass,
   videoExtrasRefused,
   LOOP_REPORT_RETRY_MS,
@@ -298,6 +309,22 @@ import {
   playerCanShow,
   unplayableKey,
 } from './unplayableMedia';
+import {
+  FALLBACK_EPISODE_STORE_KEY,
+  FallbackDwell,
+  PlaylistFallbackLedger,
+  RecoveryProof,
+  everyItemOut,
+  fallbackEligible,
+  fallbackReport,
+  nextFallbackEpisode,
+  pickReplaceWinner,
+  readStoredFallbackEpisode,
+  storedFallbackEpisode,
+  type FallbackCommitted,
+  type FallbackEpisode,
+  type FallbackKey,
+} from './playlistFallback';
 import { findSlideImage, isImageLoaded } from './slideLoaded';
 import {
   markRefreshAckReported,
@@ -3752,7 +3779,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // Set when the window is open and the screen is waiting for the next item
   // boundary; the advance path runs it INSTEAD of advancing (the reload lands
   // where a cut would have been). Cleared by whoever consumes it.
-  const updateAtBoundaryRef = useRef<(() => void) | null>(null);
+  // The armed apply answers whether it TOOK the boundary (true = the reload is
+  // underway); false = it withdrew, and the caller advances as usual.
+  const updateAtBoundaryRef = useRef<(() => boolean) | null>(null);
   const updateApplyingRef = useRef(false);
   // The screen's display windows (both arrays) from the last manifest that
   // carried a `display` block — the zone and the display-OFF test read them.
@@ -3776,8 +3805,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const fn = updateAtBoundaryRef.current;
     if (!fn) return false;
     updateAtBoundaryRef.current = null;
-    fn();
-    return true;
+    // A withdrawn apply (the window closed, an alert, a download …) gives the
+    // boundary back: the slide advances as if nothing had been armed.
+    return fn() === true;
   };
   const [exitUnavailable, setExitUnavailable] = useState(false);
   // 2026-07-01 — LAUNCH-SPRINT player deep pass, blank-screen class (b):
@@ -4166,6 +4196,35 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // and winner selection re-runs. ≤2 extra full bodies per screen per day.
   const lastAppliedManifestRef = useRef<any>(null);
   const appliedWindowSigRef = useRef<string>('');
+  // Playlist fallback (2026-11-13/14, playlistFallback.ts, player rule 20): a
+  // media playlist with nothing this screen can show is set aside — as the
+  // LAST resort — so the NEXT scheduled playlist takes the screen instead of
+  // the "Content unavailable" card; the episode rides the routine report so
+  // the server tells the admins, and the screen comes back by itself.
+  //  • `playlistFallbackRef` — what is set aside, and until when (in memory).
+  //  • `fallbackCommittedRef` — what the last COMMIT put on the glass (the
+  //    schedule's first choice, the playlist on glass, whether it is a backup).
+  //    Set where content is committed, never at selection: a playlist
+  //    deferred for its download is not on the glass yet.
+  //  • `fallbackDwellRef` — how long the card has been up (the last-resort clock).
+  //  • `fallbackRecoveryRef` — how long the first choice has played (the "back" proof).
+  //  • `fallbackEpisodeRef` — what the report says; survives a reload
+  //    (undefined until it is read from storage).
+  //  • `fallbackGlassRef` — this render's facts, for the telemetry tick.
+  //  • `fallbackDisabledRef` — the kill switch (manifest `playback.playlistFallback: 'off'`).
+  //  • `applyManifestRef` — the manifest handler, so the effects can re-run
+  //    winner selection (an unchanged poll is a 304 and never re-enters it).
+  const playlistFallbackRef = useRef(new PlaylistFallbackLedger());
+  const fallbackCommittedRef = useRef<FallbackCommitted | null>(null);
+  const fallbackDwellRef = useRef(new FallbackDwell());
+  const fallbackRecoveryRef = useRef(new RecoveryProof());
+  const fallbackEpisodeRef = useRef<FallbackEpisode | null | undefined>(undefined);
+  const fallbackGlassRef = useRef({ alert: false, playing: false, cardUp: false, contentShowing: false });
+  const fallbackDisabledRef = useRef(false);
+  const applyManifestRef = useRef<((manifest: any, fromCache?: boolean) => unknown) | null>(null);
+  const fallbackLoggedRef = useRef<string>('');
+  // Held back for LOOP_REPORT_RETRY_MS after an older API refused the key.
+  const playlistFallbackBlockedUntilRef = useRef(0);
   // Credential recovery state: the SERVER said this device's credential is
   // unproven and a real re-pair is required (register `requiresRePair`).
   // Content keeps playing on renewed 1 h tokens; the dashboard + a local
@@ -4413,6 +4472,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // otherwise drop every emergency. Offset is "server - local"; apply
   // by ADDING to local Date.now() before comparing.
   const serverClockOffsetRef = useRef<number>(0);
+  // 2026-11-14 (updateClock.ts) — the latest REAL server-time measurement,
+  // anchored on both device clocks. `null` = never measured: the 0 above is
+  // "unknown", not "measured zero". Written next to every assignment of the
+  // offset from a real server time (and by the update window's own
+  // re-measure, which keeps its result here and never moves the push gate's
+  // offset). Only the off-hours update window reads it.
+  const serverClockSampleRef = useRef<ServerClockSample | null>(null);
+  const noteServerClockMeasured = (offsetMs: number) => {
+    try { serverClockSampleRef.current = serverClockSample(offsetMs, Date.now(), performance.now()); } catch { /* evidence only */ }
+  };
 
   // ─── Display control (2026-08-13) ────────────────────────────────────
   // displayConfigFpRef — fingerprint of the `display` block we last handed
@@ -5448,6 +5517,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
      * natural boundary, never mid-play.
      */
     swap?: { ids: Set<string>; armed: { activeItemId: string | null; boundarySeq: number } | null };
+    /** Playlist fallback (rule 20): what this commit puts on the glass. Absent = nothing ranked (an alert board, a legacy manifest). */
+    fallback?: FallbackCommitted | null;
   };
   const pendingPlaylistCommitRef = useRef<PendingPlaylistCommit | null>(null);
   // Re-evaluates a held file swap when a loop wraps (no timer).
@@ -5838,6 +5909,154 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     [playlist?.isEmergency, sorted, safetyClock]);
   const conservativeNormalPlayback = useMemo(() => !playlist?.isEmergency && playbackSafety().conservative(safetyClock),
     [playlist?.isEmergency, safetyClock]);
+
+  // ── Playlist fallback (2026-11-13/14, playlistFallback.ts, rule 20) ──────
+  // The rules and their tests live in the module; the page feeds it facts.
+  //  1. LAST RESORT: the "Content unavailable" card has been on the glass for
+  //     two minutes (`FallbackDwell` — a short outage or the 30-second retry
+  //     never gets there) on the playlist ON THE GLASS, and another playlist
+  //     is scheduled → set it aside and re-run selection on the manifest in hand.
+  //  2. A set-aside ran out → re-run selection so the schedule's own choice
+  //     gets its next try — unless every file of it is still provably out
+  //     (`fallbackHopelessIn`): then it is asked again on the next minute and
+  //     goes up the moment one file could play, never just to show the card.
+  //  3. The episode the routine report carries, and the "back" proof.
+  // Both re-applies treat the manifest AS A CACHED ONE (`fromCache`): it is
+  // not the server of record, so it can never release an alert (rule 11).
+  // NONE of it runs while ANY alert state is up — raised, held, pending,
+  // pushed (a banner too), or an emergency playlist on the glass.
+  const fallbackAlertUp = remoteDialogBlockedByAlert || nativeFirstHoldRaised;
+  const fallbackCardUp = !playlist?.isEmergency && (allAssetsFailed || normalFilesSetAside || allItemsUnplayable);
+  // The render proof's own test for "the scheduled content is on the glass" (`pl:`).
+  const fallbackContentShowing = phase === 'playing' && !!playlist && !playbackStopped && !fallbackCardUp &&
+    (mediaReady || !!(playlist as any)?.template);
+  fallbackGlassRef.current = {
+    alert: fallbackAlertUp,
+    playing: phase === 'playing' && !playbackStopped,
+    cardUp: fallbackCardUp,
+    contentShowing: fallbackContentShowing,
+  };
+  /** Any alert state, read live: the refs move before React renders again. */
+  const fallbackAlertNow = useCallback(() => fallbackGlassRef.current.alert || !!contentIsEmergencyRef.current ||
+    !!activeEmergencyRef.current || !!pendingOverrideConfirmRef.current || !!pushedEmergencyMessageRef.current ||
+    polledEmergencyHeldRef.current || displayEmergencyHoldRaised() || displayEmergencyPlaybackHeld(), []);
+  /**
+   * Is every item of this set-aside playlist still provably out — a type this
+   * screen cannot show, blocked by the playback circuit breaker, or out of the
+   * rotation after a failure? The same ledgers that put the card up; read
+   * against the manifest's own playlist, and only for the content set aside.
+   */
+  const fallbackHopelessIn = useCallback((playlists: unknown, key: FallbackKey): boolean => {
+    const pl = Array.isArray(playlists) ? playlists.find((p: any) => String(p?.id ?? '') === key.id) : null;
+    if (!pl || pl.template) return false;
+    const items = combinedItemsFromSources([pl]);
+    if (playlistSigOf(items) !== key.sig) return false;
+    const now = Date.now();
+    return everyItemOut(items, (item: any) => !playerCanShow(item.asset?.mimeType) ||
+      playbackSafety().blocked(safetyUrlFor(item), item.asset?.fileHash, now) ||
+      unplayableLedgerRef.current.isUnplayable(unplayableKey({ id: String(item.id), url: String(item.asset?.fileUrl || ''), hash: item.asset?.fileHash ?? null }), now));
+  }, []);
+  const reapplyForFallback = useCallback((why: string) => {
+    const base = lastAppliedManifestRef.current ?? playbackManifestRef.current?.m;
+    if (!base || base.isEmergency === true || fallbackAlertNow()) return;
+    try {
+      applyManifestRef.current?.(base, true);
+    } catch (e) {
+      console.warn(`[Player] playlist fallback (${why}) could not re-apply the manifest:`, e);
+    }
+  }, [fallbackAlertNow]);
+  useEffect(() => {
+    const observe = () => {
+      const c = fallbackCommittedRef.current;
+      const key = c?.onGlassKey ?? null;
+      const verdict = fallbackDwellRef.current.observe({
+        eligible: !fallbackDisabledRef.current && fallbackEligible({
+          playing: phase === 'playing' && !playbackStopped,
+          emergency: fallbackAlertNow(),
+          onGlass: key,
+          hasAlternative: !!c?.hasAlternative,
+        }),
+        key: key ? `${key.id}\n${key.sig}` : '',
+        cardUp: fallbackCardUp,
+        contentShowing: fallbackContentShowing,
+        // Monotonic: a device clock correction must not add card time.
+        nowMs: performance.now(),
+      });
+      return { key, verdict };
+    };
+    const first = observe();
+    const onGlass = first.key;
+    if (first.verdict.dueInMs === null || !onGlass) return;
+    const t = setTimeout(() => {
+      // Asked again at the moment of acting: the same content must still be
+      // on the glass, the card still up, no alert. A timer that fired early
+      // waits for the next run of this effect (the minute tick at the latest).
+      const now = observe();
+      if (!now.verdict.due || !now.key || now.key.id !== onGlass.id || now.key.sig !== onGlass.sig) return;
+      fallbackDwellRef.current.reset();
+      // Already set aside, and still on the glass: the backup it gave way to
+      // is waiting for its download (readiness-gated, rule 17) — never step
+      // the back-off up for that.
+      if (playlistFallbackRef.current.isSetAside(onGlass, Date.now())) return;
+      playlistFallbackRef.current.setAside(onGlass, Date.now());
+      reapplyForFallback('set aside');
+    }, first.verdict.dueInMs + 50);
+    return () => clearTimeout(t);
+    // playlist: a commit moves the ref this reads; safetyClock: the minute tick re-asks.
+  }, [playlist, fallbackCardUp, fallbackContentShowing, fallbackAlertUp, phase, playbackStopped, safetyClock, reapplyForFallback, fallbackAlertNow]);
+  useEffect(() => {
+    if (fallbackAlertNow() || phase !== 'playing' || playbackStopped || fallbackDisabledRef.current) return;
+    const playlists = (lastAppliedManifestRef.current ?? playbackManifestRef.current?.m)?.playlists;
+    if (playlistFallbackRef.current.takeDue(Date.now(), (key) => fallbackHopelessIn(playlists, key))) reapplyForFallback('retry');
+  }, [safetyClock, fallbackAlertUp, phase, playbackStopped, reapplyForFallback, fallbackAlertNow, fallbackHopelessIn]);
+  // 3. The episode (`nextFallbackEpisode`) and the "back" proof
+  //    (`RecoveryProof`). Called on every change of the facts below and by the
+  //    telemetry tick just before it reports (the proof is time-based). Reads
+  //    refs only. Storage: read once, written on a change.
+  const advanceFallbackEpisode = useCallback(() => {
+    if (fallbackEpisodeRef.current === undefined) {
+      let raw: string | null = null;
+      try { raw = window.localStorage.getItem(FALLBACK_EPISODE_STORE_KEY); } catch { /* unreadable: start empty */ }
+      fallbackEpisodeRef.current = readStoredFallbackEpisode(raw, Date.now());
+    }
+    const g = fallbackGlassRef.current;
+    const live = g.playing && !fallbackAlertNow();
+    const c = fallbackCommittedRef.current;
+    const firstChoiceKey = live && c && !c.fellBack && c.onGlassId ? `${c.onGlassId}\n${c.onGlassKey?.sig ?? 'board'}` : null;
+    const proven = fallbackRecoveryRef.current.observe({
+      key: firstChoiceKey, cardUp: g.cardUp, contentShowing: g.contentShowing, nowMs: performance.now(),
+    });
+    // The schedule's choice played: its back-off history is forgotten.
+    if (proven && c?.onGlassKey) playlistFallbackRef.current.clear(c.onGlassKey.id);
+    const prev = fallbackEpisodeRef.current;
+    const next = nextFallbackEpisode(prev, {
+      disabled: fallbackDisabledRef.current,
+      frozen: !live,
+      glass: !playlistRef.current || !c ? null : { firstChoiceId: c.firstChoiceId, onGlassId: c.onGlassId, fellBack: c.fellBack },
+      backupShowing: !!c?.fellBack && g.contentShowing,
+      firstChoiceProven: proven,
+      nowMs: Date.now(),
+    });
+    if (next === prev) return;
+    fallbackEpisodeRef.current = next;
+    if (next && (next.state !== prev?.state || next.toId !== prev?.toId || next.fromId !== prev?.fromId)) {
+      console.warn(`[Player] PLAYLIST_FALLBACK episode ${next.state}: scheduled ${next.fromId}, ${next.state === 'recovered' ? 'playing' : 'backup'} ${next.toId}`);
+    }
+    try {
+      const stored = storedFallbackEpisode(next);
+      if (stored) window.localStorage.setItem(FALLBACK_EPISODE_STORE_KEY, stored);
+      else window.localStorage.removeItem(FALLBACK_EPISODE_STORE_KEY);
+    } catch { /* the report still says it; a reload only loses the thread */ }
+  }, [fallbackAlertNow]);
+  useEffect(() => {
+    advanceFallbackEpisode();
+    // playlist: a commit moves the ref this reads; safetyClock: the minute tick re-asks.
+  }, [advanceFallbackEpisode, playlist, fallbackCardUp, fallbackContentShowing, fallbackAlertUp, phase, playbackStopped, safetyClock]);
+  /** The telemetry tick's `playlistFallback` block: the episode, brought up to date first. */
+  const currentFallbackReport = useCallback((nowMs: number) => {
+    advanceFallbackEpisode();
+    return fallbackReport(fallbackEpisodeRef.current ?? null, nowMs);
+  }, [advanceFallbackEpisode]);
   // Latch the two-decoder guard for this playlist session. A standby failure
   // falls back inside the deck; it must not restart the active file mid-play.
   const playlistDeckAllowed = useMemo(() => !playlist?.isEmergency && !syncLocked && !conservativeNormalPlayback &&
@@ -7143,6 +7362,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const oldHasItems = currentPlaylistSigRef.current !== '';
     currentPlaylistSigRef.current = commit.sig;
     contentIsEmergencyRef.current = commit.isEmergency;
+    // Playlist fallback (rule 20): the glass now shows THIS commit's choice.
+    fallbackCommittedRef.current = commit.fallback ?? null;
     setPlaylist({ name: commit.name, items: commit.items, isEmergency: commit.isEmergency });
     // Only reset to 0 on FIRST playlist load (no prior items). After that,
     // just clamp to the new length to avoid the "jolt back to slide 1 on
@@ -7262,6 +7483,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
      *   block below.
      */
     const applyManifest = (manifest: any, fromCache = false) => {
+      // The playlist-fallback effects re-run selection through this (see the refs).
+      applyManifestRef.current = applyManifest;
       // USB stick overlay (2026-10-22). Pure and total: an EMERGENCY manifest
       // comes back as the very same object, so the emergency block below sees
       // exactly what the server sent. A throw here can never block that block.
@@ -7606,6 +7829,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       if (manifest.playback && typeof manifest.playback === 'object') {
         const lm = (manifest.playback as { loopMode?: unknown }).loopMode;
         setPlaybackLoopMode(lm === 'twodeck' || lm === 'native' || lm === 'continuous' ? lm : null);
+        // Playlist fallback kill switch (rule 20; `PLAYLIST_FALLBACK_DISABLED`
+        // on the API): the schedule's first choice always plays — what is set
+        // aside comes back now, in the selection below — and nothing is reported.
+        const fallbackOff = (manifest.playback as { playlistFallback?: unknown }).playlistFallback === 'off';
+        if (fallbackOff && !fallbackDisabledRef.current) playlistFallbackRef.current.clearAll();
+        fallbackDisabledRef.current = fallbackOff;
       }
       // ── DISPLAY CONTROL — install the on/off schedule + vendor recipe ──
       //
@@ -7929,12 +8158,54 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         const ranked = manifest.playlists.some((pl: any) => pl?.schedule?.mode != null);
         let templateWinner: any = null;
         let mediaSources: any[] = manifest.playlists;
+        // Playlist fallback (rule 20): what this apply would put on the glass,
+        // recorded where it is COMMITTED. Null = nothing ranked to record (an
+        // emergency manifest, a legacy one).
+        let fallbackPick: FallbackCommitted | null = null;
         if (ranked) {
           const open = manifest.playlists.filter((pl: any) => windowOpenNow(pl.schedule));
-          const winner = open.find((pl: any) => pl?.schedule?.mode !== 'append') ?? null;
+          const openReplace = open.filter((pl: any) => pl?.schedule?.mode !== 'append');
+          // PLAYLIST FALLBACK (2026-11-13/14, playlistFallback.ts). The order
+          // is still the server's (rule 7): the first window-open replace
+          // playlist wins — unless this screen has PROVED it can show nothing
+          // of it, in which case the next one in the same order takes the
+          // screen. Never for an emergency manifest (the alert's own content)
+          // and never with the kill switch on: those take the first choice
+          // exactly as before. The set-aside ledger cannot move while any
+          // alert state is up (every effect that moves it is gated), so a
+          // normal manifest under or after an alert — the all-clear — resumes
+          // what was on the glass before the alert, instead of putting the
+          // broken first choice back for another two minutes of card.
+          const emergencyManifest = manifest.isEmergency === true || !!em;
+          const fallbackKeyOf = (pl: any): FallbackKey | null =>
+            pl?.template ? null : { id: String(pl?.id ?? ''), sig: playlistSigOf(combinedItemsFromSources([pl])) };
+          const pick = emergencyManifest || fallbackDisabledRef.current
+            ? { winner: openReplace[0] ?? null, primary: openReplace[0] ?? null, fellBack: false, hasAlternative: false }
+            : pickReplaceWinner<any>(openReplace, fallbackKeyOf, playlistFallbackRef.current, Date.now(),
+              (key) => fallbackHopelessIn(manifest.playlists, key));
+          const winner = pick.winner;
           const appends = open.filter((pl: any) => pl?.schedule?.mode === 'append' && !pl.template);
           templateWinner = winner?.template ? winner : null;
           mediaSources = winner && !winner.template ? [winner, ...appends] : appends;
+          if (!emergencyManifest && winner) {
+            const winnerKey = fallbackKeyOf(winner);
+            fallbackPick = {
+              firstChoiceId: pick.primary?.id != null ? String(pick.primary.id) : null,
+              onGlassId: winner.id != null ? String(winner.id) : null,
+              onGlassKey: winnerKey && winnerKey.id ? winnerKey : null,
+              fellBack: pick.fellBack,
+              hasAlternative: pick.hasAlternative,
+            };
+          }
+          // Say it once per change — an operator must be able to find out why
+          // a screen is on its second playlist.
+          const fallbackLine = pick.fellBack && pick.primary && winner
+            ? `[Player] PLAYLIST_FALLBACK nothing in "${String(pick.primary.name || pick.primary.id)}" can be shown on this screen — showing "${String(winner.name || winner.template?.name || winner.id)}" instead; the first is tried again later or as soon as its content changes`
+            : '';
+          if (fallbackLine !== fallbackLoggedRef.current) {
+            fallbackLoggedRef.current = fallbackLine;
+            if (fallbackLine) console.warn(fallbackLine);
+          }
         } else {
           templateWinner = manifest.playlists.find((pl: any) => pl.template) ?? null;
         }
@@ -7975,6 +8246,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             // A live all-clear/raise must change classification without a remount.
             setPlaylist((prev: any) => prev && (prev.isEmergency !== isEmergencyContent || prev.systemEmergencyLayout !== systemEmergencyLayout) ? { ...prev, isEmergency: isEmergencyContent, systemEmergencyLayout } : prev);
           }
+          // Playlist fallback (rule 20): the board is on the glass now.
+          fallbackCommittedRef.current = fallbackPick;
           // A template takeover applies at once; a media playlist deferred
           // for its download is no longer what the server wants on glass.
           pendingPlaylistCommitRef.current = null;
@@ -8027,6 +8300,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             // The manifest is back on what is on glass — a deferred newer
             // playlist, if any, is no longer wanted.
             pendingPlaylistCommitRef.current = null;
+            // Playlist fallback (rule 20): this very choice is what is on the glass.
+            fallbackCommittedRef.current = fallbackPick;
             return true; // identical content — keep index + playlist as-is
           }
           const commit: PendingPlaylistCommit = {
@@ -8035,6 +8310,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             name: manifest.playlists.length > 1 ? 'Scheduled Content (Combined)' : manifest.playlists[0].name || 'Scheduled Content',
             items: combinedItems,
             isEmergency: isEmergencyContent,
+            fallback: fallbackPick,
             readiness: combinedItems.map((it: any) => ({
               id: String(it.id),
               large: isLargeMedia({ url: playbackUrlFor(it.asset.fileUrl, it.asset.mimeType), sizeBytes: it.asset.sizeBytes }),
@@ -8651,6 +8927,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           if (offset === null) return;
           const previous = serverClockOffsetRef.current;
           serverClockOffsetRef.current = offset;
+          noteServerClockMeasured(offset);
           if (Math.abs(offset - previous) > 5_000) {
             console.warn(`[Player ${transport}] server clock offset re-learned after a stale drop: ${previous} ms -> ${offset} ms`);
           }
@@ -8879,6 +9156,14 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         // DOM node, never the state flag — the dashboard's Sleep/Awake pair
         // confirms a soft Sleep from this.
         softBlank: nowMs >= softBlankBlockedUntilRef.current ? softBlankOnGlass(softBlankNodeRef.current) : null,
+        // A playlist-fallback EPISODE (2026-11-13/14, playlistFallback.ts): two
+        // playlist ids, a duration and a state, on every report from the
+        // moment a backup is proven on the glass until the schedule's choice
+        // has played again for five minutes (then `recovered` for ten), so
+        // the server can tell the admins both ends. Absent otherwise. Brought
+        // up to date first (the "back" proof is time-based). Held back for a
+        // window after an older API refused it.
+        playlistFallback: nowMs >= playlistFallbackBlockedUntilRef.current ? currentFallbackReport(nowMs) : null,
       });
 
       let status: number | null = null;
@@ -8944,6 +9229,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         softBlankBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
         console.warn('[Player] the server refused the soft-blank report — holding it back for 10 minutes');
       }
+      if (playlistFallbackRefused(status, body)) {
+        playlistFallbackBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
+        console.warn('[Player] the server refused the backup-playlist report — holding it back for 10 minutes');
+      }
       if (updateReportRefused(status, body)) {
         updateReportBlockedUntilRef.current = nowMs + LOOP_REPORT_RETRY_MS;
         console.warn('[Player] the server refused the update-applied report — holding it back for 10 minutes');
@@ -9004,7 +9293,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       telemetryTickRef.current = null;
       if (timer) clearTimeout(timer);
     };
-  }, [screenId, handleHeartbeatOta, takeRenderProof, commitRenderProof]);
+    // currentFallbackReport: stable (refs only) — listed, never a restart.
+  }, [screenId, handleHeartbeatOta, takeRenderProof, commitRenderProof, currentFallbackReport]);
 
   // ── Report a durable-REFRESH confirmation the moment we are back ───────
   //
@@ -9262,48 +9552,29 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       }
     };
 
-    const applyUpdate = async (windowKind: UpdateWindowKind, boundary: UpdateBoundary) => {
-      const p = pendingUpdateRef.current;
-      if (!p || cancelled || updateApplyingRef.current) return;
-      updateApplyingRef.current = true;
-      updateAtBoundaryRef.current = null;
+    // ── The clock the window is decided on (2026-11-14, updateClock.ts) ──
+    // The nightly window reads the SERVER-corrected clock, and only while the
+    // offset is proven (measured, and the device clock has not stepped since).
+    // Unproven → `wait:clock-unverified` and one bounded re-measure from
+    // `GET /api/v1/realtime/time` (single-flight, ≥ 30 s apart, backing off to
+    // 15 min). Its result stays in `serverClockSampleRef`: the push gate's
+    // offset is never moved from here. Houston Video Wall: a box ~4 h slow
+    // applied "nightly" updates at 07:45 local.
+    const clockRelearn = createClockRelearnState();
+    const readClock = () => readUpdateClock(serverClockSampleRef.current, Date.now(), performance.now());
+    const relearnClockIfDue = () => {
       try {
-        // The hard exclusions, re-checked at the moment of truth (a boundary
-        // can arrive minutes after it was armed).
-        const ev = liveEvidence();
-        if (ev.emergency || largeDownloadRef.current || playbackStoppedRef.current || (windowKind === 'nightly' && syncActiveRef.current)) {
-          console.log('[bundle-update] apply withdrawn at the boundary — state changed');
-          updateApplyingRef.current = false;
-          return;
-        }
-        const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current);
-        const frame = await captureCoverFrame(document);
-        if (cancelled) { updateApplyingRef.current = false; return; }
-        const navigatedAtMs = Date.now();
-        const st = safeSessionStorage();
-        if (st) {
-          writeUpdateCover(st, {
-            v: 1, from: p.mine, to: p.theirs, window: windowKind, boundary, zone: zone.zone, zoneSource: zone.source,
-            capture: frame.capture, navigatedAtMs, kind: frame.kind, data: frame.data, color: frame.color, w: frame.w, h: frame.h,
-          });
-        }
-        // The next navigation is served from the pinned shell (one-shot).
-        if (cacheDriveRef.current !== 'unavailable') await armShellSwap(120_000);
-        console.log(`[bundle-update] applying by=${p.by} ${p.mine} → ${p.theirs} — ${windowKind} window, at ${boundary}, zone ${zone.zone} (${zone.source}), cover ${frame.capture}`);
-        // Record BEFORE navigating so the floor holds even if the reload is async.
-        lastBundleReloadAtRef.current = Date.now();
-        hardCacheBustingReload();
-      } catch (e) {
-        updateApplyingRef.current = false;
-        console.warn('[bundle-update] apply failed; will retry on the next tick:', (e as Error)?.message);
-      }
+        if (!planClockRelearn(clockRelearn, performance.now(), Date.now())) return;
+        void relearnServerClockOffset({ apiRoot: getApiRoot() }).then((offset) => {
+          finishClockRelearn(clockRelearn, offset !== null);
+          if (offset === null || cancelled) return;
+          noteServerClockMeasured(offset);
+          console.log(`[bundle-update] server clock measured for the update window: offset ${offset} ms`);
+        }, () => finishClockRelearn(clockRelearn, false));
+      } catch { /* the next tick asks again */ }
     };
-
-    const evaluate = () => {
-      const p = pendingUpdateRef.current;
-      if (!p || cancelled || updateApplyingRef.current) return;
-      const now = Date.now();
-      if (convergenceHoldUntil > now) return;
+    type PendingUpdate = NonNullable<typeof pendingUpdateRef.current>;
+    const decide = (p: PendingUpdate, clock: ReturnType<typeof readClock>) => {
       const ev = liveEvidence();
       const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current);
       const decision = decideUpdateApply({
@@ -9311,7 +9582,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         prepared: p.prepared,
         prepareAttempts: p.prepareAttempts,
         cacheDrive: cacheDriveRef.current,
-        nowMs: now,
+        nowMs: Date.now(),
+        clock,
         lastReloadAtMs: lastBundleReloadAtRef.current,
         minReloadGapMs: MIN_BUNDLE_RELOAD_GAP_MS,
         screenId: screenIdRef.current,
@@ -9325,6 +9597,84 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         evidence: ev,
         hasItemBoundary: sortedItemsRef.current.length > 1,
       });
+      return { decision, zone };
+    };
+
+    /**
+     * Apply the waiting bundle — or decline. Returns synchronously whether the
+     * reload is underway: the armed item boundary only skips its advance on
+     * `true`. The whole decision is re-run on the corrected clock at the
+     * boundary (it can arrive minutes after it was armed) and once more right
+     * before the reload, so a boundary armed inside the window can never
+     * reload outside it.
+     */
+    const applyUpdate = (windowKind: UpdateWindowKind, boundary: UpdateBoundary): boolean => {
+      const p = pendingUpdateRef.current;
+      if (!p || cancelled || updateApplyingRef.current) return false;
+      const clock = readClock();
+      const gate = decide(p, clock).decision;
+      if (gate.action !== 'apply') {
+        console.log(`[bundle-update] ${windowKind} apply withdrawn at the boundary — ${gate.reason}`);
+        if (gate.reason === 'clock-unverified') relearnClockIfDue();
+        updateAtBoundaryRef.current = null;
+        p.boundaryArmedAt = 0;
+        return false;
+      }
+      updateApplyingRef.current = true;
+      updateAtBoundaryRef.current = null;
+      const appliedWindow = gate.window;
+      const indexAtBoundary = currentIndexRef.current;
+      void (async () => {
+        let navigatedAtMs = 0;
+        try {
+          const zone = resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current);
+          const frame = await captureCoverFrame(document);
+          if (cancelled) { updateApplyingRef.current = false; return; }
+          navigatedAtMs = Date.now();
+          const st = safeSessionStorage();
+          if (st) {
+            writeUpdateCover(st, {
+              v: 1, from: p.mine, to: p.theirs, window: appliedWindow, boundary, zone: zone.zone, zoneSource: zone.source,
+              capture: frame.capture, navigatedAtMs, kind: frame.kind, data: frame.data, color: frame.color, w: frame.w, h: frame.h,
+              ...clockEvidence(clock),
+            });
+          }
+          // The next navigation is served from the pinned shell (one-shot).
+          if (cacheDriveRef.current !== 'unavailable') await armShellSwap(120_000);
+          // Right before reloading: the window, the alert, the download — again.
+          const last = decide(p, readClock()).decision;
+          if (cancelled || last.action !== 'apply') {
+            const why = last.action === 'apply' ? 'cancelled' : last.reason;
+            console.log(`[bundle-update] apply withdrawn before the reload — ${why}`);
+            try {
+              const rec = parseUpdateAppliedRecord(st?.getItem(UPDATE_COVER_KEY));
+              if (rec && rec.navigatedAtMs === navigatedAtMs && isBundleUpdateRecord(rec)) st?.removeItem(UPDATE_COVER_KEY);
+            } catch { /* best effort */ }
+            p.boundaryArmedAt = 0;
+            updateApplyingRef.current = false;
+            // Give the item boundary back when nothing else advanced meanwhile
+            // (a video's onEnded has no second chance; the 500 ms heartbeat does).
+            if (!cancelled && boundary === 'item' && currentIndexRef.current === indexAtBoundary) advanceSlide();
+            return;
+          }
+          console.log(`[bundle-update] applying by=${p.by} ${p.mine} → ${p.theirs} — ${appliedWindow} window, at ${boundary}, zone ${zone.zone} (${zone.source}), cover ${frame.capture}, server clock ${clock.verified ? `offset ${clock.offsetMs} ms` : `unverified (${clock.reason})`}`);
+          // Record BEFORE navigating so the floor holds even if the reload is async.
+          lastBundleReloadAtRef.current = Date.now();
+          hardCacheBustingReload();
+        } catch (e) {
+          updateApplyingRef.current = false;
+          console.warn('[bundle-update] apply failed; will retry on the next tick:', (e as Error)?.message);
+        }
+      })();
+      return true;
+    };
+
+    const evaluate = () => {
+      const p = pendingUpdateRef.current;
+      if (!p || cancelled || updateApplyingRef.current) return;
+      const now = Date.now();
+      if (convergenceHoldUntil > now) return;
+      const { decision, zone } = decide(p, readClock());
       const label = decision.action === 'apply' ? `apply:${decision.window}:${decision.boundary}` : `wait:${decision.reason}`;
       if (label !== updateLastDecisionRef.current) {
         updateLastDecisionRef.current = label;
@@ -9334,17 +9684,18 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         }
       }
       if (decision.action === 'wait') {
+        if (decision.reason === 'clock-unverified') relearnClockIfDue();
         if (updateAtBoundaryRef.current) { updateAtBoundaryRef.current = null; p.boundaryArmedAt = 0; }
         return;
       }
-      if (decision.boundary === 'now') { void applyUpdate(decision.window, 'now'); return; }
+      if (decision.boundary === 'now') { applyUpdate(decision.window, 'now'); return; }
       // Wait for the next item boundary, but not forever: a long clip or a
       // stuck advance must not cost the night.
-      if (p.boundaryArmedAt && now - p.boundaryArmedAt >= BOUNDARY_WAIT_CAP_MS) { void applyUpdate(decision.window, 'now'); return; }
+      if (p.boundaryArmedAt && now - p.boundaryArmedAt >= BOUNDARY_WAIT_CAP_MS) { applyUpdate(decision.window, 'now'); return; }
       if (!updateAtBoundaryRef.current) {
         p.boundaryArmedAt = now;
         const windowKind = decision.window;
-        updateAtBoundaryRef.current = () => { void applyUpdate(windowKind, 'item'); };
+        updateAtBoundaryRef.current = () => applyUpdate(windowKind, 'item');
         console.log(`[bundle-update] ${windowKind} window open — applying at the next item boundary`);
       }
     };
@@ -9410,6 +9761,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           convergenceHoldUntil,
           windows: (updateWindowsRef.current ?? []).length,
           zone: resolveUpdateZone(updateWindowsRef.current, deviceTimeZone(), screenTimeZoneRef.current),
+          clock: readClock(),
         }),
       };
     } catch { /* diagnostics only */ }
@@ -9843,6 +10195,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           const srv = typeof data?.ts === 'number' ? data.ts : null;
           if (srv == null) return;
           serverClockOffsetRef.current = srv - Date.now();
+          noteServerClockMeasured(serverClockOffsetRef.current);
           if (Math.abs(serverClockOffsetRef.current) > 5000) {
             console.warn('[Player SSE] Large clock skew detected — offset=', serverClockOffsetRef.current, 'ms');
           }
@@ -10150,6 +10503,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             if (msg.type === 'AUTH_OK' && typeof authServerTime === 'number') {
               const srv = authServerTime as number;
               serverClockOffsetRef.current = srv - Date.now();
+              noteServerClockMeasured(serverClockOffsetRef.current);
               if (Math.abs(serverClockOffsetRef.current) > 5000) {
                 console.warn('[Player WS] Large clock skew detected — offset=', serverClockOffsetRef.current, 'ms');
               }

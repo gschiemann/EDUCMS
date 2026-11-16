@@ -111,9 +111,8 @@ describe('OTA-01 — clearing a pending push is privileged', () => {
   it('an UNAUTHENTICATED version bump does NOT clear the operator’s pending push', async () => {
     const { controller, prisma } = harness(screenWithPendingPush());
     await (controller as any).persistReportedVersion(bumpBody, { deviceAuthenticated: false });
-    const data = persistedData(prisma);
-    expect(data).not.toHaveProperty('forceApkUpdatePendingAt');
-    expect(data).not.toHaveProperty('forceApkUpdateOverrideWindow');
+    // Nothing is written at all for an anonymous report (2026-11-16).
+    expect(prisma.client.screen.updateMany).not.toHaveBeenCalled();
   });
 
   it('an unauthenticated install claim leaves a forensic AuditLog row', async () => {
@@ -148,18 +147,46 @@ describe('OTA-01 — clearing a pending push is privileged', () => {
     // OTA-01 still holds: the same claim, unauthenticated, clears nothing.
     const anon = harness(already);
     await (anon.controller as any).persistReportedVersion(bumpBody, { deviceAuthenticated: false });
-    expect(persistedData(anon.prisma)).not.toHaveProperty('forceApkUpdatePendingAt');
+    expect(anon.prisma.client.screen.updateMany).not.toHaveBeenCalled();
   });
 
-  it('the fleet keeps reporting its version either way — telemetry is not gated', async () => {
-    // Gating version telemetry would blind the whole fleet-version chip for
-    // every kiosk on the shipped (tokenless) APK. Only the destructive
-    // write is privileged.
+  it('a DEVICE-AUTHENTICATED report records the version (name, code, time)', async () => {
     const { controller, prisma } = harness(screenWithPendingPush());
-    await (controller as any).persistReportedVersion(bumpBody, { deviceAuthenticated: false });
+    await (controller as any).persistReportedVersion(bumpBody, { deviceAuthenticated: true });
     const data = persistedData(prisma);
     expect(data.playerVersion).toBe('1.0.64');
     expect(data.playerVersionCode).toBe(64);
+    expect(data.playerVersionAt).toBeInstanceOf(Date);
+  });
+
+  it('an ANONYMOUS report never writes playerVersion / playerVersionCode / playerVersionAt (2026-11-16)', async () => {
+    // The stored version feeds push tracking and canary promotion; only a
+    // caller that proves it is the screen may set it. The current Player
+    // sends its device token on update-check, and every screen also reports
+    // its version on the device-authenticated heartbeat and telemetry.
+    const { controller, prisma } = harness({ ...screenWithPendingPush(), forceApkUpdatePendingAt: null });
+    await (controller as any).persistReportedVersion(bumpBody, { deviceAuthenticated: false });
+    expect(prisma.client.screen.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('through the route: an anonymous update-check gets the same answer and writes no version', async () => {
+    delete process.env.OTA_REQUIRE_DEVICE_AUTH;
+    const anon = harness({ ...screenWithPendingPush(), forceApkUpdatePendingAt: null });
+    const anonAnswer = await anon.controller.updateCheck(bumpBody, anonReq());
+    await new Promise((r) => setImmediate(r));
+    expect(anon.prisma.client.screen.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ playerVersionCode: 64 }) }),
+    );
+
+    invalidateDeviceCredentialCache();
+    const authed = harness({ ...screenWithPendingPush(), forceApkUpdatePendingAt: null });
+    const authedAnswer = await authed.controller.updateCheck(bumpBody, deviceReq());
+    await new Promise((r) => setImmediate(r));
+    expect(authed.prisma.client.screen.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ playerVersionCode: 64 }) }),
+    );
+    // The update answer itself does not depend on who asked here.
+    expect(anonAnswer).toEqual(authedAnswer);
   });
 
   it('isDeviceAuthenticated: true for a valid credential bound to the fingerprint’s screen', async () => {

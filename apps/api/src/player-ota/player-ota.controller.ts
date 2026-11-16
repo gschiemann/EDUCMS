@@ -302,7 +302,15 @@ export class PlayerOtaController {
       // is fleet-wide to make this a hard requirement.
       const installed = (claimsInstall || reachedTarget) && ctx.deviceAuthenticated;
 
-      await this.prisma.client.screen.updateMany({
+      // The stored version is written ONLY from a device-authenticated
+      // report (2026-11-16). It feeds the fleet-version chip, push tracking
+      // and canary promotion, so a caller that cannot prove it is this
+      // screen must not be able to set it. The current Player attaches its
+      // device token to update-check; every screen also reports its version
+      // on the device-authenticated status heartbeat and telemetry, so the
+      // fleet chip stays fed. The update ANSWER below is unchanged for an
+      // anonymous caller — only this write is withheld.
+      if (ctx.deviceAuthenticated) await this.prisma.client.screen.updateMany({
         where: { deviceFingerprint: fp },
         data: {
           playerVersion: vn,
@@ -324,7 +332,7 @@ export class PlayerOtaController {
             : {}),
         } as any,
       });
-      void recordScreenEvent(this.prisma, prior?.tenantId ? versionChangeEvent({ screenId: prior.id, tenantId: prior.tenantId, versionCode: vc, previousCode: prior.playerVersionCode, reportedCode: vc, versionName: vn, pushSatisfied: installed, authenticated: ctx.deviceAuthenticated }) : null, this.redisService); // interruption ledger (2026-10-18): a new Player build, best-effort
+      if (ctx.deviceAuthenticated) void recordScreenEvent(this.prisma, prior?.tenantId ? versionChangeEvent({ screenId: prior.id, tenantId: prior.tenantId, versionCode: vc, previousCode: prior.playerVersionCode, reportedCode: vc, versionName: vn, pushSatisfied: installed, authenticated: ctx.deviceAuthenticated }) : null, this.redisService); // interruption ledger (2026-10-18): a new Player build, best-effort
       if (installed) {
         this.logger.log(
           `[ota] flag-cleared-on-install screen=${prior.id} ` +

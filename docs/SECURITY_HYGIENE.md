@@ -23,7 +23,7 @@ Originally the Sprint 1 action plan of 2026-04-16 (Task 10). Re-verified 2026-11
 | P1 move `sunny-meadow-preview.html` out of root | Done: the file is gone and `/sunny-meadow-preview.html` is in `.gitignore` |
 | P2 expand `.gitignore` | Partly done. Present: `*.key`, `*.pem`, `*.pfx`, `*.p12`, `*.crt` (one deliberate exception, the Supabase public root CA), `*.tar.gz`/`*.tgz`, `test-results/`, `playwright-report/`, `.vercel`, `.mcp.json`, `/.codex/`. Not present: `*_rsa`, `*_ecdsa`, `*_ed25519`, `id_rsa*`, `.aws/`, `.gcp/`, `.azure/`, `.docker/config.json`, `coverage/` |
 | P2 pre-commit secret scan (Husky + gitleaks) | Husky exists (`.husky/pre-commit`, `.husky/pre-push`, installed by the root `prepare` script); the pre-commit hook enforces lockfile sync and the `inset` grep, **not** gitleaks |
-| P2 CI secret scan | Done: job `secret-scan` ("Secret Leak Scan (gitleaks)") in `.github/workflows/ci.yml`, with `.gitleaksignore` at the repo root |
+| P2 CI secret scan | Done: job `secret-scan` ("Secret Leak Scan (gitleaks)") in `.github/workflows/secret-scan.yml` (no path filter: every PR and every master push), with `.gitleaksignore` at the repo root |
 
 ## Recurring check (read-only, no secret output)
 

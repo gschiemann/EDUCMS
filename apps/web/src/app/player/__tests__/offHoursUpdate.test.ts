@@ -39,6 +39,7 @@ function base(over: Partial<UpdateDecisionInput> = {}): UpdateDecisionInput {
     prepareAttempts: 1,
     cacheDrive: 'ready',
     nowMs: chicago('2026-10-11T03:30:00-05:00'),
+    clock: { verified: true, offsetMs: 0 },
     lastReloadAtMs: 0,
     minReloadGapMs: 10 * 60_000,
     screenId: 'screen-1',
@@ -261,6 +262,70 @@ describe('decideUpdateApply', () => {
   });
 });
 
+describe('decideUpdateApply on a skewed device clock (2026-11-14, Houston Video Wall)', () => {
+  const H = 60 * 60_000;
+  const trueAt = (hhmm: string) => chicago(`2026-10-11T${hhmm}:00-05:00`);
+  // The device clock reads `skew` from true time; the measured offset is
+  // server − device = −skew ("what to ADD to Date.now()").
+  const skewed = (trueMs: number, skew: number, over: Partial<UpdateDecisionInput> = {}) =>
+    decideUpdateApply(base({ nowMs: trueMs + skew, clock: { verified: true, offsetMs: -skew }, ...over }));
+
+  it('device 4 h SLOW: true 07:45 (device reads 03:45) is outside the window; true 03:30 (device 23:30) is inside', () => {
+    expect(skewed(trueAt('07:45'), -4 * H)).toEqual({ action: 'wait', reason: 'outside-window' });
+    expect(skewed(trueAt('03:30'), -4 * H)).toEqual({ action: 'apply', window: 'nightly', boundary: 'item' });
+    // The bug, as it was: the raw device clock alone at true 07:45 reads 03:45.
+    expect(nightlyWindowOpen(CHI, trueAt('07:45') - 4 * H, nightlyJitterMs('screen-1'))).toBe(true);
+  });
+
+  it('device 4 h FAST: true 23:30 (device reads 03:30) is outside; true 03:30 (device 07:30) is inside', () => {
+    expect(skewed(trueAt('23:30') - 24 * H, 4 * H)).toEqual({ action: 'wait', reason: 'outside-window' });
+    expect(skewed(trueAt('03:30'), 4 * H)).toEqual({ action: 'apply', window: 'nightly', boundary: 'item' });
+  });
+
+  it('offset never measured → the nightly branch is refused, whatever the device clock says', () => {
+    const unknown = { verified: false as const, reason: 'never-measured' as const };
+    expect(decideUpdateApply(base({ clock: unknown }))).toEqual({ action: 'wait', reason: 'clock-unverified' });
+    expect(decideUpdateApply(base({ clock: { verified: false, reason: 'device-clock-stepped' } }))).toEqual({ action: 'wait', reason: 'clock-unverified' });
+    // …but the clock-free windows keep working: soft blank, idle, and a display-OFF schedule (device clock).
+    expect(decideUpdateApply(base({ clock: unknown, softBlank: true }))).toEqual({ action: 'apply', window: 'display-off', boundary: 'now' });
+    expect(decideUpdateApply(base({ clock: unknown, evidence: idle }))).toEqual({ action: 'apply', window: 'idle', boundary: 'now' });
+    const windows = [parseSoftWindow({ id: 'w', daysOfWeek: [0, 1, 2, 3, 4, 5, 6], onTime: '07:00', offTime: '22:00', timezone: CHI })!];
+    expect(decideUpdateApply(base({ clock: unknown, windows, nowMs: chicago('2026-10-10T23:00:00-05:00') }))).toEqual({ action: 'apply', window: 'display-off', boundary: 'now' });
+    // …and every hard exclusion still outranks it.
+    expect(decideUpdateApply(base({ clock: unknown, emergency: true }))).toEqual({ action: 'wait', reason: 'emergency' });
+  });
+
+  it('offset measured as zero → exactly the old behaviour', () => {
+    for (const hhmm of ['02:59', '03:30', '03:59', '04:00', '07:45', '14:00']) {
+      const nowMs = trueAt(hhmm);
+      const raw = nightlyWindowOpen(CHI, nowMs, nightlyJitterMs('screen-1'));
+      expect(decideUpdateApply(base({ nowMs })).action).toBe(raw ? 'apply' : 'wait');
+    }
+  });
+
+  it('display-off reads the DEVICE clock — the one the soft-blank runner and the APK scheduler darken the panel on', () => {
+    const windows = [parseSoftWindow({ id: 'w', daysOfWeek: [0, 1, 2, 3, 4, 5, 6], onTime: '07:00', offTime: '22:00', timezone: CHI })!];
+    // Device 4 h slow, true 22:30 (device 18:30): the panel is still ON by its own clock → no display-off apply.
+    expect(skewed(trueAt('22:30') - 24 * H, -4 * H, { windows }).action).toBe('wait');
+    // True 08:30 (device 04:30): the device's schedule still has the panel OFF → invisible, apply.
+    expect(skewed(trueAt('08:30'), -4 * H, { windows })).toEqual({ action: 'apply', window: 'display-off', boundary: 'now' });
+  });
+
+  it('the reload floor is an interval on the device clock — a large offset neither defeats nor extends it', () => {
+    const now = trueAt('03:30') - 4 * H;
+    expect(decideUpdateApply(base({ nowMs: now, clock: { verified: true, offsetMs: 4 * H }, lastReloadAtMs: now - 5 * 60_000 }))).toEqual({ action: 'wait', reason: 'reload-floor' });
+    expect(decideUpdateApply(base({ nowMs: now, clock: { verified: true, offsetMs: 4 * H }, lastReloadAtMs: now - 11 * 60_000 })).action).toBe('apply');
+  });
+
+  it('the boundary re-check: armed inside the window, fired after it closed → no longer allowed', () => {
+    const armed = skewed(trueAt('03:58'), -4 * H);
+    expect(armed).toMatchObject({ action: 'apply', window: 'nightly' });
+    expect(skewed(trueAt('04:02'), -4 * H)).toEqual({ action: 'wait', reason: 'outside-window' });
+    // …or after the clock became unproven in between.
+    expect(decideUpdateApply(base({ nowMs: trueAt('03:59') - 4 * H, clock: { verified: false, reason: 'device-clock-stepped' } }))).toEqual({ action: 'wait', reason: 'clock-unverified' });
+  });
+});
+
 describe('convergence hold + evidence', () => {
   const record: UpdateAppliedRecord = {
     v: 1, from: 'aaaa', to: 'bbbb', window: 'nightly', boundary: 'item', zone: CHI, zoneSource: 'schedule',
@@ -287,6 +352,10 @@ describe('convergence hold + evidence', () => {
       fromBundleId: 'aaaa', toBundleId: 'bbbb', window: 'nightly', boundary: 'item', zone: CHI, zoneSource: 'schedule',
       capture: 'live', blankMs: 420, coverMs: 1480, converged: true,
     });
+    // A record from an older bundle carries no clock keys, and neither does the report.
+    expect(Object.keys(buildUpdateEvidence(record, 'bbbb'))).not.toContain('clockMeasured');
+    expect(buildUpdateEvidence({ ...record, clockMeasured: true, clockOffsetMs: 14_400_123.4 }, 'bbbb')).toMatchObject({ clockMeasured: true, clockOffsetMs: 14_400_123 });
+    expect(buildUpdateEvidence({ ...record, clockMeasured: false, clockOffsetMs: 5 }, 'bbbb')).toMatchObject({ clockMeasured: false, clockOffsetMs: null });
     expect(buildUpdateEvidence({ ...record, coverAtMs: undefined, contentAtMs: undefined }, 'aaaa')).toMatchObject({
       blankMs: null, coverMs: null, converged: false,
     });

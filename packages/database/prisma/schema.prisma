@@ -1436,7 +1436,19 @@ model Screen {
   // branch — it is in SCREEN_TELEMETRY_ONLY_FIELDS (manifest-hot-cache.ts),
   // so a boot-wave re-register cannot bust the fleet's manifest cache.
   deviceTimeZone                      String?      @map("device_time_zone")
-  photoUrl                            String?      @map("photo_url")
+  // 2026-11-16 — TELEMETRY: the panel's hardware serial number, as the APK
+  // could read it (best effort, no device owner — apps/player/.../diagnostics/
+  // HardwareSerial.kt), carried on the DEVICE-AUTHENTICATED native heartbeat
+  // (`x-venueos-hardware-serial`, apps/api/src/screens/hardware-serial.ts).
+  // Validated (printable ASCII, ≤ 64, placeholders refused); written only
+  // when it changes and never cleared by a report that has none. Source names
+  // which read produced it (`device-owner`, `build-serial`, `get-serial`,
+  // `prop:<key>`) or `none` when the APK tried and nothing was readable.
+  // Dashboard-only (screen settings → Device details); in
+  // SCREEN_TELEMETRY_ONLY_FIELDS, never in a manifest.
+  hardwareSerial                      String?      @map("hardware_serial")
+  hardwareSerialSource                String?      @map("hardware_serial_source")
+  photoUrl                           String?      @map("photo_url")
   // Sprint 8b — indoor positioning. Operator drops the screen pin on
   // a FloorPlan; floorX / floorY are px coords on the plan image.
   // All three nullable because most screens won't be placed on a plan
@@ -1580,6 +1592,17 @@ model Screen {
   // saying so and the dashboard treats it as stale. Telemetry-only: listed in
   // SCREEN_TELEMETRY_ONLY_FIELDS so this write never busts the manifest cache.
   softBlankAt                         DateTime?    @map("soft_blank_at")
+  // ── playlistFallback (2026-11-13) — this screen is showing a BACKUP playlist.
+  // The web player, as a last resort (two minutes on its "Content unavailable"
+  // card), shows the next scheduled playlist when the scheduled one has
+  // nothing it can play, and says so on its telemetry post (ids only). The
+  // server verifies both playlists inside the screen's own tenant, reads their
+  // names itself and stores `{ fromPlaylistId, fromPlaylistName, toPlaylistId,
+  // toPlaylistName, since }` here for the Screens page; NULL = the schedule's
+  // own choice plays. Written only on a change (apps/api/src/telemetry/
+  // playlist-fallback.ts). Telemetry-only: listed in
+  // SCREEN_TELEMETRY_ONLY_FIELDS so this write never busts the manifest cache.
+  playlistFallback                    Json?        @map("playlist_fallback")
   // ── Device-credential trust state (2026-08-30 reliability program) ────
   // Stamped SERVER-SIDE at register time (never client-reported):
   //   'PROVEN'          — last re-registration presented a valid proven
@@ -4875,6 +4898,57 @@ model SessionRefreshToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("session_refresh_tokens")
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Panic phones (2026-11-14) — apps/api/src/emergency/panic-device/
+// ═════════════════════════════════════════════════════════════════════
+//
+// The owner, 2026-11-10: "last thing we need is a login holding back an
+// emergency trigger for a teacher". A person who may send an emergency signs
+// in ONCE on their phone (full sign-in, second factor if the account has
+// one) and keeps the phone ready. That mints ONE row here and a secret that
+// lives only in an HttpOnly, Secure, SameSite=Strict cookie on the web
+// origin's `/api/panic` path.
+//
+// What the credential can do is fixed in code, not in this row: send an
+// emergency the person may send, and read what the panic page shows. Never an
+// all-clear, never the dashboard, never anything else.
+//
+// It does not expire. It is refused — and this row revoked — the moment the
+// account is disabled or removed, loses its emergency authority, moves to
+// another organisation, or an admin (or the phone itself) turns it off. Every
+// use is checked against the LIVE user row; nothing about authority is
+// stored here.
+//
+//   secretHash = sha256 hex of the presented secret. NEVER the secret — a
+//                database dump must not contain a live credential.
+//   tenantId   = the person's organisation at enrolment. A different one at
+//                use = refused and revoked ("changes tenant").
+//   label      = "iPhone · Safari", from the enrolling user agent — what the
+//                person and their admin see in the list. Never shown to
+//                anyone outside the organisation.
+//
+// Relation-free (plain ids, like SessionRefreshToken): a credential ledger
+// must not add cascade-delete edges to User or Tenant, and revoked rows stay
+// as the forensic record next to their audit rows.
+model PanicDevice {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  userId          String    @map("user_id")
+  secretHash      String    @unique @map("secret_hash")
+  label           String
+  createdAt       DateTime  @default(now()) @map("created_at")
+  createdIp       String?   @map("created_ip")
+  lastUsedAt      DateTime? @map("last_used_at")
+  lastUsedIp      String?   @map("last_used_ip")
+  revokedAt       DateTime? @map("revoked_at")
+  revokedByUserId String?   @map("revoked_by_user_id")
+  revokedReason   String?   @map("revoked_reason")
+
+  @@index([userId])
+  @@index([tenantId])
+  @@map("panic_devices")
 }
 
 // ═════════════════════════════════════════════════════════════════════

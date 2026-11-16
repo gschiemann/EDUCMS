@@ -10,7 +10,7 @@ import { holdSentence, isPushHold, pushIsActive, pushSatisfiedByReport } from '.
 import { FRESH_PUSH_STATE, armScreenApkUpdate, cancelScreenApkUpdate, publishScreenRefresh, setScreenAutoUpdateMode } from './screen-commands';
 import { CLEAR_UPDATE_QUARANTINE_AUDIT_ACTION, QUARANTINE_NO_ROLLBACK_NOTE, publishClearUpdateQuarantine } from './quarantine-command';
 import { companionTapVerdict, isCompanionTapReport } from '../player-ota/companion-tap-report';
-import { enforceUpdatePushRules, updatePushOverride } from './update-push-rules';
+import { assertMassPushOverrideAllowed, enforceUpdatePushRules, updatePushOverride } from './update-push-rules';
 import { Controller, Post, Get, Put, Delete, Body, Param, Query, Req, Res, UseGuards, Request, HttpException, HttpStatus, Optional } from '@nestjs/common';
 import { encodeTargetFromResolutions, pdfDelivery, withheldFromScreens } from '@cms/api-types';
 import { ensureUsbSigningKey } from '../usb-export/usb-signing-key';
@@ -33,6 +33,7 @@ import { DEVICE_SETTINGS_HEADER } from '@cms/api-types';
 import { deviceSettingsHeartbeat } from '../device-settings/device-settings.heartbeat';
 import { MANAGER_HEALTH_HEADER, isRelayedManagerReport, managerHealthChanged, managerReportRelayOff, parseManagerHealthHeader } from './manager-health';
 import { diagnosticsHeartbeat } from '../screen-diagnostics/diagnostics-heartbeat';
+import { HARDWARE_SERIAL_HEADER, hardwareSerialWrite, parseHardwareSerialHeader } from './hardware-serial';
 import { manifestDiagnostics } from '../screen-diagnostics/diagnostics-policy';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
@@ -107,6 +108,7 @@ import {
 } from './manifest-hot-cache';
 import type { ManifestScreenRow } from './manifest-hot-cache';
 import { enforceDeviceUnpairPin, manifestUnpairPin } from './screen-pin';
+import { PAIR_FAIL_LIMIT, PAIR_FAIL_WINDOW_MS, PairingAttemptLimiter } from './pairing-attempt-limiter';
 // 2026-09-02 (efficiency P0-2/P0-3) — the cheap emergency-revision token
 // served by GET /:id/emergency-rev. The manifest handler RECORDS what it
 // decided (zero extra queries — every input was already read); the revision
@@ -624,6 +626,42 @@ export class ScreensController {
   private static readonly EMERGENCY_REV_MIN_INTERVAL_MS = 2_000;
 
   private static readonly emergencyRevLastServed = new Map<string, number>();
+
+  /** Per-user wrong-pairing-code limit for POST /pair (pairing-attempt-limiter.ts). */
+  private readonly pairLimiter = new PairingAttemptLimiter(() => (this.redisService as any)?.publisher ?? null);
+
+  /**
+   * One wrong pairing code by this user. The failure that reaches the limit
+   * writes one audit row (never the code itself).
+   */
+  private async notePairFailure(req: any, userId: string, reason: 'not-found' | 'other-organization'): Promise<void> {
+    if (!userId) return;
+    const { failures, tripped } = await this.pairLimiter.recordFailure(userId);
+    if (!tripped) return;
+    await this.prisma.client.auditLog
+      .create({
+        data: {
+          tenantId: req.user?.tenantId ?? null,
+          userId: req.user?.id ?? null,
+          action: 'SCREEN_PAIRING_ATTEMPTS_LIMITED',
+          targetType: 'User',
+          targetId: userId,
+          details: JSON.stringify({
+            failures,
+            limit: PAIR_FAIL_LIMIT,
+            windowMinutes: PAIR_FAIL_WINDOW_MS / 60_000,
+            lastReason: reason,
+          }),
+        },
+      })
+      .catch((e: Error) => console.warn('[pair] attempt-limit audit write failed', e?.message));
+  }
+
+  /** True while `screenId` was served an authenticated revision under the floor ago. */
+  private emergencyRevTooFast(screenId: string, nowMs: number): boolean {
+    const lastServed = ScreensController.emergencyRevLastServed.get(screenId);
+    return lastServed !== undefined && nowMs - lastServed < ScreensController.EMERGENCY_REV_MIN_INTERVAL_MS;
+  }
 
   /**
    * Device auth, one place. Delegates to the shared verifier so the
@@ -1833,6 +1871,13 @@ export class ScreensController {
     const diagnostics = paired && credential.proved
       ? await diagnosticsHeartbeat({ prisma: this.prisma }, screen as any, req?.headers)
       : {};
+    // Hardware serial (2026-11-16, hardware-serial.ts): the APK's best-effort
+    // read, same credential gate. Written only when it changes; a report with
+    // no serial never clears a stored one. Telemetry-only columns.
+    const hardwareSerialData = paired && credential.proved
+      ? hardwareSerialWrite(screen as any, parseHardwareSerialHeader(req?.headers?.[HARDWARE_SERIAL_HEADER]))
+      : {};
+    Object.assign(data, hardwareSerialData);
     const vn = mayStampFirmware ? (versionName || '').trim() : '';
     if (vn) {
       data.playerVersion = vn;
@@ -1949,7 +1994,8 @@ export class ScreensController {
       nativePowerStateChanged(screen.nativeRuntimeReport, nativeRuntime);
     const mustWrite = mayStampFirmware &&
       (!!versionChanged || managerChanged || otaCleared || nativeChanged || !!deviceSettings?.mustWrite ||
-        managerHealthChanged((screen as any).managerHealthReport, managerHealth));
+        managerHealthChanged((screen as any).managerHealthReport, managerHealth) ||
+        Object.keys(hardwareSerialData).length > 0);
     const pingDue = mayStampLiveness && !shouldSkipLastPingWrite(screen.id);
 
     let screenAfterUpdate: any = screen;
@@ -3242,6 +3288,11 @@ export class ScreensController {
         // `not-painting` and opened a district incident. Already fetched.
         lastRenderedAt: (s as any).lastRenderedAt ?? null,
         lastRenderedHash: (s as any).lastRenderedHash ?? null,
+        // 2026-11-13 — "showing a backup playlist" (telemetry/playlist-fallback.ts):
+        // the server-verified state, so the fleet views say it exactly as
+        // GET /screens does (which carries the column through its spread)
+        // and never grade such a screen a plain green. Already fetched.
+        playlistFallback: (s as any).playlistFallback ?? null,
         // Keep the 10-min rule in sync with list()'s pushChannel above.
         pushChannel: (s as any).lastPushConnectedAt
           ? (now - new Date((s as any).lastPushConnectedAt).getTime() < 10 * 60_000 ? 'live' : 'stale')
@@ -3682,13 +3733,23 @@ export class ScreensController {
     const code = body.pairingCode?.trim().toUpperCase();
     if (!code) throw new HttpException({ code: 'SCREEN_PAIRING_CODE_REQUIRED', message: 'Pairing code is required' }, HttpStatus.BAD_REQUEST);
 
+    // 2026-11-16 — at most PAIR_FAIL_LIMIT wrong codes per user per window;
+    // checked before the lookup, so a correct code is refused too while the
+    // limit holds (pairing-attempt-limiter.ts).
+    const pairUserId = String(req.user?.id ?? req.user?.userId ?? '');
+    if (pairUserId) await this.pairLimiter.check(pairUserId);
+
     const screen = await this.prisma.client.screen.findUnique({
       where: { pairingCode: code },
     });
 
-    if (!screen) throw new HttpException({ code: 'SCREEN_PAIRING_CODE_INVALID', message: 'Invalid pairing code. Make sure the code matches what is shown on the screen.' }, HttpStatus.NOT_FOUND);
+    if (!screen) {
+      await this.notePairFailure(req, pairUserId, 'not-found');
+      throw new HttpException({ code: 'SCREEN_PAIRING_CODE_INVALID', message: 'Invalid pairing code. Make sure the code matches what is shown on the screen.' }, HttpStatus.NOT_FOUND);
+    }
 
     if (screen.tenantId && screen.tenantId !== req.user.tenantId) {
+      await this.notePairFailure(req, pairUserId, 'other-organization');
       throw new HttpException({ code: 'SCREEN_ALREADY_PAIRED', message: 'This screen is already paired to another organization' }, HttpStatus.CONFLICT);
     }
 
@@ -5110,9 +5171,11 @@ export class ScreensController {
     // one hardware class, and 22:00–06:00 in every screen's own time zone. A
     // refusal marks, publishes and audits nothing; the explicit
     // `overrideMassPushRules: true` (never sent by the dashboard) sets both
-    // aside and is recorded on the audit row below.
+    // aside and is recorded on the audit row below. Only a SUPER_ADMIN may send
+    // it (403 before anything is read).
     const override = updatePushOverride(body);
-    const overridden = await enforceUpdatePushRules(this.prisma, tenantId, 'all', { override });
+    assertMassPushOverrideAllowed(override, req.user?.role);
+    const overridden = await enforceUpdatePushRules(this.prisma, tenantId, 'all', { override, actorRole: req.user?.role });
     if (overridden.length) {
       console.warn(
         `[force-update] tenant=${tenantId} every screen, with the mass-push rules OVERRIDDEN ` +
@@ -5123,22 +5186,46 @@ export class ScreensController {
     // /update-check from each one gets the latest APK (gated 30 min).
     // Safe even when tenant.autoUpdatePlayerEnabled is false — the
     // force flag is the explicit opt-in for THIS push only.
-    await this.prisma.client.screen.updateMany({
-      where: { tenantId },
-      data: {
-        forceApkUpdatePendingAt: new Date(),
-        // A new push starts a fresh tracked record (push-tracking.ts).
-        ...FRESH_PUSH_STATE,
-        // OTA-02: an operator deliberately re-pushing IS the "resolved,
-        // try again" signal. It is one of only two things that clears the
-        // sticky OTA failure stamp (the other is a confirmed install).
-        lastOtaErrorAt: null,
-        lastOtaErrorMessage: null,
-        lastOtaErrorAuthenticated: false,
-      } as any,
-    }).catch((e) => {
-      console.warn('[force-update] forceApkUpdatePendingAt write failed', (e as Error).message);
-    });
+    //
+    // 2026-11-16 — the mark and its FORCE_APK_UPDATE audit row commit in ONE
+    // transaction: a push is never recorded without the row that says who sent
+    // it (and whether the fleet rules were set aside), and a failed write
+    // publishes nothing and answers an error instead of `ok`.
+    try {
+      await this.prisma.client.$transaction(async (tx: any) => {
+        await tx.screen.updateMany({
+          where: { tenantId },
+          data: {
+            forceApkUpdatePendingAt: new Date(),
+            // A new push starts a fresh tracked record (push-tracking.ts).
+            ...FRESH_PUSH_STATE,
+            // OTA-02: an operator deliberately re-pushing IS the "resolved,
+            // try again" signal. It is one of only two things that clears the
+            // sticky OTA failure stamp (the other is a confirmed install).
+            lastOtaErrorAt: null,
+            lastOtaErrorMessage: null,
+            lastOtaErrorAuthenticated: false,
+          } as any,
+        });
+        await tx.auditLog.create({
+          data: {
+            action: 'FORCE_APK_UPDATE',
+            targetType: 'tenant',
+            targetId: tenantId,
+            tenantId,
+            userId: req.user.id,
+            // The owner's explicit override, and the rules it set aside (none = not needed).
+            details: JSON.stringify({ scope: 'tenant', overrideMassPushRules: override, massPushRulesOverridden: overridden }),
+          },
+        });
+      });
+    } catch (e) {
+      console.warn('[force-update] push write failed; nothing sent', (e as Error).message);
+      throw new HttpException(
+        { code: 'SCREEN_FORCE_UPDATE_FAILED', message: 'The update could not be recorded. Nothing was sent.' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
     const signed = this.signer.signMessage('CHECK_FOR_UPDATES', {
       scope: 'tenant',
       scopeId: tenantId,
@@ -5149,17 +5236,6 @@ export class ScreensController {
     } catch (e) {
       console.warn('[force-update] redis publish failed', (e as Error).message);
     }
-    await this.prisma.client.auditLog.create({
-      data: {
-        action: 'FORCE_APK_UPDATE',
-        targetType: 'tenant',
-        targetId: tenantId,
-        tenantId,
-        userId: req.user.id,
-        // The owner's explicit override, and the rules it set aside (none = not needed).
-        details: JSON.stringify({ scope: 'tenant', overrideMassPushRules: override, massPushRulesOverridden: overridden }),
-      },
-    }).catch(() => { /* audit best-effort */ });
     return { ok: true, scope: 'tenant' };
   }
 
@@ -6125,21 +6201,18 @@ export class ScreensController {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
 
-    // Per-screen floor. Checked BEFORE auth work so a token-hammering client
-    // cannot make us do crypto either. The player never polls faster than 5 s.
+    // Per-screen floor. The player never polls faster than 5 s. The floor is
+    // READ before any auth work (an id served under 2 s ago is refused without
+    // crypto), but it is only STAMPED after the request has authenticated as
+    // this screen, so the budget belongs to the screen's own credential: a
+    // request that fails device auth never moves it.
     const now = Date.now();
-    const lastServed = ScreensController.emergencyRevLastServed.get(id);
-    if (lastServed !== undefined && now - lastServed < ScreensController.EMERGENCY_REV_MIN_INTERVAL_MS) {
+    if (this.emergencyRevTooFast(id, now)) {
       res.setHeader('Retry-After', '1');
       return res.status(HttpStatus.TOO_MANY_REQUESTS).json({
         code: 'SCREEN_EMERGENCY_REV_TOO_FAST',
         message: 'Emergency revision polled faster than the per-screen floor',
       });
-    }
-    ScreensController.emergencyRevLastServed.set(id, now);
-    if (ScreensController.emergencyRevLastServed.size > 10_000) {
-      const oldest = ScreensController.emergencyRevLastServed.keys().next().value;
-      if (oldest !== undefined) ScreensController.emergencyRevLastServed.delete(oldest);
     }
 
     // Pass 1 — the cheap gate. Signature + `sub === :id` are pure crypto; the
@@ -6155,6 +6228,22 @@ export class ScreensController {
         code: 'SCREEN_DEVICE_AUTH_REQUIRED',
         message: `Device auth required (${cheap.reason})`,
       });
+    }
+
+    // Authenticated as this screen: re-check (two concurrent polls on one
+    // credential) and stamp the floor.
+    const authedAt = Date.now();
+    if (this.emergencyRevTooFast(id, authedAt)) {
+      res.setHeader('Retry-After', '1');
+      return res.status(HttpStatus.TOO_MANY_REQUESTS).json({
+        code: 'SCREEN_EMERGENCY_REV_TOO_FAST',
+        message: 'Emergency revision polled faster than the per-screen floor',
+      });
+    }
+    ScreensController.emergencyRevLastServed.set(id, authedAt);
+    if (ScreensController.emergencyRevLastServed.size > 10_000) {
+      const oldest = ScreensController.emergencyRevLastServed.keys().next().value;
+      if (oldest !== undefined) ScreensController.emergencyRevLastServed.delete(oldest);
     }
 
     // Tenant scoping is structural, not a check we could forget: the tenant

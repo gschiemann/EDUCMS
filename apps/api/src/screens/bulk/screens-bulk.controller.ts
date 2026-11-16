@@ -57,7 +57,7 @@ import { runDisplayControl } from '../../display/display.controller';
 import { silentUpdateReadiness } from '../../player-ota/auto-update-policy';
 import { overrideToMode } from '../../player-ota/auto-update-report';
 import { resolveLatestReleaseInfo } from '../../player-ota/player-ota.controller';
-import { enforceUpdatePushRules } from '../update-push-rules';
+import { assertMassPushOverrideAllowed, enforceUpdatePushRules } from '../update-push-rules';
 import { screenScopeOf } from '../../user-scope/user-scope.context';
 import { assertSupportReach } from '../../support-access/support-access.context';
 import { recordPushDeployment } from '../deployment-record';
@@ -211,6 +211,7 @@ export class ScreensBulkController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   async update(@Request() req: any, @Body() body: BulkBody): Promise<BulkResponse> {
     const override = this.input(() => parseMassPushOverride(body));
+    assertMassPushOverrideAllowed(override, req.user?.role); // SUPER_ADMIN only, before any read
     const r = await this.resolve(req, body);
     // Only ask GitHub when a target has a Player version to grade against it.
     const latest = r.targets.some((t) => !!t.playerVersion) ? await this.latestPlayerVersion() : null;
@@ -223,7 +224,7 @@ export class ScreensBulkController {
       this.prisma,
       r.tenantId,
       plan.filter((p) => p.d.send).map((p) => p.t),
-      { override },
+      { override, actorRole: req.user?.role },
     );
     if (r.dryRun) {
       const results = plan.map(({ t, d }) => (d.send ? sent(t, { installPrompt: prompts.get(t.id) }) : skip(t, d.reason)));

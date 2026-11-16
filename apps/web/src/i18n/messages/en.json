@@ -151,7 +151,29 @@
       "voiceOff": "Silent",
       "voiceOnHint": "This phone will speak alert status out loud.",
       "voiceOffHint": "This phone will not make sound. Tap to speak alert status aloud.",
-      "voiceOnConfirm": "Spoken alert status is on. This phone will speak out loud."
+      "voiceOnConfirm": "Spoken alert status is on. This phone will speak out loud.",
+      "checkingSignIn": "Checking sign-in…",
+      "checkingSignInHint": "Checking your sign-in. You can hold a button now — the alert sends as soon as the check is done.",
+      "unreachableHint": "Can’t reach VenueOS to check your sign-in. Holding a button still tries to send — if it fails, NOTIFY SECURITY MANUALLY.",
+      "signInTitle": "Sign in to use the emergency button",
+      "signInLead": "This phone isn’t signed in to VenueOS.",
+      "signInBody": "In an emergency right now, NOTIFY SECURITY MANUALLY. Then sign in once, with “Keep me signed in” ticked, so this phone stays ready.",
+      "signInButton": "Sign in",
+      "errSignInNeeded": "This phone isn’t signed in. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast. Sign in to send alerts from this phone.",
+      "errSignInTimeout": "Your sign-in could not be checked in time. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast.",
+      "keepReadyBody": "Keep this phone ready for emergencies — no sign-in needed to send an alert from it.",
+      "keepReadyButton": "Keep ready",
+      "keepReadyDismiss": "Not now",
+      "keepReadyDone": "This phone is ready for emergencies.",
+      "keepReadyStale": "To keep this phone ready, sign in again first — it must be a fresh sign-in.",
+      "keepReadyUnavailable": "Keeping a phone ready isn’t available right now. Your sign-in still works here.",
+      "keepReadyFailed": "This phone couldn’t be kept ready. Your sign-in still works here.",
+      "phoneReady": "This phone is ready for emergencies ({label})",
+      "turnOff": "Turn off",
+      "turnOffTitle": "Turn off emergencies on this phone?",
+      "turnOffMessage": "This phone will need a sign-in before it can send an alert again.",
+      "turnOffConfirm": "Turn off",
+      "endNeedsSignIn": "Ending an alert needs a full sign-in on this phone."
     },
     "broadcast": {
       "title": "Broadcast",
@@ -506,7 +528,8 @@
     "phoneSetupLater": "You can add a passkey for this device later in My account.",
     "setupDoneSignIn": "Your account is set up. Sign in with your new email and password.",
     "security": "Security",
-    "requestInfo": "Request info"
+    "requestInfo": "Request info",
+    "panicSignIn": "You’re signing in to use the emergency button on this phone. Tick “Keep me signed in” so it stays ready."
   },
   "account": {
     "title": "My account",
@@ -1635,7 +1658,20 @@
         "actionsFor": "Actions for {email}",
         "accessNoScreensYet": "No screens yet: {locations}",
         "ssoLoadFailed": "Could not load the SSO configuration",
-        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)"
+        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)",
+        "panicPhonesButton": "Emergency phones",
+        "panicPhonesTitle": "Emergency phones",
+        "panicPhonesHint": "Phones this person keeps ready to send an alert without signing in. Turning one off takes effect at once.",
+        "panicPhonesCannotSend": "This person can’t send alerts now, so their phones are refused.",
+        "panicPhonesNone": "No phones kept ready.",
+        "panicPhonesLoadFailed": "Couldn’t load this person’s phones.",
+        "panicPhoneActive": "· ready since {since} · last used {lastUsed}",
+        "panicPhoneRevoked": "· turned off {on}",
+        "panicPhoneOff": "Turn off",
+        "panicPhoneOffTitle": "Turn off this emergency phone for {email}?",
+        "panicPhoneOffMessage": "It stops working at once. The person can set it up again only by signing in on that phone.",
+        "panicPhoneOffConfirm": "Turn off",
+        "panicPhoneOffFailed": "Couldn’t turn this phone off. Try again."
       },
       "overview": {
         "readinessTitle": "Configuration readiness",
@@ -2564,6 +2600,9 @@
       "backgroundSoFar": "Downloading another file · {loaded} so far",
       "unavailable": "Content unavailable",
       "unavailableDetail": "None of the scheduled files would load. It keeps retrying; if this lasts, check the playlist's files.",
+      "backupPlaylist": "Showing backup playlist",
+      "backupPlaylistEvidence": "Can’t play “{from}”",
+      "backupPlaylistDetail": "This screen reported that it could not play anything in “{from}”, so it is showing “{to}” instead. Check the files in “{from}”. The screen tries “{from}” again on its own, and right away when you change it.",
       "loading": "Loading content",
       "loadingDetail": "The screen picked up its schedule and is opening the first item.",
       "connecting": "Screen on · connecting",
@@ -3388,6 +3427,17 @@
       "logPurged": "Deleted after {days} days",
       "download": "Download",
       "downloadFailed": "Couldn’t open the logs. Try again."
+    },
+    "hardwareSerial": {
+      "label": "Serial number",
+      "notAvailable": "Not available",
+      "notExposed": "This screen's Android does not let apps read its serial number.",
+      "notReported": "Not reported yet — the screen needs a newer player app.",
+      "source": "Read from {source}",
+      "srcDeviceOwner": "device owner",
+      "srcBuildSerial": "Android build info",
+      "srcGetSerial": "Android phone-state permission",
+      "srcProp": "system property {key}"
     }
   },
   "selection": {
@@ -7794,6 +7844,8 @@
       "supportInvited": "{org} gave VenueOS support access",
       "kioskHelp": "Visitor needs assistance — {screen}",
       "videoStutter": "Video stutters on {screen}",
+      "backupPlaylist": "A screen is showing its backup playlist",
+      "backupPlaylistEnded": "A screen is back on its scheduled playlist",
       "noHeartbeat": "No heartbeat since {time}.",
       "noHeartbeatUnknown": "No heartbeat on record yet.",
       "noHeartbeatAt": "{site}: no heartbeat from \"{screen}\" since {time}.",
@@ -7820,6 +7872,10 @@
       "kioskHelpBody": "A kiosk visitor tapped “request help.”",
       "videoStutterConcurrencyBody": "“{screen}” stutters on “{file}” while it plays more than one video at once. It keeps playing; a lighter copy would not fix this.",
       "videoStutterNoCopyBody": "“{screen}” stutters on “{file}” and there is no lighter copy to switch it to. It keeps playing.",
+      "backupPlaylistBody": "{screen} could not play anything in “{from}”, so it is showing “{to}”. Check the files in “{from}”.",
+      "backupPlaylistBodyNoScreen": "A screen could not play anything in “{from}”, so it is showing “{to}”. Check the files in “{from}”.",
+      "backupPlaylistEndedBody": "{screen} is back on its scheduled playlist “{playlist}”.",
+      "backupPlaylistEndedBodyNoScreen": "A screen is back on its scheduled playlist “{playlist}”.",
       "duration": {
         "days": "{count, plural, one {# day} other {# days}}",
         "hours": "{count, plural, one {# hour} other {# hours}}",

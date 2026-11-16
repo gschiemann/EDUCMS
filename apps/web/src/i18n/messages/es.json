@@ -151,7 +151,29 @@
       "voiceOff": "Silencio",
       "voiceOnHint": "Este teléfono anunciará el estado de la alerta en voz alta.",
       "voiceOffHint": "Este teléfono no emitirá sonido. Toca para anunciar el estado en voz alta.",
-      "voiceOnConfirm": "El anuncio por voz está activado. Este teléfono hablará en voz alta."
+      "voiceOnConfirm": "El anuncio por voz está activado. Este teléfono hablará en voz alta.",
+      "checkingSignIn": "Comprobando la sesión…",
+      "checkingSignInHint": "Comprobando su sesión. Ya puede mantener pulsado un botón: la alerta se envía en cuanto termine la comprobación.",
+      "unreachableHint": "No se puede conectar con VenueOS para comprobar su sesión. Mantener pulsado un botón igualmente intenta enviar; si falla, AVISE A SEGURIDAD MANUALMENTE.",
+      "signInTitle": "Inicie sesión para usar el botón de emergencia",
+      "signInLead": "Este teléfono no tiene una sesión iniciada en VenueOS.",
+      "signInBody": "Si hay una emergencia ahora mismo, AVISE A SEGURIDAD MANUALMENTE. Después inicie sesión una vez, con «Mantener la sesión iniciada» marcado, para que este teléfono quede listo.",
+      "signInButton": "Iniciar sesión",
+      "errSignInNeeded": "Este teléfono no tiene una sesión iniciada. AVISE A SEGURIDAD MANUALMENTE ahora: su alerta NO se transmitió. Inicie sesión para enviar alertas desde este teléfono.",
+      "errSignInTimeout": "No se pudo comprobar su sesión a tiempo. AVISE A SEGURIDAD MANUALMENTE ahora: su alerta NO se transmitió.",
+      "keepReadyBody": "Mantenga este teléfono listo para emergencias: no necesitará iniciar sesión para enviar una alerta desde él.",
+      "keepReadyButton": "Mantener listo",
+      "keepReadyDismiss": "Ahora no",
+      "keepReadyDone": "Este teléfono está listo para emergencias.",
+      "keepReadyStale": "Para mantener este teléfono listo, primero vuelva a iniciar sesión: debe ser un inicio de sesión reciente.",
+      "keepReadyUnavailable": "Mantener un teléfono listo no está disponible ahora. Su sesión sigue funcionando aquí.",
+      "keepReadyFailed": "No se pudo mantener listo este teléfono. Su sesión sigue funcionando aquí.",
+      "phoneReady": "Este teléfono está listo para emergencias ({label})",
+      "turnOff": "Desactivar",
+      "turnOffTitle": "¿Desactivar las emergencias en este teléfono?",
+      "turnOffMessage": "Este teléfono necesitará iniciar sesión antes de volver a enviar una alerta.",
+      "turnOffConfirm": "Desactivar",
+      "endNeedsSignIn": "Para finalizar una alerta hay que iniciar sesión por completo en este teléfono."
     },
     "broadcast": {
       "title": "Transmisión",
@@ -506,7 +528,8 @@
     "phoneSetupLater": "Puedes añadir una clave de acceso para este dispositivo más tarde en Mi cuenta.",
     "setupDoneSignIn": "Tu cuenta está lista. Inicia sesión con tu correo y contraseña nuevos.",
     "security": "Seguridad",
-    "requestInfo": "Solicitar información"
+    "requestInfo": "Solicitar información",
+    "panicSignIn": "Está iniciando sesión para usar el botón de emergencia en este teléfono. Marque «Mantener la sesión iniciada» para que quede listo."
   },
   "account": {
     "title": "Mi cuenta",
@@ -1635,7 +1658,20 @@
         "actionsFor": "Acciones para {email}",
         "accessNoScreensYet": "Aún sin pantallas: {locations}",
         "ssoLoadFailed": "No se pudo cargar la configuración de SSO",
-        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)"
+        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)",
+        "panicPhonesButton": "Teléfonos de emergencia",
+        "panicPhonesTitle": "Teléfonos de emergencia",
+        "panicPhonesHint": "Teléfonos que esta persona mantiene listos para enviar una alerta sin iniciar sesión. Desactivar uno surte efecto de inmediato.",
+        "panicPhonesCannotSend": "Esta persona no puede enviar alertas ahora, así que sus teléfonos se rechazan.",
+        "panicPhonesNone": "Ningún teléfono listo.",
+        "panicPhonesLoadFailed": "No se pudieron cargar los teléfonos de esta persona.",
+        "panicPhoneActive": "· listo desde {since} · último uso {lastUsed}",
+        "panicPhoneRevoked": "· desactivado el {on}",
+        "panicPhoneOff": "Desactivar",
+        "panicPhoneOffTitle": "¿Desactivar este teléfono de emergencia de {email}?",
+        "panicPhoneOffMessage": "Deja de funcionar de inmediato. La persona solo podrá volver a configurarlo iniciando sesión en ese teléfono.",
+        "panicPhoneOffConfirm": "Desactivar",
+        "panicPhoneOffFailed": "No se pudo desactivar este teléfono. Inténtelo de nuevo."
       },
       "overview": {
         "readinessTitle": "Preparación de la configuración",
@@ -2564,6 +2600,9 @@
       "backgroundSoFar": "Descargando otro archivo · {loaded} hasta ahora",
       "unavailable": "Contenido no disponible",
       "unavailableDetail": "No se pudo cargar ninguno de los archivos programados. Sigue reintentándolo; si continúa así, revisa los archivos de la lista.",
+      "backupPlaylist": "Mostrando la lista de respaldo",
+      "backupPlaylistEvidence": "No puede reproducir “{from}”",
+      "backupPlaylistDetail": "Esta pantalla informó que no pudo reproducir nada de “{from}”, así que muestra “{to}” en su lugar. Revisa los archivos de “{from}”. La pantalla vuelve a intentar “{from}” por sí sola, y de inmediato cuando la cambias.",
       "loading": "Cargando contenido",
       "loadingDetail": "La pantalla recibió su programación y está abriendo el primer elemento.",
       "connecting": "Pantalla encendida · conectando",
@@ -3388,6 +3427,17 @@
       "logPurged": "Eliminados después de {days} días",
       "download": "Descargar",
       "downloadFailed": "No se pudieron abrir los registros. Inténtelo de nuevo."
+    },
+    "hardwareSerial": {
+      "label": "Número de serie",
+      "notAvailable": "No disponible",
+      "notExposed": "El Android de esta pantalla no permite que las aplicaciones lean su número de serie.",
+      "notReported": "Aún no informado: la pantalla necesita una versión más reciente de la aplicación del reproductor.",
+      "source": "Leído de {source}",
+      "srcDeviceOwner": "propietario del dispositivo",
+      "srcBuildSerial": "información de compilación de Android",
+      "srcGetSerial": "permiso de estado del teléfono de Android",
+      "srcProp": "propiedad del sistema {key}"
     }
   },
   "selection": {
@@ -7794,6 +7844,8 @@
       "supportInvited": "{org} dio acceso de soporte a VenueOS",
       "kioskHelp": "Un visitante necesita ayuda — {screen}",
       "videoStutter": "El video se entrecorta en {screen}",
+      "backupPlaylist": "Una pantalla está mostrando su lista de respaldo",
+      "backupPlaylistEnded": "Una pantalla volvió a su lista programada",
       "noHeartbeat": "Sin señal de actividad desde {time}.",
       "noHeartbeatUnknown": "Aún no hay registro de señal de actividad.",
       "noHeartbeatAt": "{site}: sin señal de actividad de \"{screen}\" desde {time}.",
@@ -7820,6 +7872,10 @@
       "kioskHelpBody": "Un visitante tocó “Pedir ayuda” en el quiosco.",
       "videoStutterConcurrencyBody": "“{screen}” se entrecorta con “{file}” mientras reproduce más de un video a la vez. Sigue reproduciendo; una copia más liviana no lo solucionaría.",
       "videoStutterNoCopyBody": "“{screen}” se entrecorta con “{file}” y no hay una copia más liviana a la cual cambiar. Sigue reproduciendo.",
+      "backupPlaylistBody": "{screen} no pudo reproducir nada de “{from}”, así que muestra “{to}”. Revisa los archivos de “{from}”.",
+      "backupPlaylistBodyNoScreen": "Una pantalla no pudo reproducir nada de “{from}”, así que muestra “{to}”. Revisa los archivos de “{from}”.",
+      "backupPlaylistEndedBody": "{screen} volvió a su lista programada “{playlist}”.",
+      "backupPlaylistEndedBodyNoScreen": "Una pantalla volvió a su lista programada “{playlist}”.",
       "duration": {
         "days": "{count, plural, one {# día} other {# días}}",
         "hours": "{count, plural, one {# hora} other {# horas}}",

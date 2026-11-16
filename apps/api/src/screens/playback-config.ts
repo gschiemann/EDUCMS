@@ -54,6 +54,19 @@ export interface PlaybackConfig {
   loopMode: LoopMode;
   /** Keep the fitting decision explicit for already-running web bundles. */
   mediaFit: 'fill';
+  /**
+   * The playlist-fallback kill switch (2026-11-14, player rule 20):
+   * `PLAYLIST_FALLBACK_DISABLED` set → `'off'`, and the web player always
+   * shows the schedule's first choice (its card when that cannot play) and
+   * reports no episode. ABSENT otherwise — so the default adds nothing to the
+   * hashed manifest and no screen's ETag moves.
+   */
+  playlistFallback?: 'off';
+}
+
+/** `PLAYLIST_FALLBACK_DISABLED` = 1 / true / yes (any case) turns the fallback off; anything else leaves it on. */
+export function playlistFallbackDisabled(env: Record<string, string | undefined> = process.env): boolean {
+  return /^(1|true|yes)$/i.test((env.PLAYLIST_FALLBACK_DISABLED ?? '').trim());
 }
 
 export function resolveLoopMode(
@@ -89,5 +102,9 @@ export function resolvePlaybackConfig(
 ): PlaybackConfig {
   // API and web deploy independently. Older running pages read this field;
   // omitting it would reset their fit before the new default bundle loads.
-  return { loopMode: resolveLoopMode(screenId, env), mediaFit: 'fill' };
+  return {
+    loopMode: resolveLoopMode(screenId, env),
+    mediaFit: 'fill',
+    ...(playlistFallbackDisabled(env) ? { playlistFallback: 'off' as const } : {}),
+  };
 }

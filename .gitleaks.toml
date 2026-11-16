@@ -85,3 +85,34 @@ paths = [
   '''.*/__fixtures__/.*''',
   '''.*\.env\.example$''',
 ]
+
+# 2026-11-16 — plaintext credentials written into markdown. The default rules
+# key on known token shapes and on `key`/`token`/`secret` assignments; a line
+# such as `Password - <value>` or `**password:** <value>` in a runbook or
+# handoff note matches none of them. This rule covers only that shape, only in
+# markdown, and is kept narrow so it does not fire on prose:
+#   · the label is the whole word password / passwd / passphrase (not "pass");
+#   · a separator follows it directly: `:`, ` -` or `=`, optionally bolded;
+#   · the value is one 10–64 character token with no spaces, and must reach
+#     entropy 3.0, so words and sentences after the label do not match;
+#   · placeholders are stopwords (example, changeme, your-…, redacted, …), and
+#     `<placeholder>` / `$VAR` / `${VAR}` values cannot match the character class
+#     (`<`, `>` and `$` are excluded).
+# Checked 2026-11-16 with an equivalent regex over every tracked *.md file: zero
+# matches. A real finding is rotated first, then fingerprinted in
+# .gitleaksignore — never a path exemption.
+[[rules]]
+id = "venueos-markdown-plaintext-password"
+description = "Plaintext password written in a markdown file (`password: …` / `Password - …`)"
+path = '''(?i)\.(md|markdown|mdx)$'''
+regex = '''(?i)\bpass(?:word|wd|phrase)\b\**[ \t]*(?::|[ \t]-|=)\**[ \t]*[`'"]?([A-Za-z0-9!@#%^&*()_+=.,;:?/~\[\]{}|-]{10,64})[`'"]?(?:[ \t]|$)'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["password", "passwd", "passphrase"]
+
+[rules.allowlist]
+stopwords = [
+  "example", "placeholder", "changeme", "redacted", "xxxx", "your",
+  "secret", "password", "****", "dummy", "sample", "fake", "test", "demo",
+  "required", "optional", "none",
+]

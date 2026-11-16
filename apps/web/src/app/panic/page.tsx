@@ -1,6 +1,5 @@
 "use client";
 
-import { useAppStore } from '@/lib/store';
 import { ShieldAlert, Loader2, AlertTriangle, CheckCircle2, Flame, LogIn, Hand, Lock, HeartPulse, CloudLightning, ShieldOff, Volume2, VolumeX } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useTranslations } from 'next-intl';
@@ -10,13 +9,18 @@ import { broadcastEmergency } from '@/actions/trigger-emergency';
 // helper so a missing NEXT_PUBLIC_API_URL surfaces a loud warning AND
 // the page can detect the misconfiguration to show an explicit error
 // instead of silently failing the 5s all-clear poll.
-import { API_URL, warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
-// LIFE-SAFETY (2026-06-16): bound the session-verify + all-clear-poll fetches
-// so a HUNG api (not just a refused one) can't strand the operator forever on
-// "Verifying authorization…". On timeout these throw; the existing catch
-// blocks fall back gracefully (verify → show the grid w/ cached user; poll →
-// ignore + retry next tick).
-import { fetchWithTimeout } from '@/lib/fetch-timeout';
+import { warnIfMisconfigured, isLikelyMisconfigured } from '@/lib/api-url';
+// 2026-11-14 — the credential is resolved in the BACKGROUND from the first
+// frame: the tab's session, else the remembered session (the HttpOnly cookie),
+// and only when the browser has neither, sign-in. This page used to redirect
+// to /login on a missing token or a 401 without trying the restore. The
+// session check is still the bounded /users/me read (6 s, LIFE-SAFETY
+// 2026-06-16) — it moved into the hook. See @/lib/panic-auth for the rules.
+import { usePanicAuth } from './usePanicAuth';
+import { failedStatusOf, type PanicCredential } from '@/lib/panic-auth';
+// 2026-11-14 — panic phones: this phone's own credential (HttpOnly cookie,
+// read only by /api/panic/*). It sends and reads; it never ends an alert.
+import { hasPanicMarker, panicActive, panicEnd, panicEnroll, panicTargets, panicTrigger } from '@/lib/panic-device-client';
 
 // Who may trigger: role OR the delegated `canTriggerPanic` flag. This page's
 // own local copy of that rule moved to @/lib/emergency-capability on
@@ -58,12 +62,44 @@ import { EmergencyTargetBar } from '@/components/emergency/EmergencyTargetBar';
 import { LiveDrillSwitch } from '@/components/emergency/LiveDrillSwitch';
 import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
 import { PanicActiveAlertsSheet } from '@/components/emergency/PanicActiveAlertsSheet';
+import { appConfirm } from '@/components/ui/app-dialog';
 
 // 2026-05-03 BUG FIX (cycle 1 emergency BUG-001) — was 1500ms, but
 // apps/api/src/emergency/CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
 // 3 seconds to prevent accidental taps. Life-safety regression
 // restored. The animated progress ring matches this duration.
 const HOLD_DURATION_MS = 3000;
+
+// 2026-11-14 — a press made while the sign-in check is still running waits
+// for it, at most this long after the 3 s hold completes, then sends. Long
+// enough for a slow cellular restore (the check started when the page
+// opened, so it has had the hold's 3 s already); short enough that a hung
+// network turns into "NOT sent — notify security manually" while the person
+// can still act on it. Never a silent drop: the outcome is always shown.
+const PRESS_AUTH_WAIT_MS = 6000;
+
+/** Where every sign-in from this page goes — back here, with the reason shown. */
+const PANIC_SIGN_IN_URL = '/login?redirect=/panic&reason=panic';
+/** A FRESH sign-in (the login page does not skip it for a signed-in browser) — what keeping a phone ready needs. */
+const PANIC_ENROLL_SIGN_IN_URL = '/login?redirect=/panic&reason=panic-enroll';
+
+/**
+ * The two reads, by credential: a dashboard session calls the API with its
+ * bearer; a panic phone calls its own origin's /api/panic/*. Errors carry
+ * "failed: <status>" either way, so the 401 handling below is one path.
+ */
+async function readActive(c: PanicCredential): Promise<ActiveAlert[]> {
+  if (c.kind === 'session') return fetchActiveAlerts(c.token, 4000);
+  const r = await panicActive();
+  if (!r.ok) throw new Error(`/api/panic/active failed: ${r.outcome === 'refused' ? 401 : r.status || 503}`);
+  return Array.isArray(r.body?.alerts) ? (r.body.alerts as ActiveAlert[]) : [];
+}
+async function readTargets(c: PanicCredential): Promise<EmergencyTargets> {
+  if (c.kind === 'session') return fetchEmergencyTargets(c.token);
+  const r = await panicTargets();
+  if (!r.ok) throw new Error(`/api/panic/targets failed: ${r.outcome === 'refused' ? 401 : r.status || 503}`);
+  return r.body as EmergencyTargets;
+}
 
 // Full SRP — same id strings + order as the dashboard EmergencyTriggerModal.
 // 2026-06-15 redesign: dropped the six fully-saturated rainbow circles for the
@@ -106,12 +142,17 @@ export default function MobilePanicPage() {
   // the catalog. `type.id` stays English (wire value + lookup key).
   const t = useTranslations();
   const typeName = (id: string) => t(`emergency.types.${id}.name`);
-  const storeUser = useAppStore((s) => s.user);
-  const storeToken = useAppStore((s) => s.token);
+  // 2026-11-14 — who this phone sends as, resolved in the background. The
+  // grid is shown from the first frame (`phase` starts at 'idle'); a press
+  // made before the check finishes waits for it (see fireEmergency).
+  const { state: authState, auth } = usePanicAuth();
+  const credential: PanicCredential | null = authState.status === 'ready' ? authState.credential : null;
+  const verifiedUser: any = credential?.user ?? null;
+  const verifiedToken: string | null = credential?.token ?? null;
   // LIFE-SAFETY (2026-05-23 launch audit P0 #1): on a forgotten-env
   // deploy the page would silently fall back to localhost; surface
   // it instead so the operator knows their alert path is broken.
-  const [phase, setPhase] = useState<'loading' | 'idle' | 'triggering' | 'triggered' | 'error' | 'unauthorized' | 'misconfigured'>('loading');
+  const [phase, setPhase] = useState<'idle' | 'triggering' | 'triggered' | 'error' | 'unauthorized' | 'misconfigured'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [firedType, setFiredType] = useState<string | null>(null);
 
@@ -127,9 +168,6 @@ export default function MobilePanicPage() {
   // Title II / Section 504 — without this, an SR user gets nothing
   // as phase flips idle → triggering → triggered → cleared.
   const [announcement, setAnnouncement] = useState('');
-
-  const [verifiedUser, setVerifiedUser] = useState<any>(null);
-  const [verifiedToken, setVerifiedToken] = useState<string | null>(null);
 
   // Spoken announcements — OFF unless this browser opted in (§M17). Read
   // AFTER mount, never during render: localStorage does not exist on the
@@ -221,7 +259,8 @@ export default function MobilePanicPage() {
     // Only poll once we have a session + only in states where an
     // emergency COULD be active.
     if (phase !== 'triggered' && phase !== 'idle') return;
-    if (!verifiedToken || !verifiedUser?.tenantId) return;
+    if (!credential || !verifiedUser?.tenantId) return;
+    const readWith = credential;
 
     let cancelled = false;
     const check = async () => {
@@ -232,7 +271,7 @@ export default function MobilePanicPage() {
         // moment a targeted alert was sent. 4s < the 5s poll interval, so a
         // stalled poll is aborted before the next one fires — no pile-up of
         // hung requests.
-        const alerts = await fetchActiveAlerts(verifiedToken, 4000);
+        const alerts = await readActive(readWith);
         if (cancelled) return;
         setActiveAlerts(alerts);
         const sent = firedRef.current;
@@ -251,7 +290,14 @@ export default function MobilePanicPage() {
             setJustCleared(false);
           }, 2500);
         }
-      } catch { /* network blip — next tick retries */ }
+      } catch (err) {
+        // Network blip — next tick retries. A 401 is different: the hour-long
+        // access token lapsed while this page sat open, and every later tick
+        // would fail the same way, so the "All Clear" would never show. One
+        // remembered-session restore (single-flight; the next tick uses the
+        // new token). Never a redirect from here.
+        if (!cancelled && failedStatusOf(err instanceof Error ? err.message : '') === 401) void auth.recover();
+      }
     };
     check();
     // Renamed from `t` (2026-08-25): `t` is now the translator in the
@@ -264,42 +310,56 @@ export default function MobilePanicPage() {
     // translator; adding it would tear down and restart the 5s all-clear poll
     // every time the operator switches language. Dep array unchanged.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, verifiedToken, verifiedUser?.tenantId]);
+  }, [phase, credential, verifiedUser?.tenantId]);
 
   // The groups and screens behind "Choose screens" — read ONCE per signed-in
   // session (and on Retry), never polled.
-  const loadTargets = async (token: string) => {
+  const loadTargets = async (c: PanicCredential) => {
     setTargetsStatus('loading');
     try {
-      setTargets(await fetchEmergencyTargets(token));
+      setTargets(await readTargets(c));
       setTargetsStatus('ready');
-    } catch {
+    } catch (err) {
       setTargetsStatus('error');
+      // A lapsed token: one restore; the new credential re-runs this read.
+      if (failedStatusOf(err instanceof Error ? err.message : '') === 401) void auth.recover();
     }
   };
   const authorized = hasPanicAuthority(verifiedUser);
   useEffect(() => {
-    if (!verifiedToken || !verifiedUser?.tenantId || !authorized) return;
-    void loadTargets(verifiedToken);
-  }, [verifiedToken, verifiedUser?.tenantId, authorized]);
+    if (!credential || !verifiedUser?.tenantId || !authorized) return;
+    void loadTargets(credential);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [credential, verifiedUser?.tenantId, authorized]);
 
   /** End exactly one live alert. Resolves with the server's verdict. */
   const endAlert = async (alert: ActiveAlert): Promise<{ ok: boolean; error?: string }> => {
+    // A panic phone can raise, never release: ending an alert needs a full sign-in.
+    if (credential?.kind === 'device') return { ok: false, error: t('emergency.panic.endNeedsSignIn') };
     if (!verifiedToken || !verifiedUser?.tenantId) return { ok: false, error: t('emergency.panic.errNoToken') };
-    const result = await allClearEmergency({
-      // The tenant-wide entry's scopeId IS the tenant to clear.
-      schoolId: alert.scopeType === 'tenant' ? alert.scopeId : verifiedUser.tenantId,
-      token: verifiedToken,
-      overrideId:
-        alert.alertId ??
-        (alert.scopeType === 'tenant' && alert.scopeId === verifiedUser.tenantId ? tenantOverrideIdRef.current : undefined),
-      // Its own scope — or, if that target was deleted mid-alert, the scope
-      // the server says still reaches it.
-      ...allClearScopeOf(alert),
-      // Ending a DRILL may end drill state only — never a live alert that
-      // replaced it between this list's reads.
-      ...(alert.isDrill === true ? { isDrill: true } : {}),
-    });
+    const clearWith = (token: string, tenantId: string) =>
+      allClearEmergency({
+        // The tenant-wide entry's scopeId IS the tenant to clear.
+        schoolId: alert.scopeType === 'tenant' ? alert.scopeId : tenantId,
+        token,
+        overrideId:
+          alert.alertId ??
+          (alert.scopeType === 'tenant' && alert.scopeId === tenantId ? tenantOverrideIdRef.current : undefined),
+        // Its own scope — or, if that target was deleted mid-alert, the scope
+        // the server says still reaches it.
+        ...allClearScopeOf(alert),
+        // Ending a DRILL may end drill state only — never a live alert that
+        // replaced it between this list's reads.
+        ...(alert.isDrill === true ? { isDrill: true } : {}),
+      });
+    let result = await clearWith(verifiedToken, verifiedUser.tenantId);
+    // 2026-11-14 — a 401 is refused before the server does anything, so one
+    // remembered-session restore and one resend can never clear twice.
+    if (!result?.success && failedStatusOf(result?.error) === 401) {
+      const next = await auth.recover();
+      // Only a dashboard session may end an alert — never a panic phone.
+      if (next?.kind === 'session') result = await clearWith(next.token, next.user.tenantId);
+    }
     if (!result?.success) {
       const raw = result?.error || '';
       if (raw.includes('401') || raw.includes('403')) return { ok: false, error: t('emergency.panic.errNoAuthority') };
@@ -308,76 +368,69 @@ export default function MobilePanicPage() {
     }
     if (alert.scopeType === 'tenant') tenantOverrideIdRef.current = undefined;
     // Re-read now so the list (and the lock it describes) updates at once.
-    try { setActiveAlerts(await fetchActiveAlerts(verifiedToken, 4000)); } catch { /* next poll */ }
+    try { if (credential) setActiveAlerts(await readActive(credential)); } catch { /* next poll */ }
     return { ok: true };
   };
 
-  // Verify session on mount
+  // LIFE-SAFETY (audit P0 #1): if the deploy is missing NEXT_PUBLIC_API_URL
+  // the alert path is broken end-to-end. Surface a hard error instead of
+  // letting the page act as if it's working.
   useEffect(() => {
-    // LIFE-SAFETY (audit P0 #1): if the deploy is missing
-    // NEXT_PUBLIC_API_URL the alert path is broken end-to-end. Surface
-    // a hard error instead of letting the page act as if it's working.
     warnIfMisconfigured();
-    if (isLikelyMisconfigured()) {
-      setPhase('misconfigured');
+    if (isLikelyMisconfigured()) setPhase('misconfigured');
+  }, []);
+
+  // LIFE-SAFETY: the authority gate still comes from the LIVE /users/me row
+  // (or the restore's own answer) — a user without authority is shown the
+  // "no trigger authority" screen as soon as that is known, and a press made
+  // before it is known is never sent (fireEmergency). 2026-11-14: what changed
+  // is that nothing here redirects any more; `usePanicAuth` decides between
+  // the session, the remembered session and sign-in, in that order.
+  const lacksAuthority = authState.status === 'ready' && !hasPanicAuthority(authState.credential.user);
+
+  // ── KEEP THIS PHONE READY (2026-11-14, panic phones) ──────────────────
+  // Offered once a person with authority is signed in on this phone with a
+  // dashboard session and the phone is not yet ready. One tap mints the
+  // panic credential (the API asks for a sign-in in the last 15 minutes; an
+  // older one is sent through a fresh sign-in first). Never automatic.
+  const [phoneReady, setPhoneReady] = useState(false);
+  useEffect(() => { setPhoneReady(hasPanicMarker()); }, [authState]);
+  const [enrollState, setEnrollState] = useState<'idle' | 'working' | 'done' | 'stale' | 'unavailable' | 'failed' | 'dismissed'>('idle');
+  const keepPhoneReady = async () => {
+    if (credential?.kind !== 'session') return;
+    setEnrollState('working');
+    const r = await panicEnroll(credential.token);
+    if (r.ok && r.body?.enrolled) {
+      setEnrollState('done');
+      setPhoneReady(true);
+      announce(t('emergency.panic.keepReadyDone'));
       return;
     }
-
-    async function verifySession() {
-      const token = storeToken;
-      if (!token) { router.push('/login?redirect=/panic'); return; }
-      // LIFE-SAFETY: role-gate the UI BEFORE showing the trigger grid. A user
-      // without authority who held for 3s would get a server 403 + misleading
-      // "Session expired" copy — dangerous during a real lockdown.
-      const gateOn = (user: typeof storeUser, why?: string) => {
-        setVerifiedUser(user);
-        setVerifiedToken(token);
-        if (!hasPanicAuthority(user)) { setPhase('unauthorized'); return; }
-        setPhase('idle');
-        announce(t('emergency.panic.annReady'));
-      };
-      try {
-        // Validate the session against an endpoint EVERY authenticated role
-        // can reach. This was `/users` (the admin-only list) — so a
-        // CONTRIBUTOR with canTriggerPanic, exactly the delegated staff this
-        // page exists for, got a 403, fell through the ok-check (403 isn't
-        // res.ok and doesn't throw), and was bounced to /login, never able to
-        // reach the trigger grid (2026-06-09 Fable mobile audit, life-safety).
-        // /users/me also returns the LIVE role + canTriggerPanic, so the
-        // authority gate reflects the current DB row, not a stale JWT/store.
-        const res = await fetchWithTimeout(
-          `${API_URL}/users/me`,
-          { headers: { Authorization: `Bearer ${token}` } },
-          // 6s — generous for a slow cellular uplink, but bounded so a hung
-          // API falls through to the catch (→ gate on cached user, show grid)
-          // instead of leaving the operator stuck on the loading spinner.
-          6000,
-        );
-        if (res.ok) {
-          const me = await res.json().catch(() => null);
-          const liveUser = me && typeof me === 'object' ? { ...storeUser, ...me } : storeUser;
-          gateOn(liveUser);
-          return;
-        }
-        // 401 = token genuinely invalid/expired → must re-authenticate.
-        if (res.status === 401) { router.push('/login?redirect=/panic'); return; }
-        // Any other status (e.g. transient 5xx) on a token we hold: do NOT
-        // strand a valid session mid-emergency — gate on the cached user.
-        if (storeUser) { gateOn(storeUser); return; }
-      } catch {
-        // Network error (offline): a held token + cached user is enough to
-        // show the grid; the trigger itself is server-authoritative.
-        if (storeUser) { gateOn(storeUser); return; }
-      }
-      router.push('/login?redirect=/panic');
-    }
-    verifySession();
-    // `t` is deliberately NOT a dependency (i18n X7, 2026-08-25). It is only
-    // read to build the "panel ready" announcement; adding it would re-run the
-    // whole session verification (a /users/me round trip) on every language
-    // switch. Dep array unchanged from before i18n.
+    const reason = !r.ok ? r.body?.reason : null;
+    setEnrollState(reason === 'stale-login' ? 'stale' : reason === 'unavailable' ? 'unavailable' : 'failed');
+  };
+  const turnOffThisPhone = async () => {
+    const ok = await appConfirm({
+      title: t('emergency.panic.turnOffTitle'),
+      message: t('emergency.panic.turnOffMessage'),
+      confirmLabel: t('emergency.panic.turnOffConfirm'),
+    });
+    if (!ok) return;
+    await panicEnd();
+    setPhoneReady(false);
+    setEnrollState('idle');
+    void auth.resolve();
+  };
+  const announcedReadyRef = useRef(false);
+  useEffect(() => {
+    if (authState.status !== 'ready' || announcedReadyRef.current) return;
+    if (!hasPanicAuthority(authState.credential.user)) return;
+    announcedReadyRef.current = true;
+    announce(t('emergency.panic.annReady'));
+    // `t` is deliberately NOT a dependency (i18n X7, 2026-08-25): it is only
+    // read to build the "panel ready" announcement, once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeToken, storeUser, router]);
+  }, [authState]);
 
   const clearHold = () => {
     if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
@@ -459,21 +512,84 @@ export default function MobilePanicPage() {
     const summary = targetSummary(t, typeName(typeId), sendTarget);
     announce(drill ? t('emergency.drill.announceSending', { summary }) : t('emergency.target.announceSending', { summary }));
     try {
-      if (!verifiedToken) throw new Error(t('emergency.panic.errNoToken'));
-      if (!verifiedUser?.tenantId) throw new Error(t('emergency.panic.errNoSchool'));
-      const result = await broadcastEmergency({
-        schoolId: verifiedUser.tenantId,
-        type: typeId,
-        triggeredBy: verifiedUser.id || 'unknown',
-        token: verifiedToken,
-        // All screens sends NO target — the exact request this page has
-        // always sent. Only a chosen group / screen adds one.
-        ...(isAllScreens(sendTarget)
-          ? {}
-          : { target: { scopeType: sendTarget.scopeType as 'group' | 'device', scopeId: sendTarget.scopeId } }),
-        // A drill adds exactly one key; LIVE adds nothing.
-        ...(drill ? { isDrill: true } : {}),
-      });
+      // 2026-11-14 — NEVER SEND WITHOUT A CREDENTIAL, NEVER DROP THE PRESS. A
+      // hold that completes while the sign-in check is still running waits
+      // for it (bounded), then sends. If there is no credential to send with,
+      // the failure screen says the alert was NOT sent — it never looks sent.
+      const press = await auth.credentialForPress(PRESS_AUTH_WAIT_MS);
+      if (!press.credential) {
+        throw new Error(
+          press.reason === 'signin'
+            ? t('emergency.panic.errSignInNeeded')
+            : press.reason === 'timeout'
+              ? t('emergency.panic.errSignInTimeout')
+              : t('emergency.panic.errNetwork'),
+        );
+      }
+      let cred = press.credential;
+      // LIFE-SAFETY: the authority gate holds for a press made before it was
+      // known — an account without authority is shown that, never a send.
+      if (!hasPanicAuthority(cred.user)) {
+        setPhase('unauthorized');
+        announce(t('emergency.panic.noAuthorityLead'));
+        return;
+      }
+      if (!cred.user?.tenantId) throw new Error(t('emergency.panic.errNoSchool'));
+      const send = async (c: PanicCredential) => {
+        if (c.kind === 'device') {
+          // 2026-11-14 — sent with this phone's panic credential: the same
+          // type / drill / target, through /api/panic/trigger. Mapped onto the
+          // server action's result shape so every error path below is shared.
+          const r = await panicTrigger({
+            type: typeId,
+            ...(drill ? { isDrill: true as const } : {}),
+            ...(isAllScreens(sendTarget) ? {} : { target: { scopeType: sendTarget.scopeType as 'group' | 'device', scopeId: sendTarget.scopeId } }),
+          });
+          if (r.ok) {
+            return {
+              success: true,
+              overrideId: typeof r.body?.overrideId === 'string' ? r.body.overrideId : undefined,
+              ...(typeof r.body?.affectedScreenCount === 'number' ? { affectedScreenCount: r.body.affectedScreenCount } : {}),
+            };
+          }
+          if (r.status === 0) return { success: false, error: 'Network error reaching the server (fetch)' };
+          const status = r.outcome === 'refused' ? 401 : r.status;
+          return {
+            success: false,
+            error: `Emergency broadcast failed: ${status}${r.body?.message ? ` — ${r.body.message}` : ''}`,
+            ...(typeof r.body?.code === 'string' ? { code: r.body.code } : {}),
+          };
+        }
+        return broadcastEmergency({
+          schoolId: c.user.tenantId,
+          type: typeId,
+          triggeredBy: c.user.id || 'unknown',
+          token: c.token,
+          // All screens sends NO target — the exact request this page has
+          // always sent. Only a chosen group / screen adds one.
+          ...(isAllScreens(sendTarget)
+            ? {}
+            : { target: { scopeType: sendTarget.scopeType as 'group' | 'device', scopeId: sendTarget.scopeId } }),
+          // A drill adds exactly one key; LIVE adds nothing.
+          ...(drill ? { isDrill: true } : {}),
+        });
+      };
+      let result: { success: boolean; error?: string; code?: string; overrideId?: string; affectedScreenCount?: number } = await send(cred);
+      if (result?.error && failedStatusOf(result.error) === 401) {
+        // The session lapsed between the check and the press. A 401 is
+        // refused before the server does anything, so one remembered-session
+        // restore and ONE resend can never send the alert twice.
+        const next = await auth.recover();
+        if (next) {
+          if (!hasPanicAuthority(next.user)) {
+            setPhase('unauthorized');
+            announce(t('emergency.panic.noAuthorityLead'));
+            return;
+          }
+          cred = next;
+          result = await send(next);
+        }
+      }
       if (result?.error) {
         // A drill refused because a live alert is on (409): say so in plain
         // words rather than "could not reach the server".
@@ -483,6 +599,10 @@ export default function MobilePanicPage() {
         // LIFE-SAFETY (audit P1 #7): differentiate auth vs network vs
         // server errors. Previously every 4xx/5xx collapsed to "Session
         // expired" which misroutes the operator during a real incident.
+        // A 401 that survived the restore = signed out; a 403 = no authority.
+        if (failedStatusOf(result.error) === 401) {
+          throw new Error(t('emergency.panic.errSignInNeeded'));
+        }
         if (result.error.includes('401') || result.error.includes('403')) {
           throw new Error(t('emergency.panic.errNoAuthority'));
         }
@@ -491,14 +611,20 @@ export default function MobilePanicPage() {
         }
         throw new Error(result.error);
       }
+      // "All screens" is the sender's own tenant. The target captured when
+      // the hold started may predate knowing who is signed in, and the poll
+      // below matches a tenant-wide alert by that id.
+      const sentTarget: EmergencyTarget = isAllScreens(sendTarget)
+        ? allScreensTarget(cred.user.tenantId, sendTarget.screenCount ?? null)
+        : sendTarget;
       // What the "Broadcasted" screen describes and the poll waits on. The
       // server's own count wins when it reports one (whole displays counted).
       const sent = {
         overrideId: result?.overrideId,
         target:
           typeof result?.affectedScreenCount === 'number'
-            ? { ...sendTarget, screenCount: result.affectedScreenCount }
-            : sendTarget,
+            ? { ...sentTarget, screenCount: result.affectedScreenCount }
+            : sentTarget,
         isDrill: drill,
       };
       if (isAllScreens(sendTarget)) tenantOverrideIdRef.current = result?.overrideId;
@@ -543,20 +669,6 @@ export default function MobilePanicPage() {
     </div>
   );
 
-  if (phase === 'loading') {
-    return (
-      <div className={`${PAGE_CLS} items-center justify-center`} style={PAGE_STYLE}>
-        {LiveRegion}
-        <div className="relative mb-5 flex items-center justify-center">
-          <span className="absolute h-16 w-16 rounded-2xl bg-white/[0.04] ring-1 ring-white/10" />
-          <ShieldAlert className="relative w-7 h-7 text-white/80" />
-        </div>
-        <Loader2 className="w-6 h-6 text-white/60 animate-spin mb-3" />
-        <p className="text-white/60 text-xs uppercase tracking-[0.2em] font-semibold">{t('emergency.panic.verifying')}</p>
-      </div>
-    );
-  }
-
   // LIFE-SAFETY (audit P0 #1): misconfigured deploy — every poll + every
   // trigger will silently fail because API_URL is localhost. Don't pretend
   // the page is working.
@@ -582,10 +694,46 @@ export default function MobilePanicPage() {
     );
   }
 
+  // 2026-11-14 — SIGN-IN, ONLY WHEN THERE IS NOTHING TO RESTORE. Reached only
+  // after the remembered session was tried and this browser has none (no
+  // cookie, or the API refused it) — never on a network failure, never while
+  // the check is still running. It says what it is for, and what to do in an
+  // emergency right now, before it asks for a password.
+  if (phase === 'idle' && authState.status === 'signin') {
+    return (
+      <div className={`${PAGE_CLS} items-center justify-center p-6`} style={PAGE_STYLE} data-testid="panic-sign-in">
+        {LiveRegion}
+        <div className="relative mb-6 flex items-center justify-center">
+          <span
+            className="absolute h-24 w-24 rounded-3xl"
+            style={{ background: 'rgba(239,68,68,0.10)', boxShadow: '0 0 48px rgba(239,68,68,0.28)' }}
+          />
+          <ShieldAlert className="relative w-12 h-12" style={{ color: '#f87171' }} />
+        </div>
+        <h1 className="text-2xl font-black mb-2 tracking-tight text-center text-white">{t('emergency.panic.signInTitle')}</h1>
+        <p className="text-white/80 mb-3 max-w-[300px] text-center text-sm font-bold">
+          {t('emergency.panic.signInLead')}
+        </p>
+        <p className="text-white/65 mb-8 max-w-[300px] text-center text-xs leading-relaxed">
+          {t('emergency.panic.signInBody')}
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push(PANIC_SIGN_IN_URL)}
+          data-testid="panic-sign-in-button"
+          className="w-full max-w-xs px-8 py-3 rounded-2xl font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[52px] text-white transition-transform active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          style={{ background: 'linear-gradient(160deg, #ef4444, #b91c1c)', boxShadow: '0 0 32px rgba(239,68,68,0.35)' }}
+        >
+          <LogIn className="w-4 h-4" /> {t('emergency.panic.signInButton')}
+        </button>
+      </div>
+    );
+  }
+
   // LIFE-SAFETY (audit P0 #3): user is authenticated but lacks the
   // capability to trigger emergencies. Show that explicitly so they
   // know not to rely on this surface during a real incident.
-  if (phase === 'unauthorized') {
+  if (phase === 'unauthorized' || (phase === 'idle' && lacksAuthority)) {
     return (
       <div className={`${PAGE_CLS} items-center justify-center p-6`} style={PAGE_STYLE}>
         {LiveRegion}
@@ -604,7 +752,7 @@ export default function MobilePanicPage() {
           {t('emergency.panic.noAuthorityBody')}
         </p>
         <button
-          onClick={() => router.push('/login?redirect=/panic')}
+          onClick={() => router.push(PANIC_SIGN_IN_URL)}
           className="px-8 py-3 rounded-2xl font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[48px] bg-white/[0.04] border border-white/10 text-white/85 active:bg-white/[0.08] transition-colors"
         >
           <LogIn className="w-4 h-4" /> {t('emergency.panic.switchAccount')}
@@ -644,7 +792,7 @@ export default function MobilePanicPage() {
             {t('emergency.panic.tryAgain')}
           </button>
           <button
-            onClick={() => router.push('/login?redirect=/panic')}
+            onClick={() => router.push(PANIC_SIGN_IN_URL)}
             className="px-8 py-3 rounded-2xl font-bold uppercase tracking-wider text-sm flex items-center justify-center gap-2 min-h-[48px] bg-white/[0.04] border border-white/10 text-white/85 active:bg-white/[0.08] transition-colors"
           >
             <LogIn className="w-4 h-4" /> {t('emergency.panic.reLogin')}
@@ -768,8 +916,13 @@ export default function MobilePanicPage() {
               {voiceOn ? t('emergency.panic.voiceOn') : t('emergency.panic.voiceOff')}
             </span>
           </button>
-          <span className="text-[10px] font-semibold uppercase tracking-widest truncate text-right text-white/60 rounded-full bg-white/[0.04] ring-1 ring-white/10 px-3 py-1.5">
-            {verifiedUser?.email || t('emergency.panic.authorized')}
+          {/* Copy claims only what is known (2026-11-14): "AUTHORIZED" only
+              once a credential is in hand, "Checking sign-in…" before. */}
+          <span
+            className="text-[10px] font-semibold uppercase tracking-widest truncate text-right text-white/60 rounded-full bg-white/[0.04] ring-1 ring-white/10 px-3 py-1.5"
+            data-testid="panic-identity"
+          >
+            {verifiedUser?.email || (credential ? t('emergency.panic.authorized') : t('emergency.panic.checkingSignIn'))}
           </span>
         </div>
       </div>
@@ -777,6 +930,22 @@ export default function MobilePanicPage() {
       <p className="px-5 -mt-1 pb-1 text-right text-[10px] text-white/40">
         {voiceOn ? t('emergency.panic.voiceOnHint') : t('emergency.panic.voiceOffHint')}
       </p>
+      {/* 2026-11-14 — the grid is live while sign-in is still being checked
+          (or could not be checked). Say so in one line: a press now waits for
+          the check and then sends; nothing is pretended. */}
+      {(authState.status === 'resolving' || authState.status === 'unreachable') && (
+        <p
+          role="status"
+          data-testid="panic-auth-status"
+          className="mx-5 mb-1 flex items-center justify-center gap-2 rounded-xl bg-white/[0.04] ring-1 ring-white/10 px-3 py-2 text-[11px] font-semibold text-white/75"
+        >
+          {authState.status === 'resolving' ? (
+            <><Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" aria-hidden /> {t('emergency.panic.checkingSignInHint')}</>
+          ) : (
+            <><AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-300" aria-hidden /> {t('emergency.panic.unreachableHint')}</>
+          )}
+        </p>
+      )}
 
       <div className="px-5 pb-2 text-center">
         <h1 className="text-[1.35rem] font-black tracking-tight text-white" data-testid="panic-title">
@@ -839,6 +1008,47 @@ export default function MobilePanicPage() {
         />
       </div>
 
+      {/* 2026-11-14 — panic phones: what this phone holds, in one line. */}
+      {credential?.kind === 'device' && (
+        <div data-testid="panic-phone-ready" className="mx-5 mb-1 flex items-center justify-between gap-2 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-400/30 px-3 py-1.5 text-[11px] font-semibold text-emerald-100">
+          <span className="min-w-0 truncate">{t('emergency.panic.phoneReady', { label: credential.deviceLabel })}</span>
+          <button type="button" onClick={() => void turnOffThisPhone()} className="shrink-0 min-h-[36px] px-2 rounded-lg text-emerald-200 underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60" data-testid="panic-phone-turn-off">
+            {t('emergency.panic.turnOff')}
+          </button>
+        </div>
+      )}
+      {credential?.kind === 'session' && hasPanicAuthority(verifiedUser) && !phoneReady && enrollState !== 'dismissed' && phase === 'idle' && (
+        <div data-testid="panic-keep-ready" className="mx-5 mb-1 rounded-xl bg-white/[0.05] ring-1 ring-white/15 px-3 py-2 text-[12px] text-white/85">
+          {enrollState === 'stale' ? (
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0">{t('emergency.panic.keepReadyStale')}</span>
+              <button type="button" onClick={() => router.push(PANIC_ENROLL_SIGN_IN_URL)} className="shrink-0 min-h-[36px] px-3 rounded-lg bg-white/10 font-bold">{t('emergency.panic.signInButton')}</button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0">
+                {enrollState === 'unavailable'
+                  ? t('emergency.panic.keepReadyUnavailable')
+                  : enrollState === 'failed'
+                    ? t('emergency.panic.keepReadyFailed')
+                    : t('emergency.panic.keepReadyBody')}
+              </span>
+              <span className="shrink-0 flex items-center">
+                <button
+                  type="button"
+                  onClick={() => void keepPhoneReady()}
+                  disabled={enrollState === 'working'}
+                  data-testid="panic-keep-ready-button"
+                  className="min-h-[36px] px-3 rounded-lg bg-red-600 text-white font-bold disabled:opacity-60"
+                >
+                  {enrollState === 'working' ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : t('emergency.panic.keepReadyButton')}
+                </button>
+                <button type="button" onClick={() => setEnrollState('dismissed')} aria-label={t('emergency.panic.keepReadyDismiss')} className="ml-1 min-h-[36px] px-2 text-white/60">×</button>
+              </span>
+            </div>
+          )}
+        </div>
+      )}
       {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}
       <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-x-5 gap-y-4 px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] place-items-center">
         {TYPES.map((type) => {
@@ -954,7 +1164,7 @@ export default function MobilePanicPage() {
           announce(t('emergency.target.announceTargetSet', { target: targetChipLabel(t, next) }));
         }}
         onClose={() => setPickerOpen(false)}
-        onRetry={() => { if (verifiedToken) void loadTargets(verifiedToken); }}
+        onRetry={() => { if (credential) void loadTargets(credential); }}
       />
       {alertsSheetOpen && (
         <PanicActiveAlertsSheet
@@ -962,6 +1172,7 @@ export default function MobilePanicPage() {
           labelOf={alertLabel}
           keyOf={alertKey}
           onEnd={endAlert}
+          endBlocked={credential?.kind === 'device' ? { message: t('emergency.panic.endNeedsSignIn'), signInLabel: t('emergency.panic.signInButton'), onSignIn: () => router.push(PANIC_SIGN_IN_URL) } : undefined}
           onClose={() => setAlertsSheetOpen(false)}
           announce={announce}
         />

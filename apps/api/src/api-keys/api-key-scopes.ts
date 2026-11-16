@@ -40,9 +40,20 @@
  *   /api/v1/tenants                  — tenant lifecycle, archive, switching
  *   /api/v1/security                 — the controls themselves
  *   /api/v1/emergency                — see below; not expressible at all
- * An operator who genuinely needs one of these can still mint an UNRESTRICTED
- * key (scopes = null), which is the pre-2026-08-03 behaviour and is an
- * explicit, audited choice rather than an accident of an incomplete list.
+ * For most of these an operator who genuinely needs one can still mint an
+ * UNRESTRICTED key (scopes = null), which is the pre-2026-08-03 behaviour and
+ * is an explicit, audited choice rather than an accident of an incomplete list.
+ *
+ * ── REFUSED TO EVERY KEY, UNRESTRICTED INCLUDED ───────────────────────────
+ * A subset is closed to api-key identities outright, by `JwtAuthGuard`'s
+ * `API_KEY_IDENTITY_DENIED_PATH_PREFIXES` / `isApiKeyIdentityDeniedPath`,
+ * before scopes are consulted — an unrestricted key cannot reach them either:
+ *   /api/v1/api-keys, /api/v1/users, /api/v1/auth (all of it),
+ *   /api/v1/support-access, /api/v1/integrations/clever,
+ *   /api/v1/tenants/switch, and any /api/v1/tenants route whose path contains
+ *   `/sso` or `mfa-enforced`.
+ * These are identity, credential and tenant-security surfaces; they belong to
+ * a signed-in human. Do not add a scope family that maps onto one of them.
  *
  * ── EMERGENCY IS NOT A SCOPE, ON PURPOSE ──────────────────────────────────
  * There is no `emergency:*` here and there must not be one. A district-wide

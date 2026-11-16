@@ -11,8 +11,10 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { randomBytes, timingSafeEqual } from 'crypto';
 import { Throttle } from '@nestjs/throttler';
 import { z } from 'zod';
 import { SsoService } from './sso.service';
@@ -36,6 +38,44 @@ import { publicApiBase } from '../security/public-api-base';
  * Login/callback routes are mounted under /api/v1/auth/sso/:tenantSlug/... and
  * are PUBLIC (they are the entry point for unauthenticated SSO login).
  */
+/**
+ * The browser half of the OIDC state binding (mirrors the Clever connect flow,
+ * `integrations/clever/clever.controller.ts`).
+ *
+ * `/oidc/login` is a top-level navigation to this API, so the cookie is set in
+ * a first-party context, and the IdP's redirect back to `/oidc/callback` is a
+ * top-level GET, which carries a `Lax` cookie. HttpOnly so no page script can
+ * read it; `Secure` in production; `Path`-scoped to the SSO routes so no other
+ * API call carries it. It holds only a random nonce, worthless without the
+ * matching single-use server record.
+ */
+export const OIDC_BROWSER_COOKIE = 'venueos_sso_oidc';
+const OIDC_BROWSER_COOKIE_PATH = '/api/v1/auth/sso';
+
+function oidcBrowserCookieOptions(): { httpOnly: true; secure: boolean; sameSite: 'lax'; path: string } {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: OIDC_BROWSER_COOKIE_PATH,
+  };
+}
+
+function constantTimeEquals(a: string, b: string): boolean {
+  const ab = Buffer.from(a, 'utf8');
+  const bb = Buffer.from(b, 'utf8');
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
+/** What the server keeps for one pending OIDC sign-in, keyed by its `state`. */
+interface StashedOidcState {
+  nonce: string;
+  tenantSlug: string;
+  /** The nonce handed to the starting browser as a cookie. */
+  browserNonce: string;
+}
+
 const VerifyDomainSchema = z
   .object({
     manual: z.boolean().optional(),
@@ -64,16 +104,17 @@ export class SsoController {
     return `sso:oidc:state:${state}`;
   }
 
-  private async stashOidcState(
-    state: string,
-    payload: { nonce: string; tenantSlug: string },
-  ): Promise<void> {
+  private async stashOidcState(state: string, payload: StashedOidcState): Promise<void> {
     const pub = this.redis.publisher;
     if (!pub || !state) return; // fail-open: session fallback still covers single-replica
     try {
       await pub.set(
         this.oidcStateKey(state),
-        JSON.stringify({ nonce: payload.nonce, tenantSlug: payload.tenantSlug }),
+        JSON.stringify({
+          nonce: payload.nonce,
+          tenantSlug: payload.tenantSlug,
+          browserNonce: payload.browserNonce,
+        }),
         'EX',
         SsoController.OIDC_STATE_TTL_SEC,
       );
@@ -83,9 +124,7 @@ export class SsoController {
   }
 
   /** Read + delete (single-use) the Redis-stashed OIDC state, or null. */
-  private async takeOidcState(
-    state: string | undefined,
-  ): Promise<{ nonce: string; tenantSlug: string } | null> {
+  private async takeOidcState(state: string | undefined): Promise<Partial<StashedOidcState> | null> {
     const pub = this.redis.publisher;
     if (!pub || !state) return null;
     try {
@@ -155,15 +194,24 @@ export class SsoController {
   ) {
     const baseUrl = this.baseUrl(req);
     const { url, state, nonce } = await this.sso.buildOidcLoginUrl(tenantSlug, baseUrl);
+    // The state is bound to THIS browser: a random nonce goes to it as a
+    // short-lived cookie and is stored with the state, and the callback is
+    // accepted only from a browser that presents it.
+    const browserNonce = randomBytes(16).toString('base64url');
     // Persist state+nonce for the callback. Redis keyed by state (multi-replica
     // safe, S9) PLUS the session cookie (same-replica / Redis-down fallback).
-    await this.stashOidcState(state, { nonce, tenantSlug });
+    await this.stashOidcState(state, { nonce, tenantSlug, browserNonce });
     const session = (req as any).session;
     if (session) {
       session.ssoOidcState = state;
       session.ssoOidcNonce = nonce;
       session.ssoTenantSlug = tenantSlug;
+      session.ssoOidcBrowserNonce = browserNonce;
     }
+    res.cookie(OIDC_BROWSER_COOKIE, browserNonce, {
+      ...oidcBrowserCookieOptions(),
+      maxAge: SsoController.OIDC_STATE_TTL_SEC * 1000,
+    });
     return res.redirect(302, url);
   }
 
@@ -176,24 +224,66 @@ export class SsoController {
   ) {
     const baseUrl = this.baseUrl(req);
     const session = (req as any).session ?? {};
+    // The handshake is over either way — never leave a usable nonce behind.
+    const browserNonce = this.oidcBrowserNonce(req);
+    res.clearCookie(OIDC_BROWSER_COOKIE, oidcBrowserCookieOptions());
     // Prefer the Redis-stashed state (works even if the callback lands on a
     // different replica than the login redirect); fall back to the session
     // cookie. The `expected.state` we compare against is always the state we
     // issued at login — for the Redis path that is the query state we just
     // matched a stored record for; for the session path it is the cookie copy.
     const stashed = await this.takeOidcState(query.state);
-    const expected = stashed
-      ? { state: query.state, nonce: stashed.nonce }
-      : { state: session.ssoOidcState, nonce: session.ssoOidcNonce };
+    let expected: { state?: string; nonce?: string };
+    if (stashed) {
+      // The record must belong to this tenant and to this browser.
+      const boundToBrowser =
+        typeof stashed.browserNonce === 'string' &&
+        !!stashed.browserNonce &&
+        !!browserNonce &&
+        constantTimeEquals(browserNonce, stashed.browserNonce);
+      if (stashed.tenantSlug !== tenantSlug || !boundToBrowser) {
+        this.clearOidcSession(session);
+        throw new UnauthorizedException(
+          'This sign-in was started in a different browser or for a different organization. Please restart sign-in.',
+        );
+      }
+      expected = { state: query.state, nonce: stashed.nonce };
+    } else {
+      // The session copy is this browser's own; it must name this tenant.
+      if (session.ssoOidcState && session.ssoTenantSlug !== tenantSlug) {
+        this.clearOidcSession(session);
+        throw new UnauthorizedException(
+          'This sign-in was started for a different organization. Please restart sign-in.',
+        );
+      }
+      expected = { state: session.ssoOidcState, nonce: session.ssoOidcNonce };
+    }
     const profile = await this.sso.validateOidcCallback(tenantSlug, query, baseUrl, expected);
     const minted = await this.sso.completeSsoLogin(tenantSlug, 'OIDC', profile);
     // Clean up the session copy (Redis copy is single-use, already deleted).
-    if (session) {
-      delete session.ssoOidcState;
-      delete session.ssoOidcNonce;
-      delete session.ssoTenantSlug;
-    }
+    this.clearOidcSession(session);
     return this.redirectWithToken(res, minted);
+  }
+
+  /**
+   * The nonce this browser carries, from the cookie, or — when the cookie was
+   * blocked — from the express-session copy, a binding of the same strength
+   * (both are server-issued to the starting browser). Absent both: null.
+   */
+  private oidcBrowserNonce(req: Request): string | null {
+    const cookies = (req as Request & { cookies?: Record<string, unknown> }).cookies;
+    const fromCookie = cookies?.[OIDC_BROWSER_COOKIE];
+    if (typeof fromCookie === 'string' && fromCookie) return fromCookie;
+    const fromSession = (req as any).session?.ssoOidcBrowserNonce;
+    return typeof fromSession === 'string' && fromSession ? fromSession : null;
+  }
+
+  private clearOidcSession(session: Record<string, unknown> | undefined): void {
+    if (!session) return;
+    delete session.ssoOidcState;
+    delete session.ssoOidcNonce;
+    delete session.ssoTenantSlug;
+    delete session.ssoOidcBrowserNonce;
   }
 
   // -----------------------------------------------------------------
