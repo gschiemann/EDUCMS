@@ -1436,7 +1436,19 @@ model Screen {
   // branch — it is in SCREEN_TELEMETRY_ONLY_FIELDS (manifest-hot-cache.ts),
   // so a boot-wave re-register cannot bust the fleet's manifest cache.
   deviceTimeZone                      String?      @map("device_time_zone")
-  photoUrl                            String?      @map("photo_url")
+  // 2026-11-16 — TELEMETRY: the panel's hardware serial number, as the APK
+  // could read it (best effort, no device owner — apps/player/.../diagnostics/
+  // HardwareSerial.kt), carried on the DEVICE-AUTHENTICATED native heartbeat
+  // (`x-venueos-hardware-serial`, apps/api/src/screens/hardware-serial.ts).
+  // Validated (printable ASCII, ≤ 64, placeholders refused); written only
+  // when it changes and never cleared by a report that has none. Source names
+  // which read produced it (`device-owner`, `build-serial`, `get-serial`,
+  // `prop:<key>`) or `none` when the APK tried and nothing was readable.
+  // Dashboard-only (screen settings → Device details); in
+  // SCREEN_TELEMETRY_ONLY_FIELDS, never in a manifest.
+  hardwareSerial                      String?      @map("hardware_serial")
+  hardwareSerialSource                String?      @map("hardware_serial_source")
+  photoUrl                           String?      @map("photo_url")
   // Sprint 8b — indoor positioning. Operator drops the screen pin on
   // a FloorPlan; floorX / floorY are px coords on the plan image.
   // All three nullable because most screens won't be placed on a plan

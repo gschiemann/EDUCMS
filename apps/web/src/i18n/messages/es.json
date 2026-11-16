@@ -3388,6 +3388,17 @@
       "logPurged": "Eliminados después de {days} días",
       "download": "Descargar",
       "downloadFailed": "No se pudieron abrir los registros. Inténtelo de nuevo."
+    },
+    "hardwareSerial": {
+      "label": "Número de serie",
+      "notAvailable": "No disponible",
+      "notExposed": "El Android de esta pantalla no permite que las aplicaciones lean su número de serie.",
+      "notReported": "Aún no informado: la pantalla necesita una versión más reciente de la aplicación del reproductor.",
+      "source": "Leído de {source}",
+      "srcDeviceOwner": "propietario del dispositivo",
+      "srcBuildSerial": "información de compilación de Android",
+      "srcGetSerial": "permiso de estado del teléfono de Android",
+      "srcProp": "propiedad del sistema {key}"
     }
   },
   "selection": {

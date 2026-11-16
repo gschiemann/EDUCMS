@@ -3388,6 +3388,17 @@
       "logPurged": "Deleted after {days} days",
       "download": "Download",
       "downloadFailed": "Couldn’t open the logs. Try again."
+    },
+    "hardwareSerial": {
+      "label": "Serial number",
+      "notAvailable": "Not available",
+      "notExposed": "This screen's Android does not let apps read its serial number.",
+      "notReported": "Not reported yet — the screen needs a newer player app.",
+      "source": "Read from {source}",
+      "srcDeviceOwner": "device owner",
+      "srcBuildSerial": "Android build info",
+      "srcGetSerial": "Android phone-state permission",
+      "srcProp": "system property {key}"
     }
   },
   "selection": {
