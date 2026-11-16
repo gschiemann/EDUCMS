@@ -751,7 +751,8 @@ export class IntegrationDiscoveryService {
       inputSummary = `${res.finalUrl || url} (${html.length} bytes)`;
     } catch (e) {
       if (e instanceof SsrfError) {
-        warnings.push(`URL rejected: ${e.message}`);
+        // publicMessage only — `message` carries the resolved address.
+        warnings.push(`URL rejected: ${e.publicMessage}`);
       } else {
         const msg = e instanceof Error ? e.message : String(e);
         warnings.push(`Couldn't fetch URL: ${msg}`);

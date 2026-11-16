@@ -489,7 +489,7 @@ export class StreamingService {
     try {
       validatePublicUrl(url);
     } catch (e) {
-      const msg = e instanceof SsrfError ? e.message : 'Invalid URL format.';
+      const msg = e instanceof SsrfError ? e.publicMessage : 'Invalid URL format.';
       return { ok: false, type: 'unknown', embeddable: false, reason: msg };
     }
 
@@ -612,7 +612,8 @@ export class StreamingService {
           ok: false,
           type: 'hls',
           embeddable: false,
-          reason: `Could not reach HLS playlist: ${e instanceof Error ? e.message : 'network error'}.`,
+          // publicMessage only — an SsrfError's `message` names the resolved address.
+          reason: `Could not reach HLS playlist: ${e instanceof SsrfError ? e.publicMessage : 'network error'}.`,
         };
       }
     }
