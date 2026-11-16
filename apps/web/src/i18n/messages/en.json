@@ -160,7 +160,20 @@
       "signInBody": "In an emergency right now, NOTIFY SECURITY MANUALLY. Then sign in once, with “Keep me signed in” ticked, so this phone stays ready.",
       "signInButton": "Sign in",
       "errSignInNeeded": "This phone isn’t signed in. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast. Sign in to send alerts from this phone.",
-      "errSignInTimeout": "Your sign-in could not be checked in time. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast."
+      "errSignInTimeout": "Your sign-in could not be checked in time. NOTIFY SECURITY MANUALLY now — your alert was NOT broadcast.",
+      "keepReadyBody": "Keep this phone ready for emergencies — no sign-in needed to send an alert from it.",
+      "keepReadyButton": "Keep ready",
+      "keepReadyDismiss": "Not now",
+      "keepReadyDone": "This phone is ready for emergencies.",
+      "keepReadyStale": "To keep this phone ready, sign in again first — it must be a fresh sign-in.",
+      "keepReadyUnavailable": "Keeping a phone ready isn’t available right now. Your sign-in still works here.",
+      "keepReadyFailed": "This phone couldn’t be kept ready. Your sign-in still works here.",
+      "phoneReady": "This phone is ready for emergencies ({label})",
+      "turnOff": "Turn off",
+      "turnOffTitle": "Turn off emergencies on this phone?",
+      "turnOffMessage": "This phone will need a sign-in before it can send an alert again.",
+      "turnOffConfirm": "Turn off",
+      "endNeedsSignIn": "Ending an alert needs a full sign-in on this phone."
     },
     "broadcast": {
       "title": "Broadcast",
@@ -1645,7 +1658,20 @@
         "actionsFor": "Actions for {email}",
         "accessNoScreensYet": "No screens yet: {locations}",
         "ssoLoadFailed": "Could not load the SSO configuration",
-        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)"
+        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)",
+        "panicPhonesButton": "Emergency phones",
+        "panicPhonesTitle": "Emergency phones",
+        "panicPhonesHint": "Phones this person keeps ready to send an alert without signing in. Turning one off takes effect at once.",
+        "panicPhonesCannotSend": "This person can’t send alerts now, so their phones are refused.",
+        "panicPhonesNone": "No phones kept ready.",
+        "panicPhonesLoadFailed": "Couldn’t load this person’s phones.",
+        "panicPhoneActive": "· ready since {since} · last used {lastUsed}",
+        "panicPhoneRevoked": "· turned off {on}",
+        "panicPhoneOff": "Turn off",
+        "panicPhoneOffTitle": "Turn off this emergency phone for {email}?",
+        "panicPhoneOffMessage": "It stops working at once. The person can set it up again only by signing in on that phone.",
+        "panicPhoneOffConfirm": "Turn off",
+        "panicPhoneOffFailed": "Couldn’t turn this phone off. Try again."
       },
       "overview": {
         "readinessTitle": "Configuration readiness",

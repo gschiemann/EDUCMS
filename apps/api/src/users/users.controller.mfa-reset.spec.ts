@@ -344,6 +344,29 @@ describe('POST /users/:id/mfa/reset — the recovery path', () => {
     expect(d.sessions.revokeAllForUser.mock.calls[0][0]).toBe('u-target');
   });
 
+  it('2026-11-14 — also turns off every PANIC PHONE of theirs (a panic credential does not expire on its own)', async () => {
+    const actor = actorRow();
+    const d = makeDeps([actor, targetRow()]);
+    const panicDevices: any = { revokeAllForUser: jest.fn(async () => 1) };
+    await new UsersController(d.prisma, d.redis, d.sessions, d.email, panicDevices).resetUserMfa(req(actor), 'u-target', body());
+    expect(panicDevices.revokeAllForUser).toHaveBeenCalledWith({
+      userId: 'u-target',
+      tenantId: 'district',
+      byUserId: actor.id,
+      reason: 'admin-mfa-reset',
+      ip: expect.anything(),
+    });
+  });
+
+  it('a panic-phone revoke failure never fails the reset either', async () => {
+    const actor = actorRow();
+    const d = makeDeps([actor, targetRow()]);
+    const panicDevices: any = { revokeAllForUser: jest.fn(async () => { throw new Error('pg down'); }) };
+    await expect(
+      new UsersController(d.prisma, d.redis, d.sessions, d.email, panicDevices).resetUserMfa(req(actor), 'u-target', body()),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it('writes an immutable USER_MFA_RESET row naming actor, target, tenant, what was removed, the reason and the IP', async () => {
     const actor = actorRow();
     const d = makeDeps(

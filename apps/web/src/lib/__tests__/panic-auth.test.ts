@@ -30,6 +30,8 @@ function harness(over: Partial<PanicAuthDeps> & { token?: string | null; user?: 
     verify: over.verify ?? (async () => ({ ok: true, status: 200, json: async () => ME })),
     refresh: over.refresh ?? (async (): Promise<RefreshAttempt> => ({ result: null, outcome: 'refused' })),
     onChange: (s) => states.push(s),
+    ...(over.hasDeviceMarker ? { hasDeviceMarker: over.hasDeviceMarker } : {}),
+    ...(over.deviceStatus ? { deviceStatus: over.deviceStatus } : {}),
     ...(over.setTimer ? { setTimer: over.setTimer } : {}),
     ...(over.clearTimer ? { clearTimer: over.clearTimer } : {}),
   };
@@ -211,6 +213,43 @@ describe('a session that reaches the store from elsewhere', () => {
     gate.resolve(restored('pass.jwt'));
     await auth.resolve();
     expect(auth.state).toMatchObject({ credential: { token: 'pass.jwt' } });
+  });
+});
+
+describe('2026-11-14 — cold-start order: panic phone → remembered session → sign-in', () => {
+  const DEVICE = { device: { id: 'pd-1', label: 'iPhone · Safari' }, user: ME };
+
+  it('a ready phone is the credential, and the cookie restore is never spent', async () => {
+    const refresh = jest.fn(async () => restored());
+    const { auth } = harness({ refresh, hasDeviceMarker: () => true, deviceStatus: async () => ({ ok: true, body: DEVICE }) } as any);
+    expect(await auth.resolve()).toMatchObject({ status: 'ready', credential: { kind: 'device', token: null, deviceId: 'pd-1' } });
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('a phone the server turned off falls back to the remembered session', async () => {
+    const { auth } = harness({
+      refresh: async () => restored('cookie.jwt'),
+      hasDeviceMarker: () => true,
+      deviceStatus: async () => ({ ok: false, outcome: 'refused' }),
+    } as any);
+    expect(await auth.resolve()).toMatchObject({ status: 'ready', credential: { kind: 'session', token: 'cookie.jwt' } });
+  });
+
+  it('refused phone AND no remembered session: sign-in', async () => {
+    const { auth } = harness({ hasDeviceMarker: () => true, deviceStatus: async () => ({ ok: false, outcome: 'refused' }) } as any);
+    expect(await auth.resolve()).toEqual({ status: 'signin' });
+  });
+
+  it('a phone that could not be CHECKED (offline / switched off) with no session is "unreachable", never sign-in', async () => {
+    const { auth } = harness({ hasDeviceMarker: () => true, deviceStatus: async () => ({ ok: false, outcome: 'unavailable' }) } as any);
+    expect(await auth.resolve()).toEqual({ status: 'unreachable' });
+  });
+
+  it('a tab that already holds a dashboard session uses it (it can also end an alert)', async () => {
+    const deviceStatus = jest.fn();
+    const { auth } = harness({ token: 'tab.jwt', user: ME, hasDeviceMarker: () => true, deviceStatus } as any);
+    expect(await auth.resolve()).toMatchObject({ credential: { kind: 'session', token: 'tab.jwt' } });
+    expect(deviceStatus).not.toHaveBeenCalled();
   });
 });
 

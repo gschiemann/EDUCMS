@@ -5,6 +5,7 @@ import { useAppStore } from '@/lib/store';
 import { API_URL } from '@/lib/api-url';
 import { fetchWithTimeout } from '@/lib/fetch-timeout';
 import { refreshRememberedSessionWithOutcome } from '@/lib/session-client';
+import { hasPanicMarker, panicStatus } from '@/lib/panic-device-client';
 import { createPanicAuth, type PanicAuth, type PanicAuthState, type PanicUser } from '@/lib/panic-auth';
 
 /**
@@ -35,6 +36,12 @@ export function usePanicAuth(): { state: PanicAuthState; auth: PanicAuth } {
       verify: (token) =>
         fetchWithTimeout(`${API_URL}/users/me`, { headers: { Authorization: `Bearer ${token}` } }, VERIFY_TIMEOUT_MS),
       refresh: () => refreshRememberedSessionWithOutcome(),
+      // 2026-11-14 — this phone's panic credential, tried FIRST on a cold start.
+      hasDeviceMarker: () => hasPanicMarker(),
+      deviceStatus: async () => {
+        const r = await panicStatus();
+        return r.ok ? { ok: true as const, body: r.body as any } : { ok: false as const, outcome: r.outcome };
+      },
       onChange: setState,
     });
   }

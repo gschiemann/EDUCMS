@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, ForbiddenException, HttpCode, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, BadRequestException, ForbiddenException, HttpCode, HttpException, HttpStatus, Logger, Optional } from '@nestjs/common';
+import { PanicDeviceService } from '../emergency/panic-device/panic-device.service';
 import { Throttle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
@@ -90,6 +91,9 @@ export class UsersController {
     // unexpected reset — the social-engineering case this endpoint creates —
     // reaches the account owner. Fire-and-forget; see notifyMfaReset.
     private readonly email: EmailService,
+    // 2026-11-14 — panic phones end with a 2FA reset too (resetUserMfa).
+    // Optional: every spec that builds this controller by hand passes four.
+    @Optional() private readonly panicDevices?: PanicDeviceService,
   ) {}
 
   /**
@@ -1054,6 +1058,17 @@ export class UsersController {
         `Durable session revoke for user ${id} (two-factor reset) did not take: ${e?.message ?? e}. ` +
           `Access tokens are already invalidated; a refresh cookie may survive until its family ceiling.`,
       );
+    }
+    // 2026-11-14 — and every PANIC PHONE of theirs. A panic credential does not
+    // expire and is evaluated against the live row, which a 2FA reset does not
+    // change, so without this the reset — the admin's "this account's factors
+    // may be in the wrong hands" — would leave a phone that can still send an
+    // alert. Best-effort like the two above, never silent; each phone turned
+    // off writes its own PANIC_DEVICE_REVOKED row.
+    try {
+      await this.panicDevices?.revokeAllForUser({ userId: id, tenantId, byUserId: actorId, reason: 'admin-mfa-reset', ip });
+    } catch (e: any) {
+      this.logger.warn(`Panic phone revoke for user ${id} (two-factor reset) did not take: ${e?.message ?? e}.`);
     }
 
     // 6. Tell the account owner. Never awaited into the response path.

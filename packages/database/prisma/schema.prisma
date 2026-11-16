@@ -4901,6 +4901,57 @@ model SessionRefreshToken {
 }
 
 // ═════════════════════════════════════════════════════════════════════
+// Panic phones (2026-11-14) — apps/api/src/emergency/panic-device/
+// ═════════════════════════════════════════════════════════════════════
+//
+// The owner, 2026-11-10: "last thing we need is a login holding back an
+// emergency trigger for a teacher". A person who may send an emergency signs
+// in ONCE on their phone (full sign-in, second factor if the account has
+// one) and keeps the phone ready. That mints ONE row here and a secret that
+// lives only in an HttpOnly, Secure, SameSite=Strict cookie on the web
+// origin's `/api/panic` path.
+//
+// What the credential can do is fixed in code, not in this row: send an
+// emergency the person may send, and read what the panic page shows. Never an
+// all-clear, never the dashboard, never anything else.
+//
+// It does not expire. It is refused — and this row revoked — the moment the
+// account is disabled or removed, loses its emergency authority, moves to
+// another organisation, or an admin (or the phone itself) turns it off. Every
+// use is checked against the LIVE user row; nothing about authority is
+// stored here.
+//
+//   secretHash = sha256 hex of the presented secret. NEVER the secret — a
+//                database dump must not contain a live credential.
+//   tenantId   = the person's organisation at enrolment. A different one at
+//                use = refused and revoked ("changes tenant").
+//   label      = "iPhone · Safari", from the enrolling user agent — what the
+//                person and their admin see in the list. Never shown to
+//                anyone outside the organisation.
+//
+// Relation-free (plain ids, like SessionRefreshToken): a credential ledger
+// must not add cascade-delete edges to User or Tenant, and revoked rows stay
+// as the forensic record next to their audit rows.
+model PanicDevice {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  userId          String    @map("user_id")
+  secretHash      String    @unique @map("secret_hash")
+  label           String
+  createdAt       DateTime  @default(now()) @map("created_at")
+  createdIp       String?   @map("created_ip")
+  lastUsedAt      DateTime? @map("last_used_at")
+  lastUsedIp      String?   @map("last_used_ip")
+  revokedAt       DateTime? @map("revoked_at")
+  revokedByUserId String?   @map("revoked_by_user_id")
+  revokedReason   String?   @map("revoked_reason")
+
+  @@index([userId])
+  @@index([tenantId])
+  @@map("panic_devices")
+}
+
+// ═════════════════════════════════════════════════════════════════════
 // Social connectors — Instagram + Facebook Page (2026-09-12)
 // ═════════════════════════════════════════════════════════════════════
 //

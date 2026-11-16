@@ -160,7 +160,20 @@
       "signInBody": "Si hay una emergencia ahora mismo, AVISE A SEGURIDAD MANUALMENTE. Después inicie sesión una vez, con «Mantener la sesión iniciada» marcado, para que este teléfono quede listo.",
       "signInButton": "Iniciar sesión",
       "errSignInNeeded": "Este teléfono no tiene una sesión iniciada. AVISE A SEGURIDAD MANUALMENTE ahora: su alerta NO se transmitió. Inicie sesión para enviar alertas desde este teléfono.",
-      "errSignInTimeout": "No se pudo comprobar su sesión a tiempo. AVISE A SEGURIDAD MANUALMENTE ahora: su alerta NO se transmitió."
+      "errSignInTimeout": "No se pudo comprobar su sesión a tiempo. AVISE A SEGURIDAD MANUALMENTE ahora: su alerta NO se transmitió.",
+      "keepReadyBody": "Mantenga este teléfono listo para emergencias: no necesitará iniciar sesión para enviar una alerta desde él.",
+      "keepReadyButton": "Mantener listo",
+      "keepReadyDismiss": "Ahora no",
+      "keepReadyDone": "Este teléfono está listo para emergencias.",
+      "keepReadyStale": "Para mantener este teléfono listo, primero vuelva a iniciar sesión: debe ser un inicio de sesión reciente.",
+      "keepReadyUnavailable": "Mantener un teléfono listo no está disponible ahora. Su sesión sigue funcionando aquí.",
+      "keepReadyFailed": "No se pudo mantener listo este teléfono. Su sesión sigue funcionando aquí.",
+      "phoneReady": "Este teléfono está listo para emergencias ({label})",
+      "turnOff": "Desactivar",
+      "turnOffTitle": "¿Desactivar las emergencias en este teléfono?",
+      "turnOffMessage": "Este teléfono necesitará iniciar sesión antes de volver a enviar una alerta.",
+      "turnOffConfirm": "Desactivar",
+      "endNeedsSignIn": "Para finalizar una alerta hay que iniciar sesión por completo en este teléfono."
     },
     "broadcast": {
       "title": "Transmisión",
@@ -1645,7 +1658,20 @@
         "actionsFor": "Acciones para {email}",
         "accessNoScreensYet": "Aún sin pantallas: {locations}",
         "ssoLoadFailed": "No se pudo cargar la configuración de SSO",
-        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)"
+        "ssoOidcOption": "OpenID Connect (Google Workspace, Microsoft Entra ID, Okta, Auth0)",
+        "panicPhonesButton": "Teléfonos de emergencia",
+        "panicPhonesTitle": "Teléfonos de emergencia",
+        "panicPhonesHint": "Teléfonos que esta persona mantiene listos para enviar una alerta sin iniciar sesión. Desactivar uno surte efecto de inmediato.",
+        "panicPhonesCannotSend": "Esta persona no puede enviar alertas ahora, así que sus teléfonos se rechazan.",
+        "panicPhonesNone": "Ningún teléfono listo.",
+        "panicPhonesLoadFailed": "No se pudieron cargar los teléfonos de esta persona.",
+        "panicPhoneActive": "· listo desde {since} · último uso {lastUsed}",
+        "panicPhoneRevoked": "· desactivado el {on}",
+        "panicPhoneOff": "Desactivar",
+        "panicPhoneOffTitle": "¿Desactivar este teléfono de emergencia de {email}?",
+        "panicPhoneOffMessage": "Deja de funcionar de inmediato. La persona solo podrá volver a configurarlo iniciando sesión en ese teléfono.",
+        "panicPhoneOffConfirm": "Desactivar",
+        "panicPhoneOffFailed": "No se pudo desactivar este teléfono. Inténtelo de nuevo."
       },
       "overview": {
         "readinessTitle": "Preparación de la configuración",

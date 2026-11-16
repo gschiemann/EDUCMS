@@ -30,9 +30,15 @@ export interface PanicActiveAlertsSheetProps {
   onEnd: (alert: ActiveAlert) => Promise<{ ok: boolean; error?: string }>;
   onClose: () => void;
   announce: (text: string) => void;
+  /**
+   * 2026-11-14 — a panic phone can raise, never release: when set, the alerts
+   * are listed but the hold-to-end control is replaced by this message and a
+   * sign-in button (ending an alert needs a full sign-in).
+   */
+  endBlocked?: { message: string; signInLabel: string; onSignIn: () => void };
 }
 
-export function PanicActiveAlertsSheet({ alerts, labelOf, keyOf, onEnd, onClose, announce }: PanicActiveAlertsSheetProps) {
+export function PanicActiveAlertsSheet({ alerts, labelOf, keyOf, onEnd, onClose, announce, endBlocked }: PanicActiveAlertsSheetProps) {
   const t = useTranslations();
   const [selectedKey, setSelectedKey] = useState<string | null>(alerts.length === 1 ? keyOf(alerts[0]) : null);
   const [holding, setHolding] = useState(false);
@@ -170,7 +176,20 @@ export function PanicActiveAlertsSheet({ alerts, labelOf, keyOf, onEnd, onClose,
           </ul>
         )}
 
-        {selected && (
+        {selected && endBlocked && (
+          <div className="space-y-3" data-testid="panic-end-blocked">
+            <p className="text-sm text-white/80">{endBlocked.message}</p>
+            <button
+              type="button"
+              onClick={endBlocked.onSignIn}
+              className="w-full min-h-[52px] rounded-2xl font-bold uppercase tracking-wider text-sm bg-white/[0.08] border border-white/15 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            >
+              {endBlocked.signInLabel}
+            </button>
+          </div>
+        )}
+
+        {selected && !endBlocked && (
           <div className="space-y-3">
             <p className="text-sm text-white/70">{t('emergency.target.endBody')}</p>
             {error && (
