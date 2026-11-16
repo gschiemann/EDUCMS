@@ -29,7 +29,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react';
 import { RenderTrustChip } from '@/components/screens/RenderTrustChip';
-import { deriveContentDownload } from '@/components/screens/contentDownload';
+import { deriveContentDownload, readBackupPlaylist } from '@/components/screens/contentDownload';
 import { useRefreshWeb, useScreenEvents, type DeploymentRow } from '@/hooks/use-api';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { eventCopy } from './screenEventCopy';
@@ -54,6 +54,8 @@ export interface ProofDrawerScreen {
   /** The cache report + its stamp: the download in flight (DV), when fresh. */
   lastCacheReport?: unknown;
   lastCacheReportAt?: string | null;
+  /** `Screen.playlistFallback` — the screen is on its backup playlist (2026-11-13). */
+  playlistFallback?: unknown;
   /** Outstanding refresh value — compared by IDENTITY to the deployment's. */
   pendingRefreshAtMs?: number | null;
   /** Location this screen belongs to (fleet row's sourceTenant name). */
@@ -287,6 +289,7 @@ function ScreenRow({ screen, valueMs, now }: { screen: ProofDrawerScreen; valueM
               verifiedAgo={renderedAtMs !== null ? timeAgo(renderedAtMs) : null}
               verifiedFull={renderedAtMs !== null ? fullDateTime(renderedAtMs) : null}
               download={download}
+              backupPlaylist={readBackupPlaylist(screen.playlistFallback, screen.lastRenderedHash)}
             />
             <span
               className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg ${

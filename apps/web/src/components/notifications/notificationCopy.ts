@@ -126,6 +126,9 @@ export const TITLE_RULES: readonly Rule[] = [
   { kinds: INFO, re: /^Video stutters on (.+)$/, key: 'videoStutter', params: (m) => ({ screen: m[1] }) },
   // screen-diagnostics/storage-health.ts — the pre-degradation warning.
   { kinds: INFO, re: /^Storage almost full: (.+)$/, key: 'storageAlmostFull', params: (m) => ({ screen: m[1] }) },
+  // telemetry/playlist-fallback.ts — a screen is on its backup playlist, and back.
+  { kinds: INFO, re: /^A screen is showing its backup playlist$/, key: 'backupPlaylist' },
+  { kinds: INFO, re: /^A screen is back on its scheduled playlist$/, key: 'backupPlaylistEnded' },
 ];
 
 /** Every body sentence the API writes. Free text (notes, reasons) is never matched on its own. */
@@ -226,6 +229,27 @@ export const BODY_RULES: readonly Rule[] = [
     re: /^“(.+)” stutters on “(.+)” and there is no lighter copy to switch it to\. It keeps playing\.$/,
     key: 'videoStutterNoCopyBody',
     params: (m) => ({ screen: m[1], file: m[2] }),
+  },
+  // telemetry/playlist-fallback.ts. The set-aside playlist is named twice; the
+  // back-reference keeps a playlist name with a quote in it from mis-splitting.
+  {
+    kinds: INFO,
+    re: /^A screen could not play anything in “(.+)”, so it is showing “(.+)”\. Check the files in “\1”\.$/,
+    key: 'backupPlaylistBodyNoScreen',
+    params: (m) => ({ from: m[1], to: m[2] }),
+  },
+  {
+    kinds: INFO,
+    re: /^(.+) could not play anything in “(.+)”, so it is showing “(.+)”\. Check the files in “\2”\.$/,
+    key: 'backupPlaylistBody',
+    params: (m) => ({ screen: m[1], from: m[2], to: m[3] }),
+  },
+  { kinds: INFO, re: /^A screen is back on its scheduled playlist “(.+)”\.$/, key: 'backupPlaylistEndedBodyNoScreen', params: (m) => ({ playlist: m[1] }) },
+  {
+    kinds: INFO,
+    re: /^(.+) is back on its scheduled playlist “(.+)”\.$/,
+    key: 'backupPlaylistEndedBody',
+    params: (m) => ({ screen: m[1], playlist: m[2] }),
   },
   // screen-diagnostics/storage-health.ts — the pre-degradation warning.
   { kinds: INFO, re: /^New content may not download\. Remove unused media from its playlists or free space on the device\.$/, key: 'storageAlmostFullBody' },
