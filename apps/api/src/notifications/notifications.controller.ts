@@ -5,6 +5,7 @@ import { verifyDeviceForScreen } from '../screens/device-auth';
 import { RedisService } from '../realtime/redis.service';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { DenyDevicePrincipalGuard } from '../auth/deny-device-principal.guard';
 import { requireTenantIdStrict } from '../auth/require-tenant';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,8 +15,11 @@ import { ScreenAttentionService } from './screen-attention/screen-attention.serv
 const ALERT_EMAIL_ROLES: ReadonlySet<string> = new Set(['DISTRICT_ADMIN', 'SCHOOL_ADMIN']);
 const ALERT_EMAIL_LOCALES: ReadonlySet<string> = new Set(['en', 'es', 'zh']);
 
+// A screen credential never reads or changes the admin inbox or anyone's
+// alert-email preference; the player's only notifications route is
+// `POST help` on NotificationsPublicController below.
 @Controller('api/v1/notifications')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, DenyDevicePrincipalGuard)
 export class NotificationsController {
   private readonly logger = new Logger(NotificationsController.name);
 
