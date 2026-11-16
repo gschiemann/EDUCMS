@@ -63,8 +63,11 @@ function harness(row: Record<string, unknown> = {}) {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      // (2026-11-16) POST /screens/force-update marks and audits in one transaction.
+      $transaction: jest.fn(async (fn: (tx: any) => unknown) => fn(prismaClient())),
     },
   };
+  const prismaClient = () => prisma.client;
   const redis: any = { publish: jest.fn(), sismember: jest.fn().mockResolvedValue(false) };
   const controller = new ScreensController(
     prisma, redis, { signMessage: jest.fn() } as any, {} as any,

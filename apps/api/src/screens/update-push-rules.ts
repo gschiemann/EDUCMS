@@ -11,8 +11,9 @@
  * One hardware class per request, and 22:00–06:00 in every target screen's
  * own time zone (screens/screen-time-zone.ts — never the device's). One
  * screen is exempt. The explicit `overrideMassPushRules: true` on the request
- * (the dashboard never sends it) sets both aside; the caller writes the rules
- * it set aside to its audit rows. Both doors answer with the same codes
+ * (the dashboard never sends it) sets both aside — and only a SUPER_ADMIN may
+ * send it (403 `BULK_MASS_PUSH_OVERRIDE_FORBIDDEN` for anyone else, before
+ * anything is read); the caller writes the rules it set aside to its audit rows. Both doors answer with the same codes
  * (`BULK_UPDATE_*`, words in screens/bulk/bulk-screen-actions.ts), which the
  * dashboard words in en / es / zh.
  *
@@ -20,7 +21,7 @@
  * neither a class nor a zone and refuses the set; a read that throws throws,
  * and nothing is marked.
  */
-import { HttpException } from '@nestjs/common';
+import { HttpException, HttpStatus } from '@nestjs/common';
 import type { PrismaService } from '../prisma/prisma.service';
 import { evaluateHardwareClasses, evaluateOffHours, type MassPushRule } from '../player-ota/fleet-push-policy';
 import {
@@ -31,6 +32,9 @@ import {
   type BulkRuleRefusal,
 } from './bulk/bulk-screen-actions';
 import { manifestTimeZone } from './screen-time-zone';
+
+/** 403: `overrideMassPushRules: true` from a caller who is not SUPER_ADMIN (2026-11-16). */
+export const MASS_PUSH_OVERRIDE_FORBIDDEN = 'BULK_MASS_PUSH_OVERRIDE_FORBIDDEN';
 
 /** More screens than this cannot all be read at once, so cannot be shown to be one class. */
 export const UPDATE_RULES_READ_CAP = 1_000;
@@ -71,6 +75,23 @@ export function updatePushOverride(body: unknown): boolean {
 }
 
 /**
+ * Setting the rules aside is the owner's call: an override requested by anyone
+ * but a SUPER_ADMIN is refused outright (403), whether or not a rule would have
+ * applied. Callers run it before any read; `enforceUpdatePushRules` runs it too.
+ */
+export function assertMassPushOverrideAllowed(override: boolean, actorRole: string | null | undefined): void {
+  if (override && actorRole !== 'SUPER_ADMIN') {
+    throw new HttpException(
+      {
+        code: MASS_PUSH_OVERRIDE_FORBIDDEN,
+        message: 'Only a platform owner may set aside the fleet update rules.',
+      },
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}
+
+/**
  * Run the rules over the screens an update will MARK — `screens` (the bulk
  * route passes the ones it would reach; a skipped screen installs nothing), or
  * `'all'` for every screen of the tenant, which is exactly what
@@ -81,8 +102,14 @@ export async function enforceUpdatePushRules(
   prisma: PrismaService,
   tenantId: string,
   screens: ReadonlyArray<{ id: string; name?: string | null }> | 'all',
-  opts: { override: boolean; now?: Date },
+  opts: {
+    override: boolean;
+    /** The caller's role. Setting the rules aside is the owner's call: SUPER_ADMIN only. */
+    actorRole: string | null | undefined;
+    now?: Date;
+  },
 ): Promise<MassPushRule[]> {
+  assertMassPushOverrideAllowed(opts.override, opts.actorRole);
   let facts: RuleFacts[];
   let incomplete = false;
   if (screens === 'all') {

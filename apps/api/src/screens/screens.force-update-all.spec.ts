@@ -44,16 +44,27 @@ const row = (id: string, over: Record<string, unknown> = {}): Row => ({
 const report = (cls: string) => ({ native: { device: { class: cls } } });
 
 function harness(rows: Row[]) {
+  // The mark and its audit row run on the TRANSACTION client (`tx`); the
+  // outer client must not see either write.
+  const tx: any = {
+    screen: { updateMany: jest.fn().mockResolvedValue({ count: rows.length }) },
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
+  };
   const prisma: any = {
+    tx,
     client: {
       screen: {
         // The tenant's own screens, at most `take` — the read the rules make.
         findMany: jest.fn(async (args: any) =>
           rows.filter((r) => r.tenantId === args?.where?.tenantId).slice(0, args?.take ?? Infinity),
         ),
-        updateMany: jest.fn().mockResolvedValue({ count: rows.length }),
+        // Aliases of the `tx` mocks, so the older "nothing marked" checks
+        // read the same calls; the transaction test below pins that they run
+        // inside the transaction.
+        updateMany: tx.screen.updateMany,
       },
-      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      auditLog: { create: tx.auditLog.create },
+      $transaction: jest.fn(async (fn: (t: any) => Promise<unknown>) => fn(tx)),
     },
   };
   const redis: any = { publish: jest.fn().mockResolvedValue(1), sismember: jest.fn().mockResolvedValue(false) };
@@ -62,6 +73,7 @@ function harness(rows: Row[]) {
   return { controller, prisma, redis, signer };
 }
 const adminReq = () => ({ user: { tenantId: T, role: 'SCHOOL_ADMIN', id: 'u1', userId: 'u1' } }) as any;
+const ownerReq = () => ({ user: { tenantId: T, role: 'SUPER_ADMIN', id: 'owner', userId: 'owner' } }) as any;
 const auditDetails = (prisma: any) =>
   prisma.client.auditLog.create.mock.calls.map((c: any) => c[0].data).filter((d: any) => d.action === 'FORCE_APK_UPDATE').map((d: any) => JSON.parse(d.details));
 
@@ -166,11 +178,11 @@ describe('POST /screens/force-update — every screen of the location, under the
     nothingMarked(h);
   });
 
-  it('the explicit override marks them anyway, and the audit row records the rules it set aside', async () => {
+  it('the explicit override (SUPER_ADMIN) marks them anyway, and the audit row records the rules it set aside', async () => {
     freezeClock(CHICAGO_NOON);
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     const h = harness([row('a'), row('b', { hardwareModel: 'maxhub-l55vec' })]);
-    expect(await h.controller.forceUpdateAll(adminReq(), { overrideMassPushRules: true })).toEqual({ ok: true, scope: 'tenant' });
+    expect(await h.controller.forceUpdateAll(ownerReq(), { overrideMassPushRules: true })).toEqual({ ok: true, scope: 'tenant' });
     expect(h.prisma.client.screen.updateMany).toHaveBeenCalledTimes(1);
     expect(auditDetails(h.prisma)).toEqual([
       { scope: 'tenant', overrideMassPushRules: true, massPushRulesOverridden: ['hardware-class', 'off-hours'] },
@@ -188,5 +200,58 @@ describe('POST /screens/force-update — every screen of the location, under the
     nothingMarked(h);
     expect(await h.controller.forceUpdateAll(adminReq(), undefined)).toEqual({ ok: true, scope: 'tenant' });
     expect(await h.controller.forceUpdateAll(adminReq(), {})).toEqual({ ok: true, scope: 'tenant' });
+  });
+
+  it('the override from anyone but a SUPER_ADMIN is refused (403) before anything is read, marked, sent or audited', async () => {
+    for (const role of ['SCHOOL_ADMIN', 'DISTRICT_ADMIN']) {
+      const h = harness([row('a'), row('b')]);
+      const req = { user: { tenantId: T, role, id: 'u1', userId: 'u1' } } as any;
+      expect(await refusalOf(h.controller.forceUpdateAll(req, { overrideMassPushRules: true }))).toMatchObject({
+        status: 403,
+        body: { code: 'BULK_MASS_PUSH_OVERRIDE_FORBIDDEN' },
+      });
+      expect(h.prisma.client.screen.findMany).not.toHaveBeenCalled();
+      expect(h.prisma.client.$transaction).not.toHaveBeenCalled();
+      nothingMarked(h);
+      // The same person without the override is today's call, unchanged.
+      expect(await h.controller.forceUpdateAll(req, { overrideMassPushRules: false })).toEqual({ ok: true, scope: 'tenant' });
+    }
+  });
+
+  it('the mark and the FORCE_APK_UPDATE audit row commit in one transaction', async () => {
+    const h = harness([row('a'), row('b')]);
+    let inside = false;
+    h.prisma.client.$transaction.mockImplementation(async (fn: (t: any) => Promise<unknown>) => {
+      inside = true;
+      try {
+        return await fn(h.prisma.tx);
+      } finally {
+        inside = false;
+      }
+    });
+    const seen: string[] = [];
+    h.prisma.tx.screen.updateMany.mockImplementation(async () => {
+      seen.push(`mark:${inside}`);
+      return { count: 2 };
+    });
+    h.prisma.tx.auditLog.create.mockImplementation(async () => {
+      seen.push(`audit:${inside}`);
+      return {};
+    });
+    expect(await h.controller.forceUpdateAll(adminReq())).toEqual({ ok: true, scope: 'tenant' });
+    expect(h.prisma.client.$transaction).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual(['mark:true', 'audit:true']);
+  });
+
+  it('when the audit row cannot be written, the transaction fails: an error, and nothing is published', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const h = harness([row('a'), row('b')]);
+    h.prisma.tx.auditLog.create.mockRejectedValue(new Error('audit down'));
+    expect(await refusalOf(h.controller.forceUpdateAll(adminReq()))).toMatchObject({
+      status: 503,
+      body: { code: 'SCREEN_FORCE_UPDATE_FAILED' },
+    });
+    expect(h.signer.signMessage).not.toHaveBeenCalled();
+    expect(h.redis.publish).not.toHaveBeenCalled();
   });
 });
