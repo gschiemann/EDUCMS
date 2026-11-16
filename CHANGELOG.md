@@ -27,6 +27,9 @@ Player off-hours update — the nightly window is decided on the server's clock 
 ## 2026-11-14
 
 - Wedge detector: a push-dead screen is flagged once per **outage**, not once per 24 h. A flag raised before the channel was last seen live belongs to an outage that ended, so a new death is recovered on the next sweep (never within 1 h of the previous flag, so a flapping channel cannot loop reloads). Evidence: Houston Menu Board Left lost its push channel nightly (01:40–05:06, once 12:35) while playing continuously, and waited for the 24 h clock at ~17:08 — 10.2 h average, 15.5 h worst over 7 days without the live alert channel (manifest polling remained the backstop).
+## 2026-11-14
+
+`apps/api/src/emergency/CLAUDE.md`'s drill grader (`drill/synthetic-drill.policy.ts`, life safety CHANGE class — unmerged until the owner's go, a different-vendor review and a re-drill on the bench): a `pending` read or a "no paint proof" row of the SAME alert landing within 3 s of the first paint is one paint reported twice (the page and the app's native layer racing), not a board that dropped. Every persistence FAIL the bench drills recorded on 2026-11-09/10 (GUQ55, FUH43-L, M43) was this race, with a painted proof dated ≥ +60 s following each. Anything later, any other alert, content, or `unconfirmed` is still a FAIL, and the +60 s re-proof is still required.
 
 ## 2026-11-10
 
