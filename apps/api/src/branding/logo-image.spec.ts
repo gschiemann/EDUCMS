@@ -9,18 +9,25 @@
  * day it failed) and decode them against an independent reference: Python's
  * PIL produced the pixel hash below.
  */
-// isomorphic-dompurify pulls an ESM-only jsdom dependency jest cannot load;
-// stub it with a small stripper (same approach as branding-svg-storage.spec.ts).
+// isomorphic-dompurify pulls an ESM-only jsdom dependency jest cannot load.
+// This stub is NOT a sanitizer: it removes exactly the two hostile fragments
+// in this file's SVG fixture (HOSTILE_SCRIPT, HOSTILE_HANDLER below), so the
+// test proves that normalizeLogoImage stores the sanitizer's OUTPUT rather
+// than the raw input. The real DOMPurify behaviour is exercised outside jest.
+// (jest.mock is hoisted, so the factory carries its own copies of them.)
 jest.mock('isomorphic-dompurify', () => ({
   __esModule: true,
   default: {
     sanitize: (raw: string) =>
       String(raw)
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/\son\w+="[^"]*"/gi, '')
-        .replace(/\son\w+='[^']*'/gi, ''),
+        .split('<script>alert(2)</script>')
+        .join('')
+        .split(' onload="alert(1)"')
+        .join(''),
   },
 }));
+const HOSTILE_SCRIPT = '<script>alert(2)</script>';
+const HOSTILE_HANDLER = ' onload="alert(1)"';
 
 import { createHash } from 'crypto';
 import sharp from 'sharp';
@@ -243,7 +250,7 @@ describe('normalizeLogoImage — the bucket only ever sees types it allows', () 
 
   it('stores the sanitized SVG, never the input bytes', async () => {
     const svg = Buffer.from(
-      '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script><path d="M0 0h1v1z"/></svg>',
+      `<svg xmlns="http://www.w3.org/2000/svg"${HOSTILE_HANDLER}>${HOSTILE_SCRIPT}<path d="M0 0h1v1z"/></svg>`,
     );
     const out = await normalizeLogoImage(svg, 'image/svg+xml');
     expect(out.contentType).toBe('image/svg+xml');
