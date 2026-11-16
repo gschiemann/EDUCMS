@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
-import { SsoService } from './sso.service';
+import { SsoService, parseEmailVerified } from './sso.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UnauthorizedException, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { encryptSecret, decryptSecret } from './sso.crypto';
@@ -578,6 +578,143 @@ describe('SsoService', () => {
           'RESTRICTED_VIEWER',
         );
       });
+    });
+  });
+
+  // An OIDC assertion links to a local account only when the address is
+  // vouched for, and only for an account that may sign in at all.
+  describe('OIDC account linking — email verification and account eligibility', () => {
+    const existing = (over: Record<string, unknown> = {}) => ({
+      id: 'user-existing',
+      email: 'jane@acme.edu',
+      tenantId: tenant.id,
+      role: 'SCHOOL_ADMIN',
+      status: 'ACTIVE',
+      deletedAt: null,
+      tenant: { archivedAt: null },
+      ...over,
+    });
+    const verifiedDomainConfig = {
+      autoProvision: false,
+      allowedEmailDomain: 'acme.edu',
+      domainVerifiedAt: new Date(),
+      defaultRole: 'RESTRICTED_VIEWER',
+    };
+
+    it('refuses when the IdP states email_verified === false, even for an existing account', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(existing());
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce(verifiedDomainConfig);
+      await expect(
+        service.resolveOrProvisionUser(tenant.id, { email: 'jane@acme.edu', emailVerified: false }, 'OIDC'),
+      ).rejects.toThrow(/not verified/);
+    });
+
+    it('refuses to provision when email_verified === false', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(null);
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({ ...verifiedDomainConfig, autoProvision: true });
+      await expect(
+        service.resolveOrProvisionUser(tenant.id, { email: 'new@acme.edu', emailVerified: false }, 'OIDC'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(prismaMock.client.user.create).not.toHaveBeenCalled();
+    });
+
+    it('links an existing account when email_verified === true', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(existing());
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({ autoProvision: false });
+      const u = await service.resolveOrProvisionUser(tenant.id, { email: 'jane@acme.edu', emailVerified: true }, 'OIDC');
+      expect(u.id).toBe('user-existing');
+    });
+
+    it('email_verified absent: refuses to link an existing account when the tenant has no verified domain', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(existing());
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce({
+        autoProvision: false, allowedEmailDomain: 'acme.edu', domainVerifiedAt: null,
+      });
+      await expect(
+        service.resolveOrProvisionUser(tenant.id, { email: 'jane@acme.edu' }, 'OIDC'),
+      ).rejects.toThrow(/did not confirm this email address/);
+    });
+
+    it('email_verified absent: refuses to link an existing account outside the verified domain', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(existing({ email: 'jane@elsewhere.org' }));
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce(verifiedDomainConfig);
+      await expect(
+        service.resolveOrProvisionUser(tenant.id, { email: 'jane@elsewhere.org' }, 'OIDC'),
+      ).rejects.toThrow(/did not confirm this email address/);
+    });
+
+    it('email_verified absent: links an existing account inside the verified domain', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(existing());
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce(verifiedDomainConfig);
+      const u = await service.resolveOrProvisionUser(tenant.id, { email: 'jane@acme.edu' }, 'OIDC');
+      expect(u.id).toBe('user-existing');
+    });
+
+    it('refuses a soft-deleted account', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(existing({ deletedAt: new Date() }));
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce(verifiedDomainConfig);
+      await expect(
+        service.resolveOrProvisionUser(tenant.id, { email: 'jane@acme.edu', emailVerified: true }, 'OIDC'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('refuses a DISABLED account', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(existing({ status: 'DISABLED' }));
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce(verifiedDomainConfig);
+      await expect(
+        service.resolveOrProvisionUser(tenant.id, { email: 'jane@acme.edu', emailVerified: true }, 'OIDC'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('refuses an account whose tenant is archived', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(existing({ tenant: { archivedAt: new Date() } }));
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce(verifiedDomainConfig);
+      await expect(
+        service.resolveOrProvisionUser(tenant.id, { email: 'jane@acme.edu', emailVerified: true }, 'OIDC'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('looks the account up with its tenant joined, so the archived-tenant gate can run', async () => {
+      prismaMock.client.user.findUnique.mockResolvedValueOnce(existing());
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValueOnce(verifiedDomainConfig);
+      await service.resolveOrProvisionUser(tenant.id, { email: 'jane@acme.edu', emailVerified: true }, 'OIDC');
+      expect(prismaMock.client.user.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ include: { tenant: { select: { archivedAt: true } } } }),
+      );
+    });
+
+    it('completeSsoLogin applies the OIDC rules (email_verified false mints nothing)', async () => {
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValue({
+        provider: 'OIDC', enabled: true, ...verifiedDomainConfig,
+      });
+      prismaMock.client.user.findUnique.mockResolvedValue(existing());
+      await expect(
+        service.completeSsoLogin(tenant.slug, 'OIDC', { email: 'jane@acme.edu', emailVerified: false }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(jwtMock.sign).not.toHaveBeenCalled();
+    });
+
+    it('completeSsoLogin: email_verified absent and no verified domain mints nothing for an existing account', async () => {
+      prismaMock.client.tenantSSOConfig.findUnique.mockResolvedValue({
+        provider: 'OIDC', enabled: true, autoProvision: false, allowedEmailDomain: null,
+      });
+      prismaMock.client.user.findUnique.mockResolvedValue(existing());
+      await expect(
+        service.completeSsoLogin(tenant.slug, 'OIDC', { email: 'jane@acme.edu' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(jwtMock.sign).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('parseEmailVerified', () => {
+    it('reads booleans and their string forms; anything else is not stated', () => {
+      expect(parseEmailVerified(true)).toBe(true);
+      expect(parseEmailVerified('true')).toBe(true);
+      expect(parseEmailVerified(false)).toBe(false);
+      expect(parseEmailVerified('false')).toBe(false);
+      expect(parseEmailVerified(undefined)).toBeUndefined();
+      expect(parseEmailVerified(null)).toBeUndefined();
+      expect(parseEmailVerified('yes')).toBeUndefined();
     });
   });
 

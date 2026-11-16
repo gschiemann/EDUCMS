@@ -10,6 +10,7 @@ import {
   SSO_FALLBACK_DEFAULT_ROLE,
 } from './sso.types';
 import { assertTenantScopedRoleAssignable } from '../auth/role-assignment';
+import { loginEligibility } from '../auth/login-eligibility';
 import { encryptSecret, decryptSecret } from './sso.crypto';
 import { assertSafeOidcUrl, discoverOidcIssuer, pinClientRequests, OidcIssuerUrlError } from './oidc-discovery';
 import {
@@ -773,10 +774,21 @@ export class SsoService {
       const userinfo = await client.userinfo(tokenSet.access_token!);
       const email = (userinfo?.email || '').toString().toLowerCase();
       if (!email) throw new UnauthorizedException('OIDC userinfo did not contain an email');
+      // `email_verified` from userinfo, else from the ID token's claims.
+      let idTokenClaims: Record<string, unknown> | undefined;
+      try {
+        idTokenClaims = typeof tokenSet.claims === 'function' ? tokenSet.claims() : undefined;
+      } catch {
+        idTokenClaims = undefined;
+      }
+      const emailVerified = parseEmailVerified(
+        userinfo?.email_verified !== undefined ? userinfo.email_verified : idTokenClaims?.email_verified,
+      );
       return {
         email,
         nameId: (userinfo?.sub as string) ?? undefined,
         displayName: (userinfo?.name as string) ?? null,
+        emailVerified,
         raw: userinfo,
       };
     } catch (err) {
@@ -793,13 +805,49 @@ export class SsoService {
    * Resolve the local User from an SSO profile. If auto-provisioning is enabled
    * and the email matches the tenant's allowed domain, a new User is created
    * with the configured defaultRole and a random (unusable) password hash.
+   *
+   * For OIDC the address is only trusted as an identity when the IdP vouches
+   * for it:
+   *   - `email_verified === false` is refused outright;
+   *   - `email_verified` absent links an EXISTING account only when its domain
+   *     is this tenant's verified domain (the same proof auto-provisioning
+   *     requires); otherwise it is refused.
+   * Every account must also pass the shared `loginEligibility` gates.
    */
-  async resolveOrProvisionUser(tenantId: string, profile: SsoCallbackProfile) {
+  async resolveOrProvisionUser(
+    tenantId: string,
+    profile: SsoCallbackProfile,
+    provider?: SsoProvider,
+  ) {
     const { config } = await this.getConfigByTenantSlug(
       (await this.prisma.client.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }))?.slug || '',
     );
     const email = profile.email.toLowerCase();
-    let user = await this.prisma.client.user.findUnique({ where: { email } });
+    const isOidc = provider === 'OIDC';
+
+    if (profile.emailVerified === false) {
+      throw new UnauthorizedException(
+        'Your sign-in provider reports that this email address is not verified. ' +
+          'Verify it with your provider, or ask your administrator for help.',
+      );
+    }
+
+    let user: any = await this.prisma.client.user.findUnique({
+      where: { email },
+      include: { tenant: { select: { archivedAt: true } } },
+    });
+
+    if (user && isOidc && profile.emailVerified !== true && user.tenantId === tenantId) {
+      const claimed = normalizeEmailDomain(config?.allowedEmailDomain ?? null);
+      const domain = (email.split('@')[1] ?? '').toLowerCase();
+      if (!claimed || !(config as any)?.domainVerifiedAt || domain !== claimed) {
+        throw new UnauthorizedException(
+          'Your sign-in provider did not confirm this email address, so it cannot be linked to an ' +
+            'existing account. Ask your administrator to verify your organization\'s email domain, ' +
+            'or sign in with your password.',
+        );
+      }
+    }
 
     if (!user) {
       if (!config?.autoProvision) {
@@ -868,13 +916,24 @@ export class SsoService {
     // state. They must accept their invite and set a password before they
     // can authenticate via any path (regular login already gates this in
     // auth.service.ts after the previous critical-batch fix).
-    if ((user as any).status && (user as any).status !== 'ACTIVE') {
+    // The shared account gates (deleted, archived tenant, not ACTIVE) apply
+    // here exactly as on every other sign-in path.
+    const eligibility = loginEligibility({
+      deletedAt: user.deletedAt ?? null,
+      status: user.status ?? null,
+      tenant: user.tenant ?? null,
+    });
+    if (eligibility === 'inactive' && user.status === 'INVITED') {
       throw new UnauthorizedException(
         'This account is pending activation. Check your invite email to finish signup.',
       );
     }
+    if (eligibility !== 'ok') {
+      throw new UnauthorizedException('This account cannot sign in. Contact your administrator.');
+    }
 
-    return user;
+    const { tenant: _tenant, ...plain } = user;
+    return plain;
   }
 
   /**
@@ -951,7 +1010,7 @@ export class SsoService {
         'This workspace has been archived. Contact your administrator to restore it.',
       );
     }
-    const user = await this.resolveOrProvisionUser(tenant.id, profile);
+    const user = await this.resolveOrProvisionUser(tenant.id, profile, provider);
     const minted = await this.mintJwtForUser(user);
 
     // Best-effort audit log — do not fail login if logging fails.
@@ -1034,4 +1093,14 @@ export class SsoService {
     'CONTRIBUTOR',
     'RESTRICTED_VIEWER',
   ];
+}
+
+/**
+ * Read an OIDC `email_verified` claim. Some providers send it as the string
+ * "true" / "false". Anything else is "not stated" (undefined).
+ */
+export function parseEmailVerified(value: unknown): boolean | undefined {
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return undefined;
 }

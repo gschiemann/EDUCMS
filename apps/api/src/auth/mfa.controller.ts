@@ -51,6 +51,7 @@ import type { Request } from 'express';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from './auth.service';
+import { loginEligibility } from './login-eligibility';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { cryptoPlatformConfig } from './crypto.config';
 import { requireSecret } from '../security/required-secret';
@@ -583,9 +584,26 @@ export class MfaController {
         // credential claim must not exit /challenge with an unrestricted
         // session.
         mustSetupCredentials: true,
+        // The shared account gates (deleted, archived tenant, not ACTIVE),
+        // checked below before any session is issued — the same list the
+        // password, passkey and emailed-code paths apply.
+        deletedAt: true,
+        status: true,
+        tenant: { select: { archivedAt: true } },
         _count: { select: { passkeys: true } },
       },
     });
+    // Disabled, deleted, archived tenant — between the password and now: the
+    // same answer as an expired token. No oracle for account state.
+    if (dbUser && loginEligibility(dbUser) !== 'ok') {
+      await this.audit(dbUser.tenantId, dbUser.id, 'mfa.challenge_refused', {
+        reason: loginEligibility(dbUser),
+      });
+      throw new UnauthorizedException({
+        message: 'MFA token is invalid or expired. Sign in again.',
+        code: 'MFA_TOKEN_INVALID',
+      });
+    }
     // "MFA enabled" = an authenticator app OR a passkey (2026-09-21).
     //
     // This guard used to read `mfaTotpVerifiedAt` alone, for BOTH proofs this
@@ -937,7 +955,10 @@ export class MfaController {
         // A selected `tenantId` is NOT the policy; this join is. Removing it
         // is a build failure at `assertEnrollmentRequired()`, whose `tenant`
         // key is typed REQUIRED for exactly that reason.
-        tenant: { select: { mfaEnforced: true } },
+        tenant: { select: { mfaEnforced: true, archivedAt: true } },
+        // The shared account gates (see the check after this query).
+        deletedAt: true,
+        status: true,
         // ⚠️ WEBAUTHN (2026-09-21) — THE MOST LOAD-BEARING LINE IN THIS SELECT.
         // `assertEnrollmentRequired` is the one gate in the policy that runs
         // BACKWARDS: it OPENS when the policy blocks. Omitting `hasPasskey`
@@ -954,6 +975,19 @@ export class MfaController {
     });
     if (!dbUser) {
       throw new UnauthorizedException({ message: 'User not found.', code: 'MFA_USER_NOT_FOUND' });
+    }
+    // Disabled, deleted, archived tenant — between the password and now: no
+    // enrollment and no session. Same answer as an expired token, as on the
+    // challenge, passkey and emailed-code paths.
+    if (loginEligibility(dbUser) !== 'ok') {
+      await this.audit(dbUser.tenantId, dbUser.id, 'mfa.challenge_refused', {
+        reason: loginEligibility(dbUser),
+        policy: 'mfaRequired',
+      });
+      throw new UnauthorizedException({
+        message: 'MFA token is invalid or expired. Sign in again.',
+        code: 'MFA_TOKEN_INVALID',
+      });
     }
     return { dbUser, rememberMe: payload.rememberMe };
   }

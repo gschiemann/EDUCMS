@@ -215,3 +215,71 @@ describe('EmailService - customer-facing copy', () => {
     expect(text).not.toContain('acme-secret-slug');
   });
 });
+
+// The durable email_logs row never holds a usable one-time link token.
+describe('EmailService — one-time link tokens are redacted in email_logs', () => {
+  const saved = {
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
+  };
+  let rows: Array<Record<string, unknown>>;
+  let fetchMock: jest.Mock;
+
+  function service(): EmailService {
+    rows = [];
+    const prisma = {
+      client: {
+        emailLog: {
+          create: jest.fn(async ({ data }: any) => {
+            const row = { id: `log-${rows.length + 1}`, ...data };
+            rows.push(row);
+            return row;
+          }),
+          update: jest.fn(async ({ where, data }: any) => {
+            const row = rows.find((r) => r.id === where.id)!;
+            Object.assign(row, data);
+            return row;
+          }),
+        },
+      },
+    };
+    return new EmailService(prisma as unknown as PrismaService);
+  }
+  const sent = () => JSON.parse((fetchMock.mock.calls[0] as any[])[1].body) as { subject: string; text: string };
+
+  beforeEach(() => {
+    process.env.RESEND_API_KEY = 're_test_not_real';
+    process.env.EMAIL_FROM = 'VenueOS <noreply@venueos.example>';
+    process.env.APP_PUBLIC_URL = 'https://app.example.test';
+    fetchMock = jest.fn(async () => ({ ok: true, text: async () => '' }));
+    (global as any).fetch = fetchMock;
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    delete (global as any).fetch;
+  });
+
+  it('password reset: sends the real link, stores the link with the token redacted', async () => {
+    await service().sendPasswordReset({ to: 'a@b.test', resetToken: 'reset-tok-1234567890' });
+    expect(sent().text).toContain('/reset-password/reset-tok-1234567890');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe('PASSWORD_RESET');
+    expect(JSON.stringify(rows[0])).not.toContain('reset-tok-1234567890');
+    expect(rows[0].body).toContain('/reset-password/[redacted]');
+  });
+
+  it('invite: sends the real link, stores the link with the token redacted', async () => {
+    await service().sendUserInvite({
+      to: 'a@b.test', inviterEmail: 'boss@b.test', tenantName: 'Acme', role: 'SCHOOL_ADMIN', inviteToken: 'invite-tok-0987654321',
+    });
+    expect(sent().text).toContain('/accept-invite/invite-tok-0987654321');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe('INVITE');
+    expect(JSON.stringify(rows[0])).not.toContain('invite-tok-0987654321');
+    expect(rows[0].body).toContain('/accept-invite/[redacted]');
+  });
+});

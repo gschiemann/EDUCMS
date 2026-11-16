@@ -93,6 +93,16 @@ function createInMemoryPrisma() {
         Object.assign(row, data);
         return row;
       },
+      updateMany: async ({ where, data }: any) => {
+        const hits = resets.filter(
+          (r) =>
+            (where.id === undefined || r.id === where.id) &&
+            (where.userId === undefined || r.userId === where.userId) &&
+            (where.usedAt === undefined || r.usedAt === where.usedAt),
+        );
+        hits.forEach((r) => Object.assign(r, data));
+        return { count: hits.length };
+      },
     },
     userInvite: {
       create: async ({ data }: any) => {
@@ -177,7 +187,28 @@ describe('OnboardingService', () => {
     service = module.get(OnboardingService);
     emailService = module.get(EmailService);
     prisma = module.get(PrismaService);
+
+    // The durable email_logs row holds one-time links with the token
+    // redacted, so tests read the token from what the mail actually carried.
+    sentTokens = [];
+    const realReset = emailService.sendPasswordReset.bind(emailService);
+    jest.spyOn(emailService, 'sendPasswordReset').mockImplementation(async (params) => {
+      sentTokens.push({ kind: 'reset', to: params.to, token: params.resetToken });
+      return realReset(params);
+    });
+    const realInvite = emailService.sendUserInvite.bind(emailService);
+    jest.spyOn(emailService, 'sendUserInvite').mockImplementation(async (params) => {
+      sentTokens.push({ kind: 'invite', to: params.to, token: params.inviteToken });
+      return realInvite(params);
+    });
   });
+
+  let sentTokens: Array<{ kind: 'reset' | 'invite'; to: string; token: string }> = [];
+  function sentToken(kind: 'reset' | 'invite', to: string): string {
+    const hit = [...sentTokens].reverse().find((t) => t.kind === kind && t.to === to);
+    if (!hit) throw new Error(`no ${kind} mail was sent to ${to}`);
+    return hit.token;
+  }
 
   describe('signup — self-serve trial (2026-10-11)', () => {
     const KEYS = ['STRIPE_SECRET_KEY', 'STRIPE_PRICE_MONTHLY', 'STRIPE_PRICE_ANNUAL'] as const;
@@ -335,9 +366,11 @@ describe('OnboardingService', () => {
       // Test-trick: pull it from the email body since the service generated it.
       const email = state.emailLogs.find((e) => e.kind === 'PASSWORD_RESET');
       expect(email).toBeDefined();
-      const match = email!.body.match(/reset-password\/([^\s]+)/);
-      expect(match).toBeTruthy();
-      const token = decodeURIComponent(match![1]);
+      // The durable row holds the link with the token redacted; the token
+      // itself is what the mail carried (captured from the send call).
+      expect(email!.body).toMatch(/reset-password\/\[redacted\]/);
+      const token = sentToken('reset', email!.toEmail);
+      expect(email!.body).not.toContain(token);
       expect(hashToken(token)).toEqual(state.resets[0].tokenHash);
 
       await service.completePasswordReset({ token, newPassword: 'brand-new-password-2' });
@@ -359,7 +392,7 @@ describe('OnboardingService', () => {
         });
         await service.requestPasswordReset('revoke@acme.edu');
         const email = state.emailLogs.find((e) => e.kind === 'PASSWORD_RESET');
-        const token = decodeURIComponent(email!.body.match(/reset-password\/([^\s]+)/)![1]);
+        const token = sentToken('reset', email!.toEmail);
         const userId = state.users.find((u: any) => u.email === 'revoke@acme.edu')!.id;
         const res = await service.completePasswordReset({ token, newPassword });
         return { res, userId };
@@ -390,6 +423,54 @@ describe('OnboardingService', () => {
       });
     });
 
+    describe('a reset token is spent exactly once', () => {
+      async function seed(slug: string) {
+        await service.signup({
+          districtName: 'Acme', slug, adminEmail: `once@${slug}.edu`, password: 'original-password-1',
+        });
+        return `once@${slug}.edu`;
+      }
+
+      it('a token another request already spent is refused, and the password is not written twice', async () => {
+        const email = await seed('acme-once');
+        await service.requestPasswordReset(email);
+        const token = sentToken('reset', email);
+        // A concurrent completion spends the token between this request's
+        // read and its write.
+        const client = (prisma as any).client;
+        const realUpdateMany = client.passwordResetToken.updateMany;
+        client.passwordResetToken.updateMany = async (args: any) => {
+          state.resets[0].usedAt = new Date();
+          client.passwordResetToken.updateMany = realUpdateMany;
+          return realUpdateMany(args);
+        };
+        const user = state.users.find((u) => u.email === email)!;
+        const before = user.passwordHash;
+
+        await expect(
+          service.completePasswordReset({ token, newPassword: 'second-writer-pass-1' }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(user.passwordHash).toBe(before);
+        expect(redisMock.markUserTokensInvalid).not.toHaveBeenCalled();
+      });
+
+      it('a successful reset retires every other outstanding reset link for the account', async () => {
+        const email = await seed('acme-siblings');
+        await service.requestPasswordReset(email);
+        const first = sentToken('reset', email);
+        await service.requestPasswordReset(email);
+        const second = sentToken('reset', email);
+        expect(first).not.toBe(second);
+        expect(state.resets).toHaveLength(2);
+
+        await service.completePasswordReset({ token: second, newPassword: 'brand-new-password-9' });
+        expect(state.resets.every((r) => r.usedAt instanceof Date)).toBe(true);
+        await expect(
+          service.completePasswordReset({ token: first, newPassword: 'another-password-9' }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+    });
+
     it('rejects an expired reset token', async () => {
       await service.signup({
         districtName: 'Acme',
@@ -401,7 +482,7 @@ describe('OnboardingService', () => {
       // Force-expire the token in place.
       state.resets[0].expiresAt = new Date(Date.now() - 1_000);
       const email = state.emailLogs.find((e) => e.kind === 'PASSWORD_RESET')!;
-      const token = decodeURIComponent(email.body.match(/reset-password\/([^\s]+)/)![1]);
+      const token = sentToken('reset', email!.toEmail);
 
       await expect(
         service.completePasswordReset({ token, newPassword: 'a-new-password' }),
@@ -440,7 +521,7 @@ describe('OnboardingService', () => {
       expect(state.users.find((u) => u.email === 'new-teacher@acme.edu')?.status).toBe('INVITED');
 
       const inviteEmail = state.emailLogs.find((e) => e.kind === 'INVITE')!;
-      const token = decodeURIComponent(inviteEmail.body.match(/accept-invite\/([^\s]+)/)![1]);
+      const token = sentToken('invite', inviteEmail!.toEmail);
 
       const result = await service.acceptInvite({ token, password: 'chosen-password-123' });
       expect(result.access_token).toBe('signed.jwt');
@@ -459,7 +540,7 @@ describe('OnboardingService', () => {
       const signup = await service.signup({ districtName: 'Acme', slug, adminEmail: `admin@${slug}.edu`, password: 'admin-password' });
       await service.createInvite({ inviterId: signup.user.id, tenantId: signup.user.tenantId, email, role: 'CONTRIBUTOR' });
       const inviteEmail = state.emailLogs.filter((e) => e.kind === 'INVITE').pop()!;
-      return decodeURIComponent(inviteEmail.body.match(/accept-invite\/([^\s]+)/)![1]);
+      return sentToken('invite', inviteEmail!.toEmail);
     }
 
     it('records the EULA ticked on the form — version, time, and a TERMS_ACCEPTED row saying how and from where', async () => {
@@ -508,7 +589,7 @@ describe('OnboardingService', () => {
           role: role as any,
         });
         const mail = state.emailLogs.filter((e) => e.kind === 'INVITE').slice(-1)[0]!;
-        const token = decodeURIComponent(mail.body.match(/accept-invite\/([^\s]+)/)![1]);
+        const token = sentToken('invite', mail!.toEmail);
         return {
           email,
           tenantId: signup.user.tenantId,
@@ -639,6 +720,57 @@ describe('OnboardingService', () => {
       expect(result).toEqual({ ok: true, emailConfigured: expect.any(Boolean) });
       expect(state.resets).toHaveLength(0);
       expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it('mints NO reset token for an account provisioned from an OIDC assertion (sso:<random> hash)', async () => {
+      await service.signup({
+        districtName: 'Acme',
+        slug: 'acme-oidc',
+        adminEmail: 'admin@acme-oidc.edu',
+        password: 'original-password-1',
+      });
+      // The shape SsoService.resolveOrProvisionUser writes.
+      state.users.push({
+        id: 'user-oidc-1',
+        tenantId: state.tenants[0].id,
+        email: 'idp@acme-oidc.edu',
+        passwordHash: 'sso:k3j4h5:1700000000000',
+        role: 'CONTRIBUTOR',
+      });
+      const sendSpy = jest.spyOn(emailService, 'sendPasswordReset');
+
+      const result = await service.requestPasswordReset('idp@acme-oidc.edu');
+
+      expect(result).toEqual({ ok: true, emailConfigured: expect.any(Boolean) });
+      expect(state.resets).toHaveLength(0);
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+
+    it('refuses to COMPLETE a reset for an account with no password of its own, even with an outstanding token', async () => {
+      await service.signup({
+        districtName: 'Acme',
+        slug: 'acme-oidc-complete',
+        adminEmail: 'admin@acme-oidc-complete.edu',
+        password: 'original-password-1',
+      });
+      state.users.push({
+        id: 'user-oidc-2',
+        tenantId: state.tenants[0].id,
+        email: 'idp2@acme-oidc-complete.edu',
+        passwordHash: 'sso:abcdef:1700000000000',
+        role: 'CONTRIBUTOR',
+      });
+      const token = 'outstanding-reset-token-for-idp-account';
+      state.resets.push({
+        id: 'reset-oidc', userId: 'user-oidc-2', tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + 60_000), usedAt: null, createdAt: new Date(),
+      });
+
+      await expect(
+        service.completePasswordReset({ token, newPassword: 'attacker-chosen-1' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(state.users.find((u) => u.id === 'user-oidc-2')!.passwordHash).toBe('sso:abcdef:1700000000000');
+      expect(state.resets[0].usedAt).toBeNull();
     });
 
     it('still mints a reset token for a NORMAL password account (the guard is narrow)', async () => {
@@ -893,7 +1025,7 @@ describe('OnboardingService', () => {
       const inviteEmail = [...state.emailLogs].reverse().find(
         (e) => e.kind === 'INVITE' && e.toEmail === 'teacher@happy.edu',
       )!;
-      const token = decodeURIComponent(inviteEmail.body.match(/accept-invite\/([^\s]+)/)![1]);
+      const token = sentToken('invite', inviteEmail!.toEmail);
 
       const result = await service.acceptInvite({ token, password: 'teacher-password-1' });
       expect(result.access_token).toBe('signed.jwt');
@@ -919,7 +1051,7 @@ describe('OnboardingService', () => {
       const inviteEmail = [...state.emailLogs].reverse().find(
         (e) => e.kind === 'INVITE' && e.toEmail === 'leaver@fired.edu',
       )!;
-      const token = decodeURIComponent(inviteEmail.body.match(/accept-invite\/([^\s]+)/)![1]);
+      const token = sentToken('invite', inviteEmail!.toEmail);
 
       // The admin sets their password directly (invite email never arrived),
       // then later disables the account — the ORIGINAL token is still unused.

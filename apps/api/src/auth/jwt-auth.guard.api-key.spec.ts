@@ -15,7 +15,12 @@
  */
 import { ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { JwtAuthGuard, API_KEY_DENIED_PATH_PREFIXES } from './jwt-auth.guard';
+import {
+  JwtAuthGuard,
+  API_KEY_DENIED_PATH_PREFIXES,
+  API_KEY_IDENTITY_DENIED_PATH_PREFIXES,
+  isApiKeyIdentityDeniedPath,
+} from './jwt-auth.guard';
 
 const TEST_SECRET = 'dev_only_jwt_secret_CHANGE_ME';
 const KEY = 'vos_' + 'a'.repeat(32);
@@ -237,5 +242,114 @@ describe('JwtAuthGuard — archived tenant cannot trigger emergencies (ACC-05 ba
     await guard.canActivate(ctx);
     expect(typeof request.user.tokenExp).toBe('number');
     expect(request.user.tokenExp).toBeGreaterThan(Math.floor(Date.now() / 1000));
+  });
+});
+
+describe('JwtAuthGuard — API keys never reach identity, credential or tenant-security routes', () => {
+  const jwt = new JwtService({ secret: TEST_SECRET });
+  const prevSecret = process.env.JWT_SECRET;
+  beforeAll(() => { process.env.JWT_SECRET = TEST_SECRET; });
+  afterAll(() => {
+    if (prevSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = prevSecret;
+  });
+
+  // Real routes, as the controllers declare them.
+  const DENIED: Array<[string, string]> = [
+    ['POST', '/api/v1/api-keys'],
+    ['GET', '/api/v1/api-keys'],
+    ['DELETE', '/api/v1/api-keys/key-2'],
+    ['GET', '/api/v1/users'],
+    ['POST', '/api/v1/users/invite'],
+    ['PATCH', '/api/v1/users/u1/role'],
+    ['POST', '/api/v1/users/u1/mfa/reset'],
+    ['POST', '/api/v1/auth/login'],
+    ['POST', '/api/v1/auth/mfa/setup'],
+    ['POST', '/api/v1/auth/passkeys/register/options'],
+    ['GET', '/api/v1/auth/session'],
+    ['GET', '/api/v1/auth/sso/acme/oidc/login'],
+    ['POST', '/api/v1/support-access'],
+    ['GET', '/api/v1/support-access'],
+    ['GET', '/api/v1/integrations/clever/connect'],
+    ['POST', '/api/v1/integrations/clever/sync'],
+    ['POST', '/api/v1/tenants/switch'],
+    ['GET', '/api/v1/tenants/acme/sso'],
+    ['POST', '/api/v1/tenants/acme/sso'],
+    ['POST', '/api/v1/tenants/acme/sso/domain/verify'],
+    ['POST', '/api/v1/tenants/acme/sso/test'],
+    ['PUT', '/api/v1/tenants/me/mfa-enforced'],
+  ];
+
+  it.each(DENIED)('denies an UNRESTRICTED (scopes = null) DISTRICT_ADMIN key on %s %s', async (method, path) => {
+    const { apiKeys, redis, prisma } = makeDeps();
+    apiKeys.verify.mockResolvedValue({ id: 'key-1', tenantId: 'tenant-7', role: 'DISTRICT_ADMIN', scopes: null } as any);
+    const guard = new JwtAuthGuard(jwt, redis as any, apiKeys as any, prisma as any);
+    const { ctx, request } = ctxFor(KEY, { path, method });
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(request.user).toBeUndefined();
+  });
+
+  it('denies a key whose scopes cover integrations on the Clever routes', async () => {
+    const { apiKeys, redis, prisma } = makeDeps();
+    apiKeys.verify.mockResolvedValue({
+      id: 'key-1', tenantId: 'tenant-7', role: 'DISTRICT_ADMIN', scopes: ['integrations:write'],
+    } as any);
+    const guard = new JwtAuthGuard(jwt, redis as any, apiKeys as any, prisma as any);
+    await expect(
+      guard.canActivate(ctxFor(KEY, { path: '/api/v1/integrations/clever/sync', method: 'POST' }).ctx),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('denies regardless of case, query string, repeated slashes or percent-encoding', async () => {
+    for (const path of [
+      '/API/V1/USERS',
+      '/api/v1/users?x=1',
+      '/api/v1//users',
+      '/api/v1/%75sers',
+      '/api/v1/tenants/acme/SSO',
+    ]) {
+      const { apiKeys, redis, prisma } = makeDeps();
+      const guard = new JwtAuthGuard(jwt, redis as any, apiKeys as any, prisma as any);
+      await expect(
+        guard.canActivate(ctxFor(KEY, { path, method: 'GET' }).ctx),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    }
+  });
+
+  it('records the DENIED attempt against the specific key', async () => {
+    const { apiKeys, redis, prisma, auditCreate } = makeDeps();
+    const guard = new JwtAuthGuard(jwt, redis as any, apiKeys as any, prisma as any);
+    await expect(
+      guard.canActivate(ctxFor(KEY, { path: '/api/v1/api-keys', method: 'POST' }).ctx),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    const row = auditCreate.mock.calls.find((c: any[]) => c[0]?.data?.action === 'API_KEY_REQUEST_DENIED');
+    expect(row).toBeDefined();
+    expect(row![0].data.targetId).toBe('key-1');
+    expect(JSON.parse(row![0].data.details).reason).toBe('identity-path');
+  });
+
+  it('still allows an unrestricted key on ordinary tenant routes', async () => {
+    for (const path of ['/api/v1/screens', '/api/v1/tenants/accessible', '/api/v1/tenants/me/content-approval']) {
+      const { apiKeys, redis, prisma } = makeDeps();
+      const guard = new JwtAuthGuard(jwt, redis as any, apiKeys as any, prisma as any);
+      await expect(guard.canActivate(ctxFor(KEY, { path, method: 'GET' }).ctx)).resolves.toBe(true);
+    }
+  });
+
+  it('the list names every family, and the tenant rule covers new /sso and mfa-enforced routes', () => {
+    expect(API_KEY_IDENTITY_DENIED_PATH_PREFIXES).toEqual(
+      expect.arrayContaining([
+        '/api/v1/api-keys',
+        '/api/v1/users',
+        '/api/v1/auth',
+        '/api/v1/support-access',
+        '/api/v1/integrations/clever',
+        '/api/v1/tenants/switch',
+      ]),
+    );
+    expect(isApiKeyIdentityDeniedPath('/api/v1/tenants/acme/sso/some-future-route')).toBe(true);
+    expect(isApiKeyIdentityDeniedPath('/api/v1/tenants/child-1/mfa-enforced')).toBe(true);
+    expect(isApiKeyIdentityDeniedPath('/api/v1/tenants/me/ota-window')).toBe(false);
+    expect(isApiKeyIdentityDeniedPath('/api/v1/integrations/pos')).toBe(false);
   });
 });
