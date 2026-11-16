@@ -33,6 +33,7 @@ import { DEVICE_SETTINGS_HEADER } from '@cms/api-types';
 import { deviceSettingsHeartbeat } from '../device-settings/device-settings.heartbeat';
 import { MANAGER_HEALTH_HEADER, isRelayedManagerReport, managerHealthChanged, managerReportRelayOff, parseManagerHealthHeader } from './manager-health';
 import { diagnosticsHeartbeat } from '../screen-diagnostics/diagnostics-heartbeat';
+import { HARDWARE_SERIAL_HEADER, hardwareSerialWrite, parseHardwareSerialHeader } from './hardware-serial';
 import { manifestDiagnostics } from '../screen-diagnostics/diagnostics-policy';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
@@ -1833,6 +1834,13 @@ export class ScreensController {
     const diagnostics = paired && credential.proved
       ? await diagnosticsHeartbeat({ prisma: this.prisma }, screen as any, req?.headers)
       : {};
+    // Hardware serial (2026-11-16, hardware-serial.ts): the APK's best-effort
+    // read, same credential gate. Written only when it changes; a report with
+    // no serial never clears a stored one. Telemetry-only columns.
+    const hardwareSerialData = paired && credential.proved
+      ? hardwareSerialWrite(screen as any, parseHardwareSerialHeader(req?.headers?.[HARDWARE_SERIAL_HEADER]))
+      : {};
+    Object.assign(data, hardwareSerialData);
     const vn = mayStampFirmware ? (versionName || '').trim() : '';
     if (vn) {
       data.playerVersion = vn;
@@ -1949,7 +1957,8 @@ export class ScreensController {
       nativePowerStateChanged(screen.nativeRuntimeReport, nativeRuntime);
     const mustWrite = mayStampFirmware &&
       (!!versionChanged || managerChanged || otaCleared || nativeChanged || !!deviceSettings?.mustWrite ||
-        managerHealthChanged((screen as any).managerHealthReport, managerHealth));
+        managerHealthChanged((screen as any).managerHealthReport, managerHealth) ||
+        Object.keys(hardwareSerialData).length > 0);
     const pingDue = mayStampLiveness && !shouldSkipLastPingWrite(screen.id);
 
     let screenAfterUpdate: any = screen;

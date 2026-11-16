@@ -64,6 +64,7 @@ import { ScreenAdvancedSection } from '@/components/screens/ScreenAdvancedSectio
 import { clampPopoverAnchor } from '@/lib/clamp-popover-anchor';
 import { deriveTrackedPush, holdIsCurrent } from './trackedPush';
 import { TrackedPushFooter } from './TrackedPushFooter';
+import { HardwareSerialRow } from './HardwareSerialRow';
 
 /**
  * Is an installed APK at or past the latest published one?
@@ -1031,6 +1032,8 @@ function DeviceDetails({ screen }: { screen: any }) {
         </div>
       </div>
       <HardwareIdentityBlock screen={screen} />
+      {/* 2026-11-16 — the panel's hardware serial, best effort (HardwareSerialRow). */}
+      <HardwareSerialRow serial={screen?.hardwareSerial} source={screen?.hardwareSerialSource} />
       <DeviceFingerprintRow fingerprint={(screen as any).deviceFingerprint || ''} />
     </div>
   );
