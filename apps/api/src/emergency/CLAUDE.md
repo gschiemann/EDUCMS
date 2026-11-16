@@ -29,6 +29,17 @@ This system triggers immediate lockdown/weather/evacuation alerts across screens
 4. **HTTP Polling Fallback** — If Redis fails, screens fall back to polling their device-authenticated manifest at `/api/v1/screens/:id/manifest` (which carries the live `emergency` field — same `Tenant.emergencyStatus` source of truth).
 5. **Hold-to-Trigger UX** — Mobile panic page requires 3-second hold on button to prevent accidental taps.
 
+### The device poll's 304 from memory (`device-messages-rev.ts`, 2026-11-16)
+
+`GET /api/v1/emergency/messages` is the HTTP backstop for pushed SOS / broadcast / media alerts, and every paired screen polls it every 10 s. With `EMERGENCY_MESSAGES_FAST_304` on for a screen (unset = off, the shipped default; a list of screen ids = those screens only, the bench ring; the exact word `all` = the fleet), the route answers 304 before any query when the screen presents the exact ETag this process last sent it and nothing that could change its answer has moved. Every other case is the live read it always was. The contract is the header of `apps/api/src/emergency/device-messages-rev.ts`; turning the switch on, for a bench list or for the fleet, is the owner's decision after an on-glass drill - never an agent's.
+
+**Invariants - never weaken:**
+1. **Every unknown is a database read, never a 304.** No record, another ETag, a moved revision, a change still settling, a reached expiry, a record 60 s old, an identity the interceptor did not verify, a slow Redis.
+2. **The revision is taken before the read, and a read that began within 10 s of anything tenant-level moving is never trusted.** A trigger signals before its transaction commits; these two rules are what make a read in that gap harmless.
+3. **A writer of `EmergencyMessage` commits, then bumps the tenant emergency epoch for every tenant it wrote a row under; a writer of `Tenant.emergencyStatus` / `emergencyPlaylistId` calls `invalidateTenantState` after its commit.** `apps/api/src/emergency/device-messages-rev.writers.spec.ts` fails on a message writer that does not bump, and on any writer of either kind outside `emergency.controller.ts`. What no guard can see (a console edit, a one-off script) is bounded by the 60 s record age.
+4. **It is not a cache of alerts.** Nothing derived from a message is kept except its expiry instant; every 200 is live.
+5. **One API process.** The record of what a screen holds lives in the process that sent it. A second replica is safe (a screen that lands on the other one is a database read) but pays for most polls again, and with Redis down it learns of another replica's change only when a record ages out. Decide that design before adding a replica; see `docs/handoffs/2026-11-16-device-messages-fast-304.md`.
+
 ### WARNING: Emergency System Changes
 Any modification to emergency endpoints, payload validation, auth bypass logic, or audit logging requires explicit code review and sign-off. Never weaken the @AllowPanicBypass decorator or skip AuditLog creation. Test trigger/clear flows end-to-end before merging.
 

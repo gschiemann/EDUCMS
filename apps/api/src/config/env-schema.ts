@@ -389,6 +389,9 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
   { name: 'EMERGENCY_REV_RAISE', type: 'boolean', default: true, accepts: 'off | 0 | false', failureDirection: 'open', killSwitch: true,
     purpose: 'Lets the rev endpoint attach an alert descriptor so a screen raises an alert faster; off reverts to revision-move then manifest fetch.',
     note: 'SUBTRACTIVE: any other value, including a typo, leaves it ON. Off only makes raises slower, never wrong or missing.' },
+  { name: 'EMERGENCY_MESSAGES_FAST_304', type: 'csv', default: null, failureDirection: 'closed',
+    purpose: 'Opt-in: lets GET /emergency/messages answer 304 from memory when nothing emergency-shaped moved for that screen, instead of three Postgres reads on every 10 s device poll.',
+    note: 'Unset or empty: off, every poll reads the database as before - unsetting it is the off switch. A list of screen ids (comma or space separated, at most 200): on for those screens only, the bench ring. The exact word all: every screen. Anything else, including 1 / true or a typo, names no screen and enables nothing. On, any doubt (unverified identity, a moved revision, a settling change, a reached expiry, a record 60 s old, a slow Redis) is still a database read. The owner turns it on after an on-glass drill.' },
 
   // ─── Synthetic emergency drill (emergency/drill/; design 2026-10-31) ───────────────────────
   { name: 'EMERGENCY_DRILL_CRON_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,
