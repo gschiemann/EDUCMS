@@ -99,6 +99,10 @@ const TABLE: Record<string, Decision> = {
   'POST /api/v1/auth/mfa/backup-codes': { kind: 'open', why: "the caller's own user row; a screen id is no user row" },
   'GET /api/v1/auth/passkeys': { kind: 'open', why: "the caller's own passkeys; a screen id is no user row" },
   'POST /api/v1/auth/passkeys/register/options': { kind: 'open', why: 'handler refuses kind=device itself' },
+  // 2026-11-16 (#319): the panic-phone enroll refuses a screen credential at
+  // panic-device.controller.ts (`actor?.kind === 'device'` → 403) and needs a
+  // full, recent sign-in besides.
+  'POST /api/v1/panic-device/enroll': { kind: 'open', why: 'handler refuses kind=device itself' },
   'POST /api/v1/auth/passkeys/register/verify': { kind: 'open', why: "the caller's own passkeys; a screen id is no user row" },
   'PATCH /api/v1/auth/passkeys/:id': { kind: 'open', why: "the caller's own passkeys; a screen id is no user row" },
   'DELETE /api/v1/auth/passkeys/:id': { kind: 'open', why: "the caller's own passkeys; a screen id is no user row" },
