@@ -254,6 +254,36 @@ describe('MfaController — required-MFA enrollment (ACC-03)', () => {
       expect(enabled).toBeDefined();
       expect(JSON.parse(enabled.details).policy).toBe('mfaRequired');
     });
+
+    it.each<[string, Record<string, unknown>]>([
+      ['a DISABLED account', { status: 'DISABLED' }],
+      ['a soft-deleted account', { deletedAt: new Date() }],
+      ['an account whose tenant is archived', { tenant: { mfaEnforced: true, archivedAt: new Date() } }],
+    ])('issues no session to %s, even with a valid code', async (_label, overrides) => {
+      const { secretBase32 } = generateTotpSecret();
+      prisma.client.user.findUnique.mockResolvedValue(
+        baseUser({ mfaTotpSecret: sealMfaSecret(secretBase32), ...overrides }),
+      );
+      nowSpy();
+      await expect(
+        controller.requiredVerify({ mfaToken: TOKEN, code: computeTotpCodeForSecret(secretBase32, FIXED_NOW) }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(prisma.client.user.update).not.toHaveBeenCalled();
+      expect(auth.login).not.toHaveBeenCalled();
+    });
+
+    it('refuses to start an enrollment for a DISABLED account', async () => {
+      prisma.client.user.findUnique.mockResolvedValue(baseUser({ status: 'DISABLED' }));
+      await expect(controller.requiredEnroll({ mfaToken: TOKEN })).rejects.toBeInstanceOf(UnauthorizedException);
+      expect(prisma.client.user.update).not.toHaveBeenCalled();
+    });
+
+    it('loads the account with its tenant joined, so the archived-tenant gate can run', async () => {
+      prisma.client.user.findUnique.mockResolvedValue(baseUser());
+      await controller.requiredEnroll({ mfaToken: TOKEN });
+      const select = prisma.client.user.findUnique.mock.calls[0][0].select;
+      expect(select).toMatchObject({ deletedAt: true, status: true, tenant: { select: { archivedAt: true } } });
+    });
   });
 });
 
@@ -410,7 +440,8 @@ describe('MfaController — SEC-008 enrollment door tracks the login gate exactl
       prisma.client.user.findUnique.mockResolvedValue(baseUser({ role: 'SCHOOL_ADMIN' }));
       await controller.requiredEnroll({ mfaToken: TOKEN } as any);
       expect(prisma.client.user.findUnique.mock.calls[0][0].select.tenant).toEqual({
-        select: { mfaEnforced: true },
+        // archivedAt: the shared account gates (loginEligibility) read it.
+        select: { mfaEnforced: true, archivedAt: true },
       });
     });
   });

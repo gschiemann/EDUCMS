@@ -435,17 +435,37 @@ export class OnboardingService {
     if (record.expiresAt.getTime() < Date.now()) {
       throw new BadRequestException('This reset link has expired.');
     }
+    // An account with no password of its own (provisioned by an identity
+    // provider or a roster feed) never acquires one through this path, even
+    // with a token minted before that rule existed — the same rule
+    // `requestPasswordReset` applies when it refuses to mint one.
+    if (isSsoProvisionedNoPassword(record.user?.passwordHash)) {
+      throw new BadRequestException('Invalid or expired reset link.');
+    }
 
     const passwordHash = await this.authService.hashPassword(input.newPassword);
 
     await this.prisma.client.$transaction(async (tx) => {
+      const now = new Date();
+      // A reset token is spent exactly once: the conditional update succeeds
+      // for one caller only, so two concurrent submissions of the same link
+      // cannot both set a password.
+      const spent = await tx.passwordResetToken.updateMany({
+        where: { id: record.id, usedAt: null },
+        data: { usedAt: now },
+      });
+      if (spent.count !== 1) {
+        throw new BadRequestException('This reset link has already been used.');
+      }
       // ten-ok: unauthenticated password reset — there IS no caller tenant. `record.userId`
       // comes from a single-use reset token matched by its SHA hash, already checked for
       // used/expired above; the token row IS the proof of which account may be written.
       await tx.user.update({ where: { id: record.userId }, data: { passwordHash } });
-      await tx.passwordResetToken.update({
-        where: { id: record.id },
-        data: { usedAt: new Date() },
+      // Every other outstanding reset link for this account stops working
+      // once the password has been reset.
+      await tx.passwordResetToken.updateMany({
+        where: { userId: record.userId, usedAt: null },
+        data: { usedAt: now },
       });
       await tx.auditLog.create({
         data: {
