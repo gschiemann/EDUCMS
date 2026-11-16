@@ -151,7 +151,16 @@
       "voiceOff": "Silencio",
       "voiceOnHint": "Este teléfono anunciará el estado de la alerta en voz alta.",
       "voiceOffHint": "Este teléfono no emitirá sonido. Toca para anunciar el estado en voz alta.",
-      "voiceOnConfirm": "El anuncio por voz está activado. Este teléfono hablará en voz alta."
+      "voiceOnConfirm": "El anuncio por voz está activado. Este teléfono hablará en voz alta.",
+      "checkingSignIn": "Comprobando la sesión…",
+      "checkingSignInHint": "Comprobando su sesión. Ya puede mantener pulsado un botón: la alerta se envía en cuanto termine la comprobación.",
+      "unreachableHint": "No se puede conectar con VenueOS para comprobar su sesión. Mantener pulsado un botón igualmente intenta enviar; si falla, AVISE A SEGURIDAD MANUALMENTE.",
+      "signInTitle": "Inicie sesión para usar el botón de emergencia",
+      "signInLead": "Este teléfono no tiene una sesión iniciada en VenueOS.",
+      "signInBody": "Si hay una emergencia ahora mismo, AVISE A SEGURIDAD MANUALMENTE. Después inicie sesión una vez, con «Mantener la sesión iniciada» marcado, para que este teléfono quede listo.",
+      "signInButton": "Iniciar sesión",
+      "errSignInNeeded": "Este teléfono no tiene una sesión iniciada. AVISE A SEGURIDAD MANUALMENTE ahora: su alerta NO se transmitió. Inicie sesión para enviar alertas desde este teléfono.",
+      "errSignInTimeout": "No se pudo comprobar su sesión a tiempo. AVISE A SEGURIDAD MANUALMENTE ahora: su alerta NO se transmitió."
     },
     "broadcast": {
       "title": "Transmisión",
@@ -506,7 +515,8 @@
     "phoneSetupLater": "Puedes añadir una clave de acceso para este dispositivo más tarde en Mi cuenta.",
     "setupDoneSignIn": "Tu cuenta está lista. Inicia sesión con tu correo y contraseña nuevos.",
     "security": "Seguridad",
-    "requestInfo": "Solicitar información"
+    "requestInfo": "Solicitar información",
+    "panicSignIn": "Está iniciando sesión para usar el botón de emergencia en este teléfono. Marque «Mantener la sesión iniciada» para que quede listo."
   },
   "account": {
     "title": "Mi cuenta",

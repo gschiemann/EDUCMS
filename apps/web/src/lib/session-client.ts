@@ -29,6 +29,29 @@ export interface RefreshResult {
   user: any | null;
 }
 
+/**
+ * What the last refresh attempt FOUND OUT (2026-11-14, the panic page).
+ *
+ *   refreshed   — a new access token came back.
+ *   refused     — the browser has no remembered session: no cookie, or the
+ *                 API's own decision (401 / 403) that it is dead. Asking again
+ *                 will not change the answer; sign-in is the only way on.
+ *   unavailable — could not find out (offline, 5xx, throttled, an unreadable
+ *                 answer). The cookie, if there is one, is still in the jar.
+ *
+ * `refreshRememberedSession()` returns only the token, which is all the
+ * dashboard needs. The panic page must tell "you have no remembered session"
+ * (show sign-in) apart from "could not reach the server" (say so, keep
+ * trying) — a teacher must never be sent to a password form because the
+ * stairwell has no signal.
+ */
+export type RefreshOutcome = 'refreshed' | 'refused' | 'unavailable';
+
+export interface RefreshAttempt {
+  result: RefreshResult | null;
+  outcome: RefreshOutcome;
+}
+
 function headers(): Record<string, string> {
   return {
     'Content-Type': 'application/json',
@@ -120,8 +143,10 @@ export async function adoptRememberedSession(accessToken: string): Promise<boole
 // A dashboard load fires a dozen queries at once. When the access token has
 // expired they all 401 together, and without this every one of them would
 // spend a refresh token — which the server correctly grades as a REPLAY and
-// answers by revoking the family. So: one call, everyone awaits it.
-let inFlight: Promise<RefreshResult | null> | null = null;
+// answers by revoking the family. So: one call, everyone awaits it. The
+// panic page's restore joins the SAME flight (2026-11-14), so it can never
+// be a second spend racing `SessionRestorer` or a dashboard 401.
+let inFlight: Promise<RefreshAttempt> | null = null;
 
 /** Test seam — reset between cases so a memoized promise can't leak. */
 export function __resetSessionRefreshState(): void {
@@ -195,9 +220,18 @@ async function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export async function refreshRememberedSession(): Promise<RefreshResult | null> {
-  if (typeof window === 'undefined') return null;
+  return (await refreshRememberedSessionWithOutcome()).result;
+}
+
+/**
+ * The same single flight as `refreshRememberedSession`, with what it found
+ * out (see `RefreshOutcome`). Every caller of either function shares one
+ * network call and one answer.
+ */
+export async function refreshRememberedSessionWithOutcome(): Promise<RefreshAttempt> {
+  if (typeof window === 'undefined') return { result: null, outcome: 'unavailable' };
   if (inFlight) return inFlight;
-  inFlight = withRefreshLock(async () => {
+  inFlight = withRefreshLock(async (): Promise<RefreshAttempt> => {
     try {
       const res = await fetch('/api/session/refresh', {
         method: 'POST',
@@ -209,15 +243,21 @@ export async function refreshRememberedSession(): Promise<RefreshResult | null> 
         // 401 = the cookie is dead (expired, revoked, replayed) and the route
         // has already cleared it. Drop the marker so the next cold start does
         // not spend a round trip proving the same thing.
-        if (res.status === 401 || res.status === 403) setRememberMarker(false);
-        return null;
+        if (res.status === 401 || res.status === 403) {
+          setRememberMarker(false);
+          return { result: null, outcome: 'refused' };
+        }
+        return { result: null, outcome: 'unavailable' };
       }
       const body = await res.json().catch(() => null);
-      if (!body?.access_token) return null;
-      return { access_token: body.access_token as string, user: body.user ?? null };
+      if (!body?.access_token) return { result: null, outcome: 'unavailable' };
+      return {
+        result: { access_token: body.access_token as string, user: body.user ?? null },
+        outcome: 'refreshed',
+      };
     } catch {
       // Network failure — retryable, so the marker stays set.
-      return null;
+      return { result: null, outcome: 'unavailable' };
     }
   }).finally(() => {
     // Cleared in a microtask so late awaiters of THIS call still get its
