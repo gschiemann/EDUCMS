@@ -10,7 +10,8 @@ import type { SwimTimingSnapshot } from '@cms/scoreboard-cts';
 // 2026-07-01 launch-sprint #272a — multi-replica-safe ingest rate limiter.
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { checkIngestLimit } from '../security/ingest-rate-limit';
+import { checkIngestLimit, peekIngestLimit } from '../security/ingest-rate-limit';
+import { clientIpFromRequest } from '../security/client-ip';
 // SEC-007 (2026-09-04) — proof-of-play beacon authenticity.
 import { decodeDeviceTokenUnsafe, verifyDeviceForScreen } from '../screens/device-auth';
 import {
@@ -69,6 +70,13 @@ export class SportsBoardController {
   private readonly feedHits = new Map<string, number[]>();
   private static readonly FEED_WINDOW_MS = 10_000;
   private static readonly FEED_MAX_PER_WINDOW = 40;
+  /**
+   * Invalid-token attempts, counted per client IP across every feed-ingest
+   * endpoint. Kept separate from the per-game bucket so that requests with
+   * a bad token can never use up a game's ingest budget.
+   */
+  private static readonly BAD_TOKEN_WINDOW_MS = 60_000;
+  private static readonly BAD_TOKEN_MAX_PER_WINDOW = 20;
 
   constructor(
     private readonly sports: SportsService,
@@ -368,6 +376,68 @@ export class SportsBoardController {
   }
 
   /**
+   * Shared gate for the token-authenticated ingest endpoints:
+   *   1. refuse an IP that has already sent too many invalid tokens
+   *      (per-IP bucket, peeked — not incremented — here);
+   *   2. verify the game-scoped token; a failure is recorded in the per-IP
+   *      bucket and rethrown;
+   *   3. only then count the request against the per-GAME bucket, so
+   *      unauthenticated traffic cannot exhaust a game's budget.
+   */
+  private async gateFeedIngest(
+    req: Request,
+    gameId: string,
+    headerToken: string | undefined,
+    queryToken: string | undefined,
+    gameBucket: string,
+    limited: { code: string; message: string },
+  ): Promise<void> {
+    const redis = this.redis.publisher;
+    const badKey = `feed-bad-token:${clientIpFromRequest(req) ?? 'unknown'}`;
+    const bad = await peekIngestLimit(
+      redis,
+      badKey,
+      SportsBoardController.BAD_TOKEN_MAX_PER_WINDOW,
+      SportsBoardController.BAD_TOKEN_WINDOW_MS,
+    );
+    if (bad.limited) {
+      throw new HttpException(
+        { code: 'SPORTS_FEED_AUTH_RATE_LIMITED', message: 'Too many invalid feed tokens — try again later' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    try {
+      // Game-scoped HMAC, verified against the game's CURRENT feed-token
+      // version (incrementing Game.feedTokenVersion revokes all outstanding
+      // tokens). Header accepts every valid shape (legacy bare still verifies
+      // at v0); ?token= is short-lived-structured only (audit W0-01.4).
+      const version = await this.sports.getFeedTokenVersion(gameId);
+      this.assertFeedAuth(gameId, headerToken, queryToken, version);
+    } catch (err) {
+      if (err instanceof HttpException && err.getStatus() < 500) {
+        await checkIngestLimit(
+          redis,
+          badKey,
+          SportsBoardController.BAD_TOKEN_MAX_PER_WINDOW,
+          SportsBoardController.BAD_TOKEN_WINDOW_MS,
+        );
+      }
+      throw err;
+    }
+
+    const { limited: overGameBudget } = await checkIngestLimit(
+      redis,
+      gameBucket,
+      SportsBoardController.FEED_MAX_PER_WINDOW,
+      SportsBoardController.FEED_WINDOW_MS,
+    );
+    if (overGameBudget) {
+      throw new HttpException({ code: limited.code, message: limited.message }, HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+
+  /**
    * Feed auth for the three ingest endpoints (/feed, /cts-snapshot,
    * /swim-timing-snapshot).
    *
@@ -445,6 +515,7 @@ export class SportsBoardController {
     @Param('id') id: string,
     @Headers('x-feed-token') headerToken: string | undefined,
     @Query('token') queryToken: string | undefined,
+    @Req() req: Request,
     @Body()
     body: {
       clockMs?: number;
@@ -466,27 +537,12 @@ export class SportsBoardController {
       raw?: string;
     },
   ) {
-    // Rate-limit BEFORE auth — same defensive ordering as /feed. Multi-
-    // replica-safe (Redis-backed with in-memory fallback) — see
-    // ingest-rate-limit.ts.
-    const { limited } = await checkIngestLimit(
-      this.redis.publisher,
-      `cts:${id}`,
-      SportsBoardController.FEED_MAX_PER_WINDOW,
-      SportsBoardController.FEED_WINDOW_MS,
-    );
-    if (limited) {
-      throw new HttpException({ code: 'SPORTS_CTS_SNAPSHOT_RATE_LIMITED', message: 'CTS snapshot rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
-    }
-
-    // Game-scoped HMAC, verified against the game's CURRENT feed-token version
-    // (incrementing Game.feedTokenVersion revokes all outstanding tokens).
-    // The version read happens AFTER the rate-limit gate so a bad-token flood
-    // can't drive DB reads. Header accepts every valid shape (legacy bare
-    // still verifies at v0); ?token= is short-lived-structured only — see
-    // assertFeedAuth (audit W0-01.4).
-    const ctsVersion = await this.sports.getFeedTokenVersion(id);
-    this.assertFeedAuth(id, headerToken, queryToken, ctsVersion);
+    // Per-IP invalid-token gate, then the token, then the per-game budget —
+    // see gateFeedIngest. Multi-replica-safe (ingest-rate-limit.ts).
+    await this.gateFeedIngest(req, id, headerToken, queryToken, `cts:${id}`, {
+      code: 'SPORTS_CTS_SNAPSHOT_RATE_LIMITED',
+      message: 'CTS snapshot rate limit exceeded',
+    });
 
     return this.sports.ingestCtsSnapshot(id, (body || {}) as Record<string, unknown>, {
       source: 'cts-feed',
@@ -524,23 +580,14 @@ export class SportsBoardController {
     @Headers('x-feed-token') headerToken: string | undefined,
     @Query('token') queryToken: string | undefined,
     @Body() body: SwimTimingSnapshot,
+    @Req() req: Request,
   ) {
-    // Multi-replica-safe (Redis-backed with in-memory fallback) — see
-    // ingest-rate-limit.ts.
-    const { limited } = await checkIngestLimit(
-      this.redis.publisher,
-      `swim:${id}`,
-      SportsBoardController.FEED_MAX_PER_WINDOW,
-      SportsBoardController.FEED_WINDOW_MS,
-    );
-    if (limited) {
-      throw new HttpException({ code: 'SPORTS_SWIM_TIMING_RATE_LIMITED', message: 'Swim timing snapshot rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
-    }
-
-    // Header accepts every valid shape; ?token= is short-lived-structured
-    // only — see assertFeedAuth (audit W0-01.4).
-    const swimVersion = await this.sports.getFeedTokenVersion(id);
-    this.assertFeedAuth(id, headerToken, queryToken, swimVersion);
+    // Per-IP invalid-token gate, then the token, then the per-game budget —
+    // see gateFeedIngest. Multi-replica-safe (ingest-rate-limit.ts).
+    await this.gateFeedIngest(req, id, headerToken, queryToken, `swim:${id}`, {
+      code: 'SPORTS_SWIM_TIMING_RATE_LIMITED',
+      message: 'Swim timing snapshot rate limit exceeded',
+    });
 
     return this.sports.ingestSwimTimingSnapshot(id, body || ({} as SwimTimingSnapshot), {
       source: 'swim-timing-feed',
@@ -572,30 +619,17 @@ export class SportsBoardController {
       eventId?: string;
       occurredAt?: number | string;
     },
+    @Req() req: Request,
   ) {
-    // Rate-limit BEFORE any work (and before the constant-time token check) so
-    // a flood of bad tokens can't be used to hammer the DB or time the HMAC.
-    // Multi-replica-safe (Redis-backed with in-memory fallback) — see
-    // ingest-rate-limit.ts.
-    const { limited } = await checkIngestLimit(
-      this.redis.publisher,
-      id,
-      SportsBoardController.FEED_MAX_PER_WINDOW,
-      SportsBoardController.FEED_WINDOW_MS,
-    );
-    if (limited) {
-      throw new HttpException({ code: 'SPORTS_FEED_RATE_LIMITED', message: 'Feed rate limit exceeded' }, HttpStatus.TOO_MANY_REQUESTS);
-    }
-
     // Token in the X-Feed-Token header (preferred) or ?token= (URL-only
-    // systems; short-lived structured tokens only — audit W0-01.4).
-    // Constant-time, game-scoped verification against the game's CURRENT
-    // feed-token version — incrementing Game.feedTokenVersion revokes every
-    // outstanding token for the game. The version read happens AFTER the
-    // rate-limit gate so a bad-token flood can't drive DB reads. Legacy bare
-    // tokens still verify at version 0 via the header.
-    const feedVersion = await this.sports.getFeedTokenVersion(id);
-    this.assertFeedAuth(id, headerToken, queryToken, feedVersion);
+    // systems; short-lived structured tokens only — audit W0-01.4). An IP
+    // that keeps sending invalid tokens is refused before any DB read; the
+    // per-game budget counts only authenticated requests — see
+    // gateFeedIngest. Multi-replica-safe (ingest-rate-limit.ts).
+    await this.gateFeedIngest(req, id, headerToken, queryToken, id, {
+      code: 'SPORTS_FEED_RATE_LIMITED',
+      message: 'Feed rate limit exceeded',
+    });
 
     const outcome = await this.sports.ingestFeedPacket(id, body || {});
     return outcome.accepted
