@@ -1,12 +1,14 @@
 version: '3.8'
 
+# Every published port binds to 127.0.0.1: these are development services with
+# fixed dev credentials, reachable from this machine only, not from the network.
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       - NODE_ENV=development
       - PORT=8080
@@ -40,7 +42,7 @@ services:
       - POSTGRES_PASSWORD=cms_password
       - POSTGRES_DB=school_cms
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -52,7 +54,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -65,8 +67,8 @@ services:
   growthbook:
     image: growthbook/growthbook:latest
     ports:
-      - "3100:3100"   # GrowthBook UI + API
-      - "3300:3300"   # GrowthBook websocket / streaming (optional)
+      - "127.0.0.1:3100:3100"   # GrowthBook UI + API
+      - "127.0.0.1:3300:3300"   # GrowthBook websocket / streaming (optional)
     environment:
       - MONGODB_URI=mongodb://mongodb:27017/growthbook
       - APP_ORIGIN=http://localhost:3100
