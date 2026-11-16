@@ -133,6 +133,37 @@ export async function checkIngestLimit(
   }
 }
 
+const PEEK_LUA = `
+return tonumber(redis.call('GET', KEYS[1]) or '0')
+`;
+
+/**
+ * Read `key`'s current count WITHOUT recording a hit. Used for
+ * failed-attempt buckets: peek before doing the check, and record (with
+ * `checkIngestLimit`) only when the attempt fails, so successful requests
+ * never consume the budget. `limited` is true once the bucket already holds
+ * `max` hits in the window.
+ */
+export async function peekIngestLimit(
+  redis: IngestRateLimitRedisClient | null | undefined,
+  key: string,
+  max: number,
+  windowMs: number,
+): Promise<IngestLimitResult> {
+  const fromMemory = (): IngestLimitResult => {
+    const now = Date.now();
+    const recent = (memoryHits.get(key) || []).filter((t) => t > now - windowMs);
+    return { limited: recent.length >= max, count: recent.length };
+  };
+  if (!redis || redis.status !== 'ready') return fromMemory();
+  try {
+    const count = Number(await redis.eval(PEEK_LUA, 1, `ingest-rl:${key}`));
+    return { limited: count >= max, count };
+  } catch {
+    return fromMemory();
+  }
+}
+
 /**
  * Test-only helper: clears the module-scoped in-memory fallback store so
  * specs don't leak state between cases/files.

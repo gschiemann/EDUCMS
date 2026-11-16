@@ -52,6 +52,8 @@ import { newOAuthStateToken, verifySquareSignature } from './providers/square';
 import { getConnector } from './providers/registry';
 import { getPosProvider } from '@cms/api-types';
 import { publicApiBase } from '../security/public-api-base';
+import { clientIpFromRequest } from '../security/client-ip';
+import { checkIngestLimit, peekIngestLimit } from '../security/ingest-rate-limit';
 import {
   bindingMatches,
   mintBindingNonce,
@@ -59,6 +61,10 @@ import {
   takeBrowserBinding,
   type OAuthBindingSpec,
 } from '../security/oauth-browser-binding';
+
+/** Custom-webhook receiver: failed authentications allowed per IP per window. */
+export const CUSTOM_WEBHOOK_MAX_FAILURES = 10;
+export const CUSTOM_WEBHOOK_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 
 /** Browser binding for the public callback (see oauth-browser-binding.ts). */
 const POS_OAUTH_BINDING: OAuthBindingSpec = {
@@ -493,12 +499,33 @@ export class PosOAuthController {
       // Unknown / unsupported provider for the generic receiver.
       throw new HttpException({ code: 'POS_WEBHOOK_PROVIDER_UNKNOWN', message: 'Unknown webhook provider' }, HttpStatus.NOT_FOUND);
     }
+    // Per-IP failed-attempt limit: an IP that has failed authentication
+    // CUSTOM_WEBHOOK_MAX_FAILURES times in the window is refused before any
+    // secret comparison. Successful pushes never consume this budget.
+    const failKey = `pos-custom-webhook-fail:${clientIpFromRequest(req) ?? 'unknown'}`;
+    const failures = await peekIngestLimit(
+      this.redis?.publisher,
+      failKey,
+      CUSTOM_WEBHOOK_MAX_FAILURES,
+      CUSTOM_WEBHOOK_FAILURE_WINDOW_MS,
+    );
+    if (failures.limited) {
+      throw new HttpException(
+        { code: 'POS_WEBHOOK_TOO_MANY_FAILURES', message: 'Too many failed attempts — try again later' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    const recordFailure = () =>
+      checkIngestLimit(this.redis?.publisher, failKey, CUSTOM_WEBHOOK_MAX_FAILURES, CUSTOM_WEBHOOK_FAILURE_WINDOW_MS);
+
     if (!secret) {
+      await recordFailure();
       throw new HttpException({ code: 'POS_WEBHOOK_SECRET_HEADER_MISSING', message: 'Missing X-Webhook-Secret header' }, HttpStatus.UNAUTHORIZED);
     }
 
     const conn = await this.svc.findCustomWebhookConnectionBySecret(secret);
     if (!conn) {
+      await recordFailure();
       // Don't leak whether the secret was wrong vs. the connection
       // missing — both are "we can't authenticate this push."
       this.logger.warn('Custom POS webhook: no connection matched the supplied secret');
