@@ -625,6 +625,12 @@ export class ScreensController {
 
   private static readonly emergencyRevLastServed = new Map<string, number>();
 
+  /** True while `screenId` was served an authenticated revision under the floor ago. */
+  private emergencyRevTooFast(screenId: string, nowMs: number): boolean {
+    const lastServed = ScreensController.emergencyRevLastServed.get(screenId);
+    return lastServed !== undefined && nowMs - lastServed < ScreensController.EMERGENCY_REV_MIN_INTERVAL_MS;
+  }
+
   /**
    * Device auth, one place. Delegates to the shared verifier so the
    * revocation / REVOKED-status / credential-epoch checks can never drift
@@ -6125,21 +6131,18 @@ export class ScreensController {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
 
-    // Per-screen floor. Checked BEFORE auth work so a token-hammering client
-    // cannot make us do crypto either. The player never polls faster than 5 s.
+    // Per-screen floor. The player never polls faster than 5 s. The floor is
+    // READ before any auth work (an id served under 2 s ago is refused without
+    // crypto), but it is only STAMPED after the request has authenticated as
+    // this screen, so the budget belongs to the screen's own credential: a
+    // request that fails device auth never moves it.
     const now = Date.now();
-    const lastServed = ScreensController.emergencyRevLastServed.get(id);
-    if (lastServed !== undefined && now - lastServed < ScreensController.EMERGENCY_REV_MIN_INTERVAL_MS) {
+    if (this.emergencyRevTooFast(id, now)) {
       res.setHeader('Retry-After', '1');
       return res.status(HttpStatus.TOO_MANY_REQUESTS).json({
         code: 'SCREEN_EMERGENCY_REV_TOO_FAST',
         message: 'Emergency revision polled faster than the per-screen floor',
       });
-    }
-    ScreensController.emergencyRevLastServed.set(id, now);
-    if (ScreensController.emergencyRevLastServed.size > 10_000) {
-      const oldest = ScreensController.emergencyRevLastServed.keys().next().value;
-      if (oldest !== undefined) ScreensController.emergencyRevLastServed.delete(oldest);
     }
 
     // Pass 1 — the cheap gate. Signature + `sub === :id` are pure crypto; the
@@ -6155,6 +6158,22 @@ export class ScreensController {
         code: 'SCREEN_DEVICE_AUTH_REQUIRED',
         message: `Device auth required (${cheap.reason})`,
       });
+    }
+
+    // Authenticated as this screen: re-check (two concurrent polls on one
+    // credential) and stamp the floor.
+    const authedAt = Date.now();
+    if (this.emergencyRevTooFast(id, authedAt)) {
+      res.setHeader('Retry-After', '1');
+      return res.status(HttpStatus.TOO_MANY_REQUESTS).json({
+        code: 'SCREEN_EMERGENCY_REV_TOO_FAST',
+        message: 'Emergency revision polled faster than the per-screen floor',
+      });
+    }
+    ScreensController.emergencyRevLastServed.set(id, authedAt);
+    if (ScreensController.emergencyRevLastServed.size > 10_000) {
+      const oldest = ScreensController.emergencyRevLastServed.keys().next().value;
+      if (oldest !== undefined) ScreensController.emergencyRevLastServed.delete(oldest);
     }
 
     // Tenant scoping is structural, not a check we could forget: the tenant
