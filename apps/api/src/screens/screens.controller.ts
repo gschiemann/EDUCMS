@@ -107,6 +107,7 @@ import {
 } from './manifest-hot-cache';
 import type { ManifestScreenRow } from './manifest-hot-cache';
 import { enforceDeviceUnpairPin, manifestUnpairPin } from './screen-pin';
+import { PAIR_FAIL_LIMIT, PAIR_FAIL_WINDOW_MS, PairingAttemptLimiter } from './pairing-attempt-limiter';
 // 2026-09-02 (efficiency P0-2/P0-3) — the cheap emergency-revision token
 // served by GET /:id/emergency-rev. The manifest handler RECORDS what it
 // decided (zero extra queries — every input was already read); the revision
@@ -624,6 +625,36 @@ export class ScreensController {
   private static readonly EMERGENCY_REV_MIN_INTERVAL_MS = 2_000;
 
   private static readonly emergencyRevLastServed = new Map<string, number>();
+
+  /** Per-user wrong-pairing-code limit for POST /pair (pairing-attempt-limiter.ts). */
+  private readonly pairLimiter = new PairingAttemptLimiter(() => (this.redisService as any)?.publisher ?? null);
+
+  /**
+   * One wrong pairing code by this user. The failure that reaches the limit
+   * writes one audit row (never the code itself).
+   */
+  private async notePairFailure(req: any, userId: string, reason: 'not-found' | 'other-organization'): Promise<void> {
+    if (!userId) return;
+    const { failures, tripped } = await this.pairLimiter.recordFailure(userId);
+    if (!tripped) return;
+    await this.prisma.client.auditLog
+      .create({
+        data: {
+          tenantId: req.user?.tenantId ?? null,
+          userId: req.user?.id ?? null,
+          action: 'SCREEN_PAIRING_ATTEMPTS_LIMITED',
+          targetType: 'User',
+          targetId: userId,
+          details: JSON.stringify({
+            failures,
+            limit: PAIR_FAIL_LIMIT,
+            windowMinutes: PAIR_FAIL_WINDOW_MS / 60_000,
+            lastReason: reason,
+          }),
+        },
+      })
+      .catch((e: Error) => console.warn('[pair] attempt-limit audit write failed', e?.message));
+  }
 
   /** True while `screenId` was served an authenticated revision under the floor ago. */
   private emergencyRevTooFast(screenId: string, nowMs: number): boolean {
@@ -3688,13 +3719,23 @@ export class ScreensController {
     const code = body.pairingCode?.trim().toUpperCase();
     if (!code) throw new HttpException({ code: 'SCREEN_PAIRING_CODE_REQUIRED', message: 'Pairing code is required' }, HttpStatus.BAD_REQUEST);
 
+    // 2026-11-16 — at most PAIR_FAIL_LIMIT wrong codes per user per window;
+    // checked before the lookup, so a correct code is refused too while the
+    // limit holds (pairing-attempt-limiter.ts).
+    const pairUserId = String(req.user?.id ?? req.user?.userId ?? '');
+    if (pairUserId) await this.pairLimiter.check(pairUserId);
+
     const screen = await this.prisma.client.screen.findUnique({
       where: { pairingCode: code },
     });
 
-    if (!screen) throw new HttpException({ code: 'SCREEN_PAIRING_CODE_INVALID', message: 'Invalid pairing code. Make sure the code matches what is shown on the screen.' }, HttpStatus.NOT_FOUND);
+    if (!screen) {
+      await this.notePairFailure(req, pairUserId, 'not-found');
+      throw new HttpException({ code: 'SCREEN_PAIRING_CODE_INVALID', message: 'Invalid pairing code. Make sure the code matches what is shown on the screen.' }, HttpStatus.NOT_FOUND);
+    }
 
     if (screen.tenantId && screen.tenantId !== req.user.tenantId) {
+      await this.notePairFailure(req, pairUserId, 'other-organization');
       throw new HttpException({ code: 'SCREEN_ALREADY_PAIRED', message: 'This screen is already paired to another organization' }, HttpStatus.CONFLICT);
     }
 
