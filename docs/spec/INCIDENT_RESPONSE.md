@@ -143,19 +143,31 @@ missing filter or an authz regression, not a DB-policy failure.
 ## 7. Communication
 
 - **Internal:** declare in the team channel with SEV + IC + one-line impact.
-  Scribe keeps the timeline.
+  Scribe keeps the timeline. Escalation and the on-call path are in
+  [SLO_AND_ONCALL.md](../SLO_AND_ONCALL.md) §5.
 - **District-facing (SEV-1/2 with safety or data impact):** Comms Lead notifies
   affected district contacts. For a **false emergency**, the message is: what
   showed, that it was cleared at HH:MM, that it was not a real threat, and the
   cause once known. For a **data incident**, follow the DPA breach clause +
   applicable state breach-notification law (`COMPLIANCE.md` §5).
-- **Status:** if/when a public status page exists (Phase C backlog), post there.
+- **Status:** the public status page is `/status` (`apps/web/src/app/status/page.tsx`,
+  served by Vercel, so it still loads when the API is down). It shows live health
+  checks only — API, database, realtime delivery, emergency path, storage — with no
+  stored history and no field for an incident notice, so it reflects an outage by
+  itself but cannot carry a written update. Written updates go through the Comms Lead
+  as above; anything sent to a customer needs the owner's written approval
+  (`AGENTS.md`, "Consequential").
 
 ## 8. Recovery & rollback
 
-- **Roll back code:** `git reset --hard backup/pre-<thing>-TIMESTAMP` per
-  `docs/BACKUP_AND_ROLLBACK.md`; redeploy; verify `/health` + `prod-smoke`.
-- **Before risky changes** (so rollback exists): tag + push per the same doc.
+- **Roll back code:** revert the PR or redeploy the previous build, per
+  `docs/BACKUP_AND_ROLLBACK.md` ("A) Roll back a bad change"). When production is
+  down, redeploy the last healthy Railway deployment / promote the previous Vercel
+  deployment first, then revert the PR through a pull request so `master` and
+  production agree. Never `git reset --hard` or force-push `master`. Verify
+  `/api/v1/health` reports the `commit` you meant to restore, then `prod-smoke`.
+- **Before risky changes:** migrations stay additive so the previous build still
+  runs; a `backup/*` tag is for comparison only, never for moving `master`.
 - **Verify before declaring resolved** — screens normal, health green, smoke
   green, Vercel/Railway "Ready" newer than the fix (docs/governance/AUDIT-SURFACE.md §21).
 
@@ -169,7 +181,8 @@ missing filter or an authz regression, not a DB-policy failure.
    permanent guardrails. Sweep the whole class, not just the one instance
    (memory: `feedback_audits_must_be_exhaustive`).
 4. Close any KNOWN GAP this incident exercised in `SECURITY_BASELINE.md` /
-   `THREAT_MODEL.md`.
+   `THREAT_MODEL.md`, and update its row in the gap register,
+   [SECURITY_GAPS.md](SECURITY_GAPS.md).
 
 ---
 
@@ -181,8 +194,9 @@ curl https://<railway-api>/api/v1/health
 curl https://<railway-api>/api/v1/health/ready
 curl https://<railway-api>/api/v1/health/emergency-path
 
-# Roll back to last-good (see docs/BACKUP_AND_ROLLBACK.md)
-git reset --hard backup/pre-<thing>-YYYYMMDD-HHMMSS && <redeploy>
+# Roll back (see docs/BACKUP_AND_ROLLBACK.md): redeploy the previous build in
+# Railway / Vercel, or revert the PR on a branch and merge it through a PR:
+git revert -m 1 <merge-commit-sha>   # on <vendor>/revert-<topic>; never reset master
 
 # After rotating a secret, redeploy so requireSecret() reloads it.
 ```
