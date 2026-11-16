@@ -150,7 +150,7 @@ the exact over-claim the operator has banned repeatedly.
 `.husky/pre-commit` blocks any commit that would drift `pnpm-lock.yaml`, and any staged
 player/widget file containing `inset: 0` (For AI Assistants #10). `.husky/pre-push` runs
 `pnpm preflight` (the api + web builds) and prints non-blocking workspace-hygiene warnings;
-neither hook scans for secrets — gitleaks runs in CI (`ci.yml`).
+neither hook scans for secrets — gitleaks runs in CI (`secret-scan.yml`).
 Activates automatically after `pnpm install` (via the `prepare` script).
 On Windows, Git for Windows runs the hook through its bundled `sh.exe`;
 no extra config needed.

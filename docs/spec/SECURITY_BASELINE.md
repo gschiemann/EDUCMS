@@ -230,7 +230,7 @@ overstates controls is false assurance to a district IT reviewer and the exact
 - Production advisory audit on every push and hourly (`scripts/npm-advisory-audit.cjs`).
 - Trivy container scan, blocking job (`.github/workflows/ci.yml`, `.trivyignore.yaml`).
 - Node runtime security-release watch, hourly (`scripts/check-node-security.cjs`).
-- gitleaks (`ci.yml`); keystore guard (`scripts/check-tracked-keystores.cjs`).
+- gitleaks (`secret-scan.yml`, every PR and every master push, docs included); keystore guard (`scripts/check-tracked-keystores.cjs`).
 - OSV-Scanner on the APK's Gradle lock — report-only (`player-kotlin-check.yml`).
 - Action SHA-pin drift check — report-only (`.github/scripts/check-action-pins.cjs`).
 - Typed env schema; CI fails on an undeclared environment read
