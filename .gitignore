@@ -114,3 +114,17 @@ scripts/loadtest/.out/
 
 # Field/test APK builds at the repo root are never committed (public repo)
 *.apk
+
+# Environment files at the repo root other than the documented template.
+/.env.*
+!/.env.example
+
+# Signing material. The tracked debug keystore is the one exception; its
+# retirement is tracked separately and it must not be deleted from here.
+*.jks
+*.keystore
+!apps/player/app/debug.keystore
+
+# Database dumps, plain or encrypted (see docs/BACKUP_AND_ROLLBACK.md).
+*.dump
+*.dump.enc

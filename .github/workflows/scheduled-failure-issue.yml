@@ -56,6 +56,7 @@ on:
       - PR Provenance
       - Prod Smoke
       - Rulebook
+      - Secret Scan
       - Security Watch
       - Signing Secrets
       - Supply Chain Scan
@@ -70,7 +71,13 @@ permissions:
 
 jobs:
   report:
-    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    # Only runs this repository started itself: never a pull_request run (its
+    # outcome says nothing about master and its inputs come from a branch), and
+    # never a run whose head is in another repository (a fork).
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'failure'
+      && github.event.workflow_run.event != 'pull_request'
+      && github.event.workflow_run.head_repository.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
@@ -166,9 +173,15 @@ jobs:
   # "ops: <name> failed (...)" issue(s) with a comment naming the green run.
   # Matches on the exact title prefix the opener above writes, label `ops`.
   # No issue = nothing to do; several = all closed. A green run on a pull
-  # request branch does not count (it says nothing about the default branch).
+  # request branch does not count (it says nothing about the default branch),
+  # and neither does a run whose head is in another repository, even when that
+  # repository's branch carries the default branch's name.
   close-on-green:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == github.event.repository.default_branch }}
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event != 'pull_request'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+      && github.event.workflow_run.head_branch == github.event.repository.default_branch }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:

@@ -50,9 +50,9 @@ Repository default (read 2026-11-01): `default_workflow_permissions: read`, work
 | Workflow file | Triggers | `permissions:` as written | Secrets it references |
 |---|---|---|---|
 | `a11y.yml` | pull_request, schedule, dispatch | `contents: read` (also on job `axe`) | — |
-| `android-player-apk.yml` | push of tags `player-v*` / `manager-v*`, dispatch | **`contents: write`** (to create Releases) | `GITHUB_TOKEN`, `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` |
+| `android-player-apk.yml` | push of tags `player-v*` / `manager-v*`, dispatch | `contents: read`; job `publish-release` only: **`contents: write`** (to create Releases). The signing job `build-apk` is read-only | `GITHUB_TOKEN`, `RELEASE_KEYSTORE_BASE64`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` |
 | `capability-registry.yml` | push, pull_request | `contents: read` | — |
-| `ci.yml` | push, pull_request | `contents: read` (also on each of its 8 jobs) | `GITHUB_TOKEN` (gitleaks) |
+| `ci.yml` | push, pull_request, merge_group | `contents: read` (also on each of its 8 jobs) | — |
 | `cross-browser.yml` | pull_request, schedule, dispatch | `contents: read` | — |
 | `db-backup.yml` | schedule (daily), dispatch | `contents: read` | `SUPABASE_DB_URL`, `BACKUP_ENC_KEY` |
 | `deploy-reliability.yml` | push, pull_request | `contents: read` | — |
@@ -67,13 +67,14 @@ Repository default (read 2026-11-01): `default_workflow_permissions: read`, work
 | `poster-freshness.yml` | push, pull_request | `contents: read` | — |
 | `pr-provenance.yml` (new) | pull_request | `contents: read`, `pull-requests: read` | — |
 | `prod-smoke.yml` | push to `master`, schedule, dispatch | `contents: read` (hands `github.token` to `gh` in three steps) | `PROD_SMOKE_EMAIL`, `PROD_SMOKE_PASSWORD` |
+| `secret-scan.yml` | push to `master`, pull_request, dispatch | `contents: read` (also on job `secret-scan`) | `GITHUB_TOKEN` (gitleaks) |
 | `scheduled-failure-issue.yml` | workflow_run (every other workflow) | `issues: write`, `actions: read`, `contents: read` | `ROUTINE_FIRE_URL`, `ROUTINE_FIRE_TOKEN` |
 | `security-watch.yml` | schedule (hourly), dispatch | `contents: read` | — |
 | `signing-secrets.yml` | push, pull_request | `contents: read` | — |
 | `taurus-safety.yml` | push, pull_request | `contents: read` | — |
 | `tenant-isolation.yml` | push, pull_request | `contents: read` | — |
 
-Notes. Only `android-player-apk.yml` holds `contents: write` (it runs only on a release tag or by hand); `scheduled-failure-issue.yml` holds `issues: write`. `scheduled-failure-issue.yml` runs the default branch's definition (that is how `workflow_run` works), so a pull request cannot rewrite it; its header comment still says "No secrets" although it references two. No workflow uses `pull_request_target`. Third-party actions are pinned by commit SHA by convention; the repository setting that would enforce it (`sha_pinning_required`) is off, and the repository allows all actions.
+Notes. Only `android-player-apk.yml` holds `contents: write`, in its `publish-release` job alone, which never sees the signing key (it runs only on a release tag); `scheduled-failure-issue.yml` holds `issues: write`. `scheduled-failure-issue.yml` runs the default branch's definition (that is how `workflow_run` works), so a pull request cannot rewrite it; its header comment still says "No secrets" although it references two. No workflow uses `pull_request_target`. Third-party actions are pinned by commit SHA by convention; the repository setting that would enforce it (`sha_pinning_required`) is off, and the repository allows all actions.
 
 ### 2.2 Repository secrets (names only; checked with `gh secret list` on 2026-11-01)
 
