@@ -54,11 +54,14 @@ const ALLOWED_PARENTS = new Set([
   '@parcel/watcher',
 ]);
 
-/** Glob matchers a first-party file must not import without a re-review. */
-const MATCHERS = ['picomatch', 'micromatch', 'anymatch', 'minimatch', 'fast-glob', 'tinyglobby', 'glob', 'globby', 'chokidar'];
-const MATCHER_IMPORT = new RegExp(
-  `(?:from\\s+|require\\(\\s*|import\\(\\s*)['"](?:${MATCHERS.map((m) => m.replace(/[-/]/g, '\\$&')).join('|')})(?:/[^'"]*)?['"]`,
-);
+/**
+ * A line that loads a glob matcher: picomatch, micromatch, anymatch, minimatch,
+ * fast-glob, tinyglobby, glob, globby or chokidar, by `from`, `require(` or
+ * `import(`, with or without a subpath. Written as a literal on purpose: no
+ * pattern is assembled from strings here.
+ */
+const MATCHER_IMPORT =
+  /(?:from\s+|require\(\s*|import\(\s*)['"](?:picomatch|micromatch|anymatch|minimatch|fast-glob|tinyglobby|glob|globby|chokidar)(?:\/[^'"]*)?['"]/;
 const SOURCE_ROOTS = ['apps/api/src', 'apps/web/src', 'apps/renderer/src', 'apps/edge/src', 'packages'];
 const SOURCE_EXT = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/;
 const SKIP_DIR = new Set(['node_modules', 'dist', '.next', '.turbo', 'build', 'coverage', 'generated']);
