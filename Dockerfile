@@ -245,7 +245,23 @@ WORKDIR /app
 # static-library package for building against freetype. Nothing in a
 # runtime image compiles against it; `freetype` itself (kept) is the
 # shared library Chromium actually loads.
-RUN apk add --no-cache \
+#
+# THESE PACKAGES ARE ONLY AS FRESH AS THE LAST TIME THIS LAYER WAS BUILT
+# (2026-11-17). They are not pinned - Alpine serves one version per branch -
+# so each is whatever the mirror had when this layer was built. A builder
+# that keeps layers between builds reuses this one for as long as the
+# instruction and the base image are unchanged, so a Chromium or OpenSSL
+# security update reaches production only when something here changes. CI
+# ran this layer fresh on 2026-11-16 (its log shows the packages installing),
+# so CI can be testing a newer Chromium than production runs, and nothing
+# says so.
+#
+# Moving the date below changes the instruction, so the packages are fetched
+# again. Move it when Alpine ships a security update this image needs; the
+# build log prints "Installing chromium (<version>)". It is a refresh, not a
+# pin. apps/renderer/Dockerfile carries the same line; move both together.
+ARG OS_PACKAGES_REFRESHED=2026-11-17
+RUN echo "os packages refreshed on ${OS_PACKAGES_REFRESHED}" && apk add --no-cache \
     openssl \
     chromium \
     nss \
