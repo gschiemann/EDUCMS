@@ -3327,6 +3327,36 @@ export function useInviteUser() {
   });
 }
 
+/** What the mail provider last reported for an invitation, in the API's words. */
+export type InviteDelivery =
+  | 'delivered' | 'bounced' | 'delayed' | 'complained' | 'failed' | 'sent' | 'not_sent' | 'unknown';
+
+export type PendingInvite = {
+  userId: string;
+  email: string;
+  role: string;
+  sentAt: string;
+  expiresAt: string;
+  expired: boolean;
+  delivery: InviteDelivery;
+  deliveryCheckedAt: string | null;
+};
+
+/**
+ * Invitations nobody has accepted yet, with their expiry and delivery state
+ * (2026-11-18). Read when the People page opens and again after an invitation
+ * is sent (it shares the `users` key the invite mutation invalidates). It is
+ * never polled.
+ */
+export function usePendingInvites(enabled = true) {
+  return useQuery<{ invites: PendingInvite[] }>({
+    queryKey: ['users', 'pending-invites'],
+    queryFn: () => apiFetch('/invites'),
+    staleTime: 60_000,
+    enabled,
+  });
+}
+
 // Admin-sets-password path: create a user directly, skip the email invite.
 export function useCreateUserDirect() {
   const qc = useQueryClient();

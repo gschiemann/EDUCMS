@@ -19,10 +19,15 @@
  *   - a location/scope column — `GET /users` selects id, email, role,
  *     createdAt, firstName, lastName, mfaRequired, mfaTotpVerifiedAt,
  *     status. No location, no child-tenant id.
- *   - invitation expiry / resend / revoke — `UserInvite` rows exist in the
- *     schema but no endpoint lists them; the only invite signal reaching the
- *     client is `status === 'INVITED'` on the user row. "Pending invitations"
- *     is therefore an honest view of THAT, and says so.
+ *   - invitation revoke: no endpoint removes a pending invitation.
+ *
+ * 2026-11-18: `GET /invites` now lists pending invitations with their expiry
+ * and what the mail provider last reported, and inviting the same address
+ * again issues a fresh link, so "Pending invitations" shows both and offers
+ * "Send again". The one-time link is shown after EVERY invitation, not only
+ * when the mail could not be sent: two invitations were accepted by the
+ * recipients' mail server, never reached an inbox, and the administrator had
+ * no link to hand over.
  */
 import { useMemo, useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
@@ -37,7 +42,7 @@ import {
   useContentApprovalConfig, useToggleContentApproval,
   useMfaEnforcement, useSetMfaEnforced,
   useSendEmailChangeCode, useChangeUserEmail, useCreateSetupLink,
-  useSetupLinkAccounts, useBulkSetupLinks,
+  useSetupLinkAccounts, useBulkSetupLinks, usePendingInvites, type PendingInvite,
   type TeamUser,
 } from '@/hooks/use-api';
 import { setupLinksCsv, setupLinksCsvFilename } from '@/lib/setup-links-csv';
@@ -374,7 +379,9 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
           acceptUrl: res.acceptUrl,
         });
       } else {
-        setInviteStatus({ kind: 'ok', message: t('settings.cc.people.inviteSent', { email: newEmail.trim() }) });
+        // The mail was accepted for sending. That is not the same as arriving, so
+        // the one-time link stays on screen for the administrator to hand over.
+        setInviteStatus({ kind: 'ok', message: t('settings.cc.people.inviteSent', { email: newEmail.trim() }), acceptUrl: res?.acceptUrl });
         setShowAddUser(false);
       }
       setNewEmail(''); setNewFirstName(''); setNewLastName('');
@@ -402,6 +409,49 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
   }, [rows, query, roleFilter, statusFilter]);
 
   const pending = useMemo(() => rows.filter((u) => u.status === 'INVITED'), [rows]);
+
+  // ── Pending invitations: expiry, delivery state, send again (2026-11-18) ──
+  const pendingInvites = usePendingInvites(isAdminCaller);
+  const pendingInviteList = pendingInvites.data?.invites;
+  const inviteByUserId = useMemo(() => {
+    const map = new Map<string, PendingInvite>();
+    for (const inv of pendingInviteList ?? []) map.set(inv.userId, inv);
+    return map;
+  }, [pendingInviteList]);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [resent, setResent] = useState<{ userId: string; message: string; acceptUrl?: string; error?: boolean } | null>(null);
+  const [resentCopied, setResentCopied] = useState(false);
+  const deliveryText = (delivery: string): string => {
+    switch (delivery) {
+      case 'delivered': return t('settings.cc.people.inviteDeliveryDelivered');
+      case 'bounced': return t('settings.cc.people.inviteDeliveryBounced');
+      case 'delayed': return t('settings.cc.people.inviteDeliveryDelayed');
+      case 'complained': return t('settings.cc.people.inviteDeliveryComplained');
+      case 'failed':
+      case 'not_sent': return t('settings.cc.people.inviteDeliveryFailed');
+      case 'sent': return t('settings.cc.people.inviteDeliverySent');
+      default: return t('settings.cc.people.inviteDeliveryUnknown');
+    }
+  };
+  const handleSendAgain = async (u: TeamUser) => {
+    setResent(null);
+    setResentCopied(false);
+    setResendingId(u.id);
+    try {
+      // Inviting the same address again issues a fresh link and retires the old one.
+      const res = await inviteUser.mutateAsync({ email: u.email, role: u.role }) as { acceptUrl?: string; emailDelivered?: boolean };
+      setResent({
+        userId: u.id,
+        message: t(res?.emailDelivered === false ? 'settings.cc.people.inviteSentAgainNoMail' : 'settings.cc.people.inviteSentAgain', { email: u.email }),
+        acceptUrl: res?.acceptUrl,
+      });
+    } catch (err) {
+      // Same wording rule as the invite form above: the server's own sentence, else the generic one.
+      setResent({ userId: u.id, message: (err as Error)?.message || t('settings.cc.people.inviteFailed'), error: true });
+    } finally {
+      setResendingId(null);
+    }
+  };
   const mfaRequiredCount = useMemo(() => rows.filter((u) => u.mfaRequired).length, [rows]);
 
   const approval = useContentApprovalConfig();
@@ -476,7 +526,10 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
             }`}
           >
             <p className="font-medium">{inviteStatus.message}</p>
-            {inviteStatus.kind === 'copy' && inviteStatus.acceptUrl && (
+            {inviteStatus.kind === 'ok' && inviteStatus.acceptUrl && (
+              <p className="mt-1">{t('settings.cc.people.inviteLinkHint')}</p>
+            )}
+            {(inviteStatus.kind === 'copy' || inviteStatus.kind === 'ok') && inviteStatus.acceptUrl && (
               <div className="mt-2 flex flex-col sm:flex-row gap-2">
                 <label htmlFor="people-accept-url" className="sr-only">{t('settings.cc.people.acceptLinkLabel')}</label>
                 <input
@@ -484,7 +537,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                   readOnly
                   value={inviteStatus.acceptUrl}
                   onFocus={(e) => e.currentTarget.select()}
-                  className="flex-1 min-h-[38px] px-2 rounded-[8px] border border-amber-300 bg-white text-[11px] font-mono"
+                  className={`flex-1 min-h-[38px] px-2 rounded-[8px] border bg-white text-[11px] font-mono ${inviteStatus.kind === 'ok' ? 'border-emerald-300' : 'border-amber-300'}`}
                 />
                 <button
                   type="button"
@@ -493,7 +546,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                     setCopied(true);
                     setTimeout(() => setCopied(false), 1500);
                   }}
-                  className="min-h-[38px] px-3 rounded-[8px] bg-amber-600 hover:bg-amber-700 text-white text-[12px] font-medium"
+                  className={`min-h-[38px] px-3 rounded-[8px] text-white text-[12px] font-medium ${inviteStatus.kind === 'ok' ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-amber-600 hover:bg-amber-700'}`}
                 >
                   {copied ? t('settings.common.copied') : t('settings.cc.people.copyLink')}
                 </button>
@@ -1240,14 +1293,66 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
           <p className="text-[13px] text-slate-500">{t('settings.cc.people.invitesEmpty')}</p>
         ) : (
           <ul className="divide-y divide-slate-100 border-t border-slate-100">
-            {pending.map((u) => (
-              <li key={u.id} className="flex flex-wrap items-center gap-2 px-2 py-2.5">
-                <MailCheck className="w-4 h-4 text-amber-500 shrink-0" aria-hidden />
-                <span className="text-[13px] text-slate-900 min-w-0 truncate">{u.email}</span>
-                <span className="text-[12px] text-slate-500">{tenantCopy.roleLabel(u.role)}</span>
-                <StatusPill kind="attention" label={t('settings.team.invitedBadge')} className="ml-auto" />
-              </li>
-            ))}
+            {pending.map((u) => {
+              const inv = inviteByUserId.get(u.id);
+              return (
+                <li key={u.id} className="px-2 py-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <MailCheck className="w-4 h-4 text-amber-500 shrink-0" aria-hidden />
+                    <span className="text-[13px] text-slate-900 min-w-0 truncate">{u.email}</span>
+                    <span className="text-[12px] text-slate-500">{tenantCopy.roleLabel(u.role)}</span>
+                    <StatusPill kind="attention" label={t('settings.team.invitedBadge')} className="ml-auto" />
+                    {isAdminCaller && (
+                      <button
+                        type="button"
+                        onClick={() => handleSendAgain(u)}
+                        disabled={resendingId !== null}
+                        className="min-h-[38px] px-3 rounded-[8px] border border-slate-300 bg-white hover:bg-slate-50 text-[12px] font-medium text-slate-800 disabled:opacity-60"
+                      >
+                        {resendingId === u.id ? t('settings.cc.people.inviteSendAgainWorking') : t('settings.cc.people.inviteSendAgain')}
+                      </button>
+                    )}
+                  </div>
+                  {inv && (
+                    <p className="mt-1 pl-6 text-[12px] text-slate-600" data-testid={`invite-state-${u.id}`}>
+                      {deliveryText(inv.delivery)}{' '}
+                      {t(inv.expired ? 'settings.cc.people.inviteExpired' : 'settings.cc.people.inviteExpires', { date: fmtDate(inv.expiresAt) })}
+                    </p>
+                  )}
+                  {resent && resent.userId === u.id && (
+                    <div
+                      role="status"
+                      className={`mt-2 ml-6 rounded-[10px] border px-3 py-2.5 text-[12px] ${resent.error ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}
+                    >
+                      <p className="font-medium">{resent.message}</p>
+                      {resent.acceptUrl && (
+                        <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                          <label htmlFor={`people-resent-url-${u.id}`} className="sr-only">{t('settings.cc.people.acceptLinkLabel')}</label>
+                          <input
+                            id={`people-resent-url-${u.id}`}
+                            readOnly
+                            value={resent.acceptUrl}
+                            onFocus={(e) => e.currentTarget.select()}
+                            className="flex-1 min-h-[38px] px-2 rounded-[8px] border border-emerald-300 bg-white text-[11px] font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(resent.acceptUrl || '');
+                              setResentCopied(true);
+                              setTimeout(() => setResentCopied(false), 1500);
+                            }}
+                            className="min-h-[38px] px-3 rounded-[8px] bg-emerald-700 hover:bg-emerald-800 text-white text-[12px] font-medium"
+                          >
+                            {resentCopied ? t('settings.common.copied') : t('settings.cc.people.copyLink')}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </EditorSection>
