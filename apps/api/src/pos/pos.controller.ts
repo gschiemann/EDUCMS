@@ -58,6 +58,11 @@ export class PosController {
       providerId: row.providerId,
       status: row.status,
       createdAt: row.createdAt,
+      // Custom webhook only: the server-generated shared secret, returned in
+      // this response and never again (it is stored sealed).
+      ...((row as { generatedWebhookSecret?: string }).generatedWebhookSecret
+        ? { webhookSecret: (row as { generatedWebhookSecret?: string }).generatedWebhookSecret }
+        : {}),
     };
   }
 

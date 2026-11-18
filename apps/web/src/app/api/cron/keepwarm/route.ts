@@ -22,6 +22,10 @@ export async function GET(req: Request) {
   // Optional auth for the cron endpoint — Vercel automatically adds
   // the CRON_SECRET header to scheduled invocations when the env var is set.
   const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret && process.env.NODE_ENV === 'production') {
+    // Unauthenticated in production: refuse without touching the upstream.
+    return NextResponse.json({ ok: false, error: 'not configured' }, { status: 503 });
+  }
   if (cronSecret) {
     const header = req.headers.get('authorization');
     if (header !== `Bearer ${cronSecret}`) {
@@ -32,7 +36,7 @@ export async function GET(req: Request) {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || process.env.API_URL;
   if (!apiUrl) {
     return NextResponse.json(
-      { ok: false, error: 'NEXT_PUBLIC_API_URL not configured' },
+      { ok: false, error: 'not configured' },
       { status: 500 },
     );
   }
@@ -51,24 +55,22 @@ export async function GET(req: Request) {
       cache: 'no-store',
     }).finally(() => clearTimeout(timer));
 
-    const body = await res.json().catch(() => ({}));
+    // Drain the body so the connection is released; never echo it.
+    await res.arrayBuffer().catch(() => undefined);
     const elapsedMs = Date.now() - started;
 
     return NextResponse.json({
       ok: res.ok,
-      target,
       status: res.status,
       elapsedMs,
-      upstream: body,
       ts: new Date().toISOString(),
     });
   } catch (err) {
     return NextResponse.json(
       {
         ok: false,
-        target,
         elapsedMs: Date.now() - started,
-        error: (err as Error).message,
+        error: (err as Error)?.name === 'AbortError' ? 'timeout' : 'upstream unreachable',
         ts: new Date().toISOString(),
       },
       { status: 502 },

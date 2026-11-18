@@ -360,10 +360,30 @@ export interface SafeFetchOptions {
    * `min(24 MB, maxBytes × 12)`. Callers should not need to set this.
    */
   maxDecodedBytes?: number;
-  timeoutMs?: number;        // default 8000
+  timeoutMs?: number;        // default 8000 — IDLE timeout (no socket activity)
+  /**
+   * Total wall-clock budget for the whole fetch, redirects included. The
+   * idle timeout alone never fires against an upstream that keeps sending a
+   * byte at a time; this deadline does. Default: `defaultDeadlineMs(timeoutMs)`.
+   */
+  deadlineMs?: number;
   accept?: string;
   userAgent?: string;
   redirectCount?: number;    // internal; don't pass
+  deadlineAt?: number;       // internal (absolute epoch ms across redirects); don't pass
+}
+
+/** Default total deadline: three idle periods, never less than 15 s. */
+export function defaultDeadlineMs(timeoutMs: number): number {
+  return Math.max(15_000, timeoutMs * 3);
+}
+
+/** Thrown when a fetch exceeds its total wall-clock deadline. */
+export class FetchDeadlineError extends SsrfError {
+  constructor() {
+    super('Fetch exceeded its total time limit', 'Upstream request timed out');
+    this.name = 'FetchDeadlineError';
+  }
 }
 
 /**
@@ -399,7 +419,9 @@ export interface SafePostOptions {
   body: string;
   headers?: Record<string, string>;
   maxBytes?: number;         // default 64 KB — we only need a small status echo
-  timeoutMs?: number;        // default 8000
+  timeoutMs?: number;        // default 8000 — IDLE timeout
+  /** Total wall-clock budget (see SafeFetchOptions.deadlineMs). */
+  deadlineMs?: number;
   /**
    * Return the (bounded, at most `maxBytes`) response body as UTF-8 text
    * (2026-10-11, V-1). Only for a caller that NEEDS the answer — an OAuth
@@ -430,6 +452,7 @@ export async function safeFetchPost(
   opts: SafePostOptions,
 ): Promise<{ status: number; body?: string }> {
   const { body, headers = {}, maxBytes = 64 * 1024, timeoutMs = 8000, captureBody = false } = opts;
+  const deadlineAt = Date.now() + (opts.deadlineMs ?? defaultDeadlineMs(timeoutMs));
 
   // Throws SsrfError on bad scheme / port / private IP literal. This is the
   // first gate; the connect-time pin below is the rebind-proof second gate.
@@ -458,7 +481,21 @@ export async function safeFetchPost(
   const lib = isHttps ? https : http;
   const payload = Buffer.from(body, 'utf8');
 
-  return await new Promise<{ status: number; body?: string }>((resolve, reject) => {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) throw new FetchDeadlineError();
+
+  return await new Promise<{ status: number; body?: string }>((outerResolve, outerReject) => {
+    // Total deadline: destroys the request however active the socket is.
+    // eslint-disable-next-line prefer-const
+    let deadline: ReturnType<typeof setTimeout>;
+    const resolve = (v: { status: number; body?: string }) => {
+      clearTimeout(deadline);
+      outerResolve(v);
+    };
+    const reject = (e: unknown) => {
+      clearTimeout(deadline);
+      outerReject(e);
+    };
     const req = lib.request(
       url,
       {
@@ -492,6 +529,10 @@ export async function safeFetchPost(
         res.on('error', (e) => reject(new SsrfError(`Read failed: ${e.message}`)));
       },
     );
+    deadline = setTimeout(() => {
+      req.destroy();
+      reject(new FetchDeadlineError());
+    }, remainingMs);
     req.on('timeout', () => {
       req.destroy();
       reject(new SsrfError('Request timed out'));
@@ -543,6 +584,8 @@ export async function safeFetch(
     userAgent = DEFAULT_USER_AGENT,
     redirectCount = 0,
   } = opts;
+  // One absolute deadline for the whole chain, carried across redirects.
+  const deadlineAt = opts.deadlineAt ?? Date.now() + (opts.deadlineMs ?? defaultDeadlineMs(timeoutMs));
 
   if (redirectCount > 3) throw new SsrfError('Too many redirects');
 
@@ -575,10 +618,24 @@ export async function safeFetch(
   const isHttps = url.protocol === 'https:';
   const lib = isHttps ? https : http;
 
-  const result = await new Promise<
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) throw new FetchDeadlineError();
+
+  type Outcome =
     | { kind: 'redirect'; location: string | undefined; status: number }
-    | { kind: 'body'; status: number; headers: http.IncomingHttpHeaders; body: Buffer }
-  >((resolve, reject) => {
+    | { kind: 'body'; status: number; headers: http.IncomingHttpHeaders; body: Buffer };
+  const result = await new Promise<Outcome>((outerResolve, outerReject) => {
+    // Total deadline: destroys the request however active the socket is.
+    // eslint-disable-next-line prefer-const
+    let deadline: ReturnType<typeof setTimeout>;
+    const resolve = (v: Outcome) => {
+      clearTimeout(deadline);
+      outerResolve(v);
+    };
+    const reject = (e: unknown) => {
+      clearTimeout(deadline);
+      outerReject(e);
+    };
     const req = lib.request(
       url,
       {
@@ -613,6 +670,10 @@ export async function safeFetch(
         res.on('error', (e) => reject(new SsrfError(`Read failed: ${e.message}`)));
       },
     );
+    deadline = setTimeout(() => {
+      req.destroy();
+      reject(new FetchDeadlineError());
+    }, remainingMs);
     req.on('timeout', () => {
       req.destroy();
       reject(new SsrfError('Fetch timed out'));
@@ -627,7 +688,7 @@ export async function safeFetch(
     if (!result.location) throw new SsrfError(`${result.status} without Location`);
     const next = new URL(result.location, url).toString();
     // validatePublicUrl + the connect-time lookup re-validate the next hop too.
-    return safeFetch(next, { ...opts, redirectCount: redirectCount + 1 });
+    return safeFetch(next, { ...opts, redirectCount: redirectCount + 1, deadlineAt });
   }
 
   // Transparently decode the content-encoding fetch used to handle for us.

@@ -13,8 +13,8 @@
  * 2026-05-25 — Square wired end-to-end (OAuth + catalog poll +
  * webhook + idempotency + audit). See providers/square.ts.
  */
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { timingSafeEqual } from 'node:crypto';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { POS_PROVIDERS, getPosProvider, type PosConnectionDto } from '@cms/api-types';
 import { sealCredentials, openCredentials } from '../streaming/creds-cipher';
@@ -26,6 +26,24 @@ import {
   loadConciergePosContext,
   loadPosBoundMenu,
 } from './concierge-pos-context';
+
+/** Minimum length of an operator-supplied custom-webhook secret. */
+export const MIN_CUSTOM_WEBHOOK_SECRET_LENGTH = 32;
+
+/** A new custom-webhook secret: 32 random bytes, base64url (43 chars). */
+export function generateCustomWebhookSecret(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+/** A provider store/merchant id is already connected to another tenant. */
+export class PosStoreAlreadyConnectedError extends ConflictException {
+  constructor(providerName: string) {
+    super({
+      code: 'POS_STORE_ALREADY_CONNECTED',
+      message: `This ${providerName} account is already connected to another organization. Disconnect it there first, or contact support.`,
+    });
+  }
+}
 
 @Injectable()
 export class PosService {
@@ -156,8 +174,22 @@ export class PosService {
     if (provider.auth === 'partnerKey' && !(creds as any).partnerKey) {
       throw new BadRequestException('partnerKey required for this provider.');
     }
-    if (provider.auth === 'webhook' && !(creds as any).webhookSecret) {
-      throw new BadRequestException('webhookSecret required for custom webhook provider.');
+    // Custom webhook: the shared secret is generated here (32 random bytes,
+    // base64url) and returned ONCE in `generatedWebhookSecret`. An operator
+    // who supplies their own must give at least MIN_CUSTOM_WEBHOOK_SECRET_LENGTH
+    // characters. Existing connections are untouched — their stored secret
+    // keeps verifying exactly as before.
+    let generatedWebhookSecret: string | undefined;
+    if (provider.auth === 'webhook') {
+      const supplied = (creds as any).webhookSecret;
+      if (supplied === undefined || supplied === null || supplied === '') {
+        generatedWebhookSecret = generateCustomWebhookSecret();
+        creds = { ...creds, webhookSecret: generatedWebhookSecret };
+      } else if (typeof supplied !== 'string' || supplied.length < MIN_CUSTOM_WEBHOOK_SECRET_LENGTH) {
+        throw new BadRequestException(
+          `webhookSecret must be at least ${MIN_CUSTOM_WEBHOOK_SECRET_LENGTH} characters — leave it blank to have one generated.`,
+        );
+      }
     }
     const sealed = sealCredentials(creds);
     const created = await (this.prisma.client as any).posProviderConnection.create({
@@ -174,8 +206,9 @@ export class PosService {
     await this.audit(opts.tenantId, opts.userId, 'POS_CONNECTION_CREATED', created.id, {
       providerId: opts.providerId,
       ...(opts.providerId === 'toast' ? { restaurantCount: parseToastCredentials(creds).restaurants.length } : {}),
+      ...(generatedWebhookSecret ? { webhookSecretGenerated: true } : {}),
     });
-    return created;
+    return generatedWebhookSecret ? { ...created, generatedWebhookSecret } : created;
   }
 
   async deleteConnection(tenantId: string, id: string, actorUserId?: string | null) {
@@ -426,6 +459,11 @@ export class PosService {
   }) {
     const provider = getPosProvider(opts.providerId);
     if (!provider) throw new BadRequestException(`${opts.providerId} provider missing from catalog`);
+    // One merchant account, one tenant: refuse to bind a store id that is
+    // already connected to a different tenant.
+    if (await this.findOtherTenantForStore(opts.providerId, opts.storeId, opts.tenantId)) {
+      throw new PosStoreAlreadyConnectedError(provider.name);
+    }
     const creds = {
       accessToken: opts.accessToken,
       refreshToken: opts.refreshToken,
@@ -763,8 +801,12 @@ export class PosService {
    *  merchant id but no tenant context. We walk Square connections and
    *  decrypt — small set (one row per tenant), acceptable overhead. */
   async findConnectionByMerchantId(merchantId: string) {
+    // Oldest first, so that if two rows ever carried the same merchant id the
+    // answer is stable (the first tenant to connect it) rather than whatever
+    // order the database happens to return.
     const rows = await (this.prisma.client as any).posProviderConnection.findMany({
       where: { providerId: 'square' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
     for (const r of rows) {
       try {
@@ -773,6 +815,32 @@ export class PosService {
           encryptedDataKey: r.encryptedDataKey,
         });
         if (creds.merchantId === merchantId) return r;
+      } catch {
+        /* skip — corrupt row */
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The tenant (other than `tenantId`) that already holds a `providerId`
+   * connection for this store/merchant id, or null. A store id identifies
+   * one merchant account at the provider; it may be connected to one tenant
+   * only, because inbound provider events are routed to a tenant by it.
+   */
+  async findOtherTenantForStore(providerId: string, storeId: string, tenantId: string): Promise<string | null> {
+    if (!storeId) return null;
+    const rows = await (this.prisma.client as any).posProviderConnection.findMany({
+      where: { providerId, NOT: { tenantId } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    for (const r of rows) {
+      try {
+        const creds = openCredentials({
+          encryptedCreds: r.encryptedCreds,
+          encryptedDataKey: r.encryptedDataKey,
+        });
+        if (creds.storeId === storeId || creds.merchantId === storeId) return r.tenantId as string;
       } catch {
         /* skip — corrupt row */
       }

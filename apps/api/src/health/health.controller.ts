@@ -1,4 +1,4 @@
-import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
@@ -32,6 +32,7 @@ interface HealthReport {
 // 429s — and the screen wedges on "Reconnecting…" forever.
 @SkipThrottle()
 export class HealthController {
+  private readonly logger = new Logger(HealthController.name);
   private readonly startedAt = Date.now();
   private readonly commit = process.env.GIT_COMMIT_SHA || process.env.RAILWAY_GIT_COMMIT_SHA || 'dev';
 
@@ -261,14 +262,21 @@ export class HealthController {
       };
     }
     const result = await this.storageProbe.promise;
-    const report = {
-      ...this.baseReport(),
-      storage: result,
-    };
-    report.status = result.ok ? (result.transport === 'primary' ? 'ok' : 'degraded') : 'degraded';
-    if (!result.ok) {
-      throw new HttpException(report, HttpStatus.SERVICE_UNAVAILABLE);
+    // Public, unauthenticated: answer a status string only. The probe detail
+    // (transport, upload/read outcome, upstream error text) goes to the log.
+    const status: 'ok' | 'degraded' | 'down' = !result.ok
+      ? 'down'
+      : result.transport === 'primary'
+        ? 'ok'
+        : 'degraded';
+    if (status !== 'ok') {
+      this.logger.warn(
+        `storage probe ${status}: transport=${result.transport} upload=${result.upload} read=${result.read} (${result.ms}ms)`,
+      );
     }
-    return report;
+    if (status === 'down') {
+      throw new HttpException({ status }, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    return { status };
   }
 }

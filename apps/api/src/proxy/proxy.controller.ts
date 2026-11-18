@@ -205,7 +205,9 @@ export class ProxyController {
           if (e instanceof FetchTooLargeError) {
             throw new HttpException({ code: 'PROXY_UPSTREAM_TOO_LARGE', message: `Upstream response too large` }, HttpStatus.PAYLOAD_TOO_LARGE);
           }
-          throw new HttpException({ code: 'PROXY_UPSTREAM_CONNECTION_FAILED', message: `Upstream connection failed: ${e.message}` }, HttpStatus.BAD_GATEWAY);
+          // Generic on the wire; the detail goes to the log.
+          this.logger.warn(`Proxy upstream connection failed: ${e?.message || e}`);
+          throw new HttpException({ code: 'PROXY_UPSTREAM_CONNECTION_FAILED', message: 'Upstream connection failed' }, HttpStatus.BAD_GATEWAY);
         }
 
         if (upstream.status < 200 || upstream.status >= 300) {

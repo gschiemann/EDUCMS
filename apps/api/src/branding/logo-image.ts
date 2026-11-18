@@ -14,7 +14,7 @@
  * The fix is to stop trusting a server's Content-Type and to never store an
  * `.ico` at all: decide the format from the BYTES, and convert icons to PNG.
  *
- *   - `sniffLogoImageKind` — the format, from magic bytes.
+ *   - `sniffLogoImageKind` — the format, from magic bytes (SVG by parsing).
  *   - `icoToPng`           — the largest frame of an .ico as a PNG (PNG-in-ICO
  *                            passes through; 1/4/8/24/32-bit DIB frames are
  *                            decoded), upscaled with Lanczos so a 32 px mark
@@ -25,6 +25,8 @@
  * Pure apart from `sharp` (already an API dependency); no network, no storage.
  */
 import sharp from 'sharp';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
+import type * as SanitizeSvg from './sanitize-svg';
 
 export type LogoImageKind =
   | 'svg'
@@ -69,9 +71,50 @@ export function sniffLogoImageKind(b: Buffer): LogoImageKind {
   }
   if (b[0] === 0x42 && b[1] === 0x4d) return 'bmp';
   if (isIco(b)) return 'ico';
-  const head = b.toString('utf8', 0, Math.min(b.length, 512)).trim().toLowerCase();
-  if (head.startsWith('<?xml') || head.includes('<svg')) return 'svg';
+  if (isSvgDocument(b)) return 'svg';
   return 'unknown';
+}
+
+/**
+ * The sanitizer serializes as HTML, which spells U+00A0 as `&nbsp;` — an
+ * entity XML does not define, so a file served as image/svg+xml would fail
+ * to parse. Rewrite it as a numeric reference.
+ */
+export function svgForStorage(sanitized: string): string {
+  return sanitized.replace(/&nbsp;/g, '&#160;');
+}
+
+/**
+ * Is this buffer a well-formed XML document whose root element is `<svg>`?
+ * Decided by parsing, never by a substring search: an HTML page that merely
+ * contains an `<svg>` somewhere is not an SVG image.
+ */
+export function isSvgDocument(b: Buffer | string): boolean {
+  if (b == null) return false;
+  let text = typeof b === 'string' ? b : b.toString('utf8');
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  text = text.trim();
+  if (!text.startsWith('<')) return false;
+  try {
+    if (XMLValidator.validate(text) !== true) return false;
+    const parser = new XMLParser({
+      preserveOrder: true,
+      ignoreAttributes: true,
+      processEntities: false,
+      ignoreDeclaration: true,
+      ignorePiTags: true,
+    });
+    const nodes = parser.parse(text) as Array<Record<string, unknown>>;
+    if (!Array.isArray(nodes)) return false;
+    const elements = nodes
+      .map((n) => Object.keys(n).find((k) => k !== ':@' && k !== '#text'))
+      .filter((k): k is string => !!k && !k.startsWith('?') && !k.startsWith('!'));
+    if (elements.length !== 1) return false;
+    const local = elements[0].includes(':') ? elements[0].split(':').pop()! : elements[0];
+    return local === 'svg';
+  } catch {
+    return false;
+  }
 }
 
 const PASS_THROUGH: Record<
@@ -99,6 +142,19 @@ export async function normalizeLogoImage(
     const png = await icoToPng(buf);
     if (!png) throw new Error('that icon file could not be read');
     return { body: png, contentType: 'image/png', ext: 'png' };
+  }
+  if (kind === 'svg') {
+    // The bucket is public and serves the file as image/svg+xml, so what we
+    // store is always the sanitized document, never the bytes we were given.
+    // Loaded lazily so the scraper (which only needs the ICO helpers here)
+    // does not pull the DOM sanitizer in with this module.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { sanitizeLogoSvg } = require('./sanitize-svg') as typeof SanitizeSvg;
+    const cleaned = svgForStorage(sanitizeLogoSvg(buf.toString('utf8')));
+    if (!cleaned || !isSvgDocument(cleaned)) {
+      throw new Error('that SVG file could not be used');
+    }
+    return { body: Buffer.from(cleaned, 'utf8'), ...PASS_THROUGH.svg };
   }
   if (kind !== 'unknown') return { body: buf, ...PASS_THROUGH[kind] };
   // A format sharp can read but the bucket cannot store (AVIF, TIFF, HEIC…):

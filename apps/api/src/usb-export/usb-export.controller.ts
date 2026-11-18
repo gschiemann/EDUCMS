@@ -197,6 +197,9 @@ const MAX_BYTES_PER_BUNDLE = 2 * 1024 * 1024 * 1024; // 2GB
 // which silently dropped every large video from the package.
 const MAX_ASSET_BYTES = 600 * 1024 * 1024;
 const MAX_ASSET_FETCH_TIMEOUT_MS = 120_000;
+// Total wall-clock budget per file (safeFetch's default deadline is 3x the idle
+// timeout, too tight for a 600 MB video on a slow link).
+const MAX_ASSET_FETCH_DEADLINE_MS = 15 * 60_000;
 // Informational only: nothing refuses an old package (an offline site may run
 // one stick for a whole term).
 const BUNDLE_VALID_DAYS = 365;
@@ -480,7 +483,7 @@ export class UsbExportController {
       if (assetCount >= MAX_ASSETS_PER_BUNDLE) { truncated = true; return null; }
       let bytes: Buffer | null = null;
       try {
-        const fetched = await safeFetch(url, { maxBytes: MAX_ASSET_BYTES, timeoutMs: MAX_ASSET_FETCH_TIMEOUT_MS });
+        const fetched = await safeFetch(url, { maxBytes: MAX_ASSET_BYTES, timeoutMs: MAX_ASSET_FETCH_TIMEOUT_MS, deadlineMs: MAX_ASSET_FETCH_DEADLINE_MS });
         bytes = fetched.body;
       } catch (e: any) {
         this.logger.warn(`Asset fetch failed for ${url}: ${e?.message}`);
