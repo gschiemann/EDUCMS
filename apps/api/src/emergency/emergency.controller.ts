@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Body, Param, Query, Req, UseGuards, ForbiddenException, BadRequestException, NotFoundException, ConflictException, Optional } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Req, Res, UseGuards, ForbiddenException, BadRequestException, NotFoundException, ConflictException, Optional } from '@nestjs/common';
+import type { Response } from 'express';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AppRole } from '@cms/database';
@@ -11,7 +12,7 @@ import * as Sentry from '@sentry/nestjs';
 import { WebsocketSignerService } from '../security/websocket-signer.service';
 import { WebhookDispatchService } from '../webhooks/webhook-dispatch.service';
 import { ZodValidationPipe } from '../security/zod-validation.pipe';
-import { invalidateTenantState } from '../screens/manifest-hot-cache';
+import { invalidateTenantState, tenantStateEpoch } from '../screens/manifest-hot-cache';
 import { emergencyLayoutIsPortrait, type PosterStandard } from '../screens/emergency-layout';
 import { pickScreenLiveContent, pickTenantPanicPlaylists } from './emergency-boards';
 
@@ -20,6 +21,16 @@ function tenantPosterStandard(tenant: any): PosterStandard | null {
   const w = Number(tenant?.posterStandardW), h = Number(tenant?.posterStandardH);
   return Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 ? { w, h } : null;
 }
+/**
+ * `GET /emergency/messages` hot path (2026-11-16). `private, no-cache` states
+ * what browsers already did for this response: keep it, and revalidate it on
+ * every single use. Never `max-age` - a screen must not reuse an alert answer
+ * without asking.
+ */
+const DEVICE_MESSAGES_CACHE_CONTROL = 'private, no-cache';
+/** How long pass 1 will wait for the tenant epoch before reading the database instead. */
+const DEVICE_MESSAGES_EPOCH_DEADLINE_MS = 150;
+
 // 2026-09-02 (efficiency P0-2) — the cheap emergency-revision token the
 // player polls INSTEAD of re-fetching the whole manifest every 10 s. Every
 // bump below sits in the same synchronous block as `invalidateTenantState`,
@@ -27,6 +38,8 @@ function tenantPosterStandard(tenant: any): PosterStandard | null {
 // never learn about an alert later than the push it backs up.
 import {
   bumpTenantEmergencyEpoch,
+  emergencyRevOriginId,
+  readTenantEmergencyEpoch,
   type EmergencyAlertDescriptor,
 } from '../screens/emergency-rev';
 // 2026-05-27 — Goodview EP6N GPIO. When the emergency trigger fires
@@ -63,6 +76,21 @@ import {
   type DeviceMessageScope,
 } from './message-visibility';
 import { ancestorTenantIdsCached } from './tenant-ancestors';
+// 2026-11-16 - the device poll's "nothing changed" answer without Postgres.
+// Opt-in (`EMERGENCY_MESSAGES_FAST_304`); the whole contract is in the header
+// of device-messages-rev.ts. Identity for it comes from the snapshot the
+// global DeviceIdentityInterceptor already verified for the request.
+import {
+  answerDeviceMessagesPoll,
+  deviceMessagesFastPathEnabled,
+  noteDeviceMessagesWithoutRevision,
+  resolveDeviceMessagesRevision,
+  takeDeviceMessagesStatsLine,
+} from './device-messages-rev';
+import {
+  DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS,
+  readDeviceRequestContext,
+} from '../screens/device-auth';
 // 2026-09-16 — double-sided displays. A device-scoped alert names ONE screen
 // id, and with faces that id is one PANE of a physical display. An alert that
 // lit the front while the back kept running the lunch menu is exactly the
@@ -3211,7 +3239,104 @@ export class EmergencyController {
    * as it is for the user-session /status path.
    */
   @Get('messages')
-  async deviceMessages(@Req() req: any) {
+  async deviceMessagesRoute(@Req() req: any, @Res() res: Response): Promise<void> {
+    const u = req?.user || {};
+    const isDevice = u.kind === 'device' && typeof u.sub === 'string';
+
+    // ── Pass 1 (2026-11-16, opt-in) - "has anything moved?" without Postgres ──
+    // Measured 2026-11-16: 14,455 of these polls in one hour from 40 screens,
+    // 99.4 % of them answered 304 by Express AFTER the three reads in
+    // `deviceMessages` had already run. With `EMERGENCY_MESSAGES_FAST_304` on
+    // for this screen (`all`, or a list of screen ids - the bench ring), a
+    // screen that presents the exact ETag this process last sent it, under an
+    // unmoved revision, gets its 304 before any query. Any doubt at all is
+    // pass 2. Switch off (the default) = `revision` is null = the response is
+    // the one this route has always sent. Contract: device-messages-rev.ts.
+    const enabled = isDevice && deviceMessagesFastPathEnabled(u.sub);
+    const revision = enabled ? await this.deviceMessagesRevision(req, u.sub) : null;
+    if (enabled) {
+      // Counts only, one line every ten minutes: the only outside view of
+      // whether the hot path is being taken, and why not when it is not.
+      if (!revision) noteDeviceMessagesWithoutRevision();
+      const line = takeDeviceMessagesStatsLine(Date.now());
+      if (line) console.log(line);
+    }
+
+    // ── Pass 2 - the answer itself, read live, exactly as before ──────────
+    const answer = await answerDeviceMessagesPoll({
+      screenId: isDevice ? u.sub : '',
+      ifNoneMatch: req?.headers?.['if-none-match'],
+      revision,
+      readLive: () => this.deviceMessages(req),
+    });
+
+    if (answer.kind === 'not-modified') {
+      // THE HOT PATH. No Prisma call has been made and none will be.
+      res.setHeader('ETag', answer.etag);
+      res.setHeader('Cache-Control', DEVICE_MESSAGES_CACHE_CONTROL);
+      res.status(304).end();
+      return;
+    }
+    if (answer.kind === 'fresh') {
+      res.setHeader('ETag', answer.etag);
+      res.setHeader('Cache-Control', DEVICE_MESSAGES_CACHE_CONTROL);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      // Express still answers 304 by itself when the screen already holds
+      // these exact bytes; the read happened, only the transfer is saved.
+      res.status(200).send(answer.json);
+      return;
+    }
+    res.status(200).json(answer.body);
+  }
+
+  /**
+   * Pass 1's inputs, or null whenever the cheap question cannot be asked
+   * safely - and null always means "read the database".
+   *
+   * Identity is the credential snapshot the global DeviceIdentityInterceptor
+   * loaded and verified for THIS request (live row, not revoked, epoch
+   * accepted). A request that did not come through it - every hand-built
+   * spec, any future caller - has no such entry and never takes the hot path.
+   * A 304 discloses nothing, and pass 2 re-reads the live row before a single
+   * byte of content is sent: the same two-pass rule
+   * `GET /screens/:id/emergency-rev` follows.
+   *
+   * The epoch read is capped far below its own 2 s ceiling: Redis being slow
+   * is exactly when this backstop matters, so it must never wait on Redis.
+   */
+  private async deviceMessagesRevision(req: any, screenId: string) {
+    const ctx = readDeviceRequestContext(req, screenId, DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS);
+    const state = ctx.hit ? ctx.state : null;
+    return resolveDeviceMessagesRevision({
+      screenId,
+      identity: state
+        ? { tenantId: state.tenantId, groupId: state.screenGroupId, status: state.status }
+        : null,
+      readEpochStamp: async (tenantId, now) => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        try {
+          const epoch = await Promise.race([
+            readTenantEmergencyEpoch({ redis: this.redisService }, tenantId, now),
+            new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), DEVICE_MESSAGES_EPOCH_DEADLINE_MS);
+            }),
+          ]);
+          return epoch ? epoch.stamp : null;
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      },
+      tenantStateEpochOf: tenantStateEpoch,
+      originId: emergencyRevOriginId(),
+      now: Date.now(),
+    });
+  }
+
+  /**
+   * The device poll's answer. Every 200 the route above sends is this, read
+   * live; the specs call it directly.
+   */
+  async deviceMessages(req: any) {
     const u = req.user || {};
     if (u.kind !== 'device' || !u.sub) {
       // This route is device-only. User sessions use GET /status.
