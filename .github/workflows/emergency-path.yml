@@ -217,8 +217,12 @@ jobs:
         # 2026-10-22: the runner image's Azure Ubuntu mirror (and SourceForge, for the
         # corefonts package) hung for 15-30 min, canceling every WebKit job before a
         # test ran. Use the main mirror and give each attempt a time limit + one retry.
+        # 2026-11-18: jobs GitHub places on AWS-hosted runners carry a regional EC2 mirror
+        # (us-east-2.ec2.archive.ubuntu.com) instead, which stalled the same way: 6 of 6 WebKit
+        # installs on AWS timed out, every one on Azure took under a minute. It is rewritten to
+        # the main mirror too. The same line is in a11y, ci, cross-browser and prod-smoke.
         run: |
-          for f in /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do [ -f "$f" ] && sudo sed -i "s|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" "$f"; done; true
+          for f in /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list; do [ -f "$f" ] && sudo sed -i -E -e "s|http://azure\.archive\.ubuntu\.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" -e "s|http://[a-z0-9.-]+\.ec2\.archive\.ubuntu\.com/ubuntu|http://archive.ubuntu.com/ubuntu|g" "$f"; done; true
           timeout 360 pnpm --filter web exec playwright install --with-deps ${{ matrix.browser }} || { echo "::warning::browser deps install timed out or failed; retrying once"; sudo pkill -f "apt-get|dpkg" || true; sleep 5; sudo dpkg --configure -a || true; timeout 360 pnpm --filter web exec playwright install --with-deps ${{ matrix.browser }}; }
 
       # ── Build the web app BEFORE Playwright (2026-09-05) ─────────────────

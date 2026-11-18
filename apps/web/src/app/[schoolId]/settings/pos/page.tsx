@@ -28,6 +28,7 @@ import { appConfirm, appAlert } from '@/components/ui/app-dialog';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { Loader2, ExternalLink, Trash2, X, AlertCircle, CheckCircle2, ShieldAlert, RefreshCw, Utensils } from 'lucide-react';
 import { SettingsPageFrame } from '@/components/settings/shell/SettingsPageFrame';
+import { WebhookSecretReveal } from './WebhookSecretReveal';
 import { posProviderConnectable } from '@/components/settings/integrations/connectable';
 import { ContextModule, EditorHead } from '@/components/settings/shell/primitives';
 
@@ -418,6 +419,11 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
   const [manualToastStores, setManualToastStores] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Custom webhook: the server-generated secret, shown once after create.
+  const [issuedSecret, setIssuedSecret] = useState<string | null>(null);
+  // Once a secret has been issued the connection exists; any dismissal must
+  // refresh the list rather than look like a cancel.
+  const close = issuedSecret ? onConnected : onClose;
 
   const submit = async () => {
     setSubmitting(true); setErr(null);
@@ -453,7 +459,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
           return { name, guid };
         }) : stores,
       } : credentials;
-      const created = await apiFetch<{ id: string }>('/pos/connections', {
+      const created = await apiFetch<{ id: string; webhookSecret?: string }>('/pos/connections', {
         method: 'POST',
         body: JSON.stringify({ providerId: provider.id, displayName: displayName || undefined, credentials: toastCredentials }),
       });
@@ -464,6 +470,10 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
         } catch (syncError) {
           await appAlert({ title: t('billingCommerce.toast.needsAttention'), message: syncError instanceof Error ? syncError.message : String(syncError), tone: 'info' });
         }
+      }
+      if (created.webhookSecret) {
+        setIssuedSecret(created.webhookSecret);
+        return;
       }
       onConnected();
     } catch (e) {
@@ -478,7 +488,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
     // button below are the keyboard/AT-accessible dismissal paths.
     // a11y wave (2026-08-24).
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={close}>
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[85dvh] overflow-y-auto p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
@@ -489,8 +499,13 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
               <p className="text-xs text-slate-500">{t.has(`settings.cc.integrations.blurbs.${provider.id}`) ? t(`settings.cc.integrations.blurbs.${provider.id}`) : provider.blurb}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+          <button onClick={close} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         </div>
+
+        {issuedSecret ? (
+          <WebhookSecretReveal secret={issuedSecret} onDone={onConnected} />
+        ) : (
+        <>
 
         {provider.docsUrl && (
           <a href={provider.docsUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-amber-600 hover:underline">
@@ -562,7 +577,9 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
           )}
           {provider.auth === 'webhook' && (
             <>
-              <Field label={t('billingCommerce.webhookSecret')} placeholder={t('billingCommerce.chooseRandomString')} value={credentials.webhookSecret || ''} onChange={(v) => setCredentials({ ...credentials, webhookSecret: v })} />
+              <p className="text-xs text-slate-600">
+                <span className="font-bold text-slate-700">{t('billingCommerce.webhookSecret')}:</span> {t('billingCommerce.webhookSecretGenerated')}
+              </p>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 space-y-2">
                 <p>
                   {t('billingCommerce.webhookAfterConnecting')} <code className="font-mono">POST</code> {t('billingCommerce.webhookYourCatalogTo')}{' '}
@@ -620,6 +637,8 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
             </button>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   );

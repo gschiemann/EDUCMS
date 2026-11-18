@@ -98,19 +98,39 @@ function fakeRedis() {
   return { service: { publisher } as any, store };
 }
 
+/**
+ * The browser's cookie jar: authorize writes the binding nonce into it and
+ * the callback reads it back, exactly as one browser would.
+ */
+const JAR: Record<string, string> = {};
+const BINDING_COOKIE = 'venueos_social_oauth';
+
 function res() {
   const out: any = { redirectedTo: '' };
   out.redirect = (url: string) => {
     out.redirectedTo = url;
     return out;
   };
+  out.cookie = (name: string, value: string) => {
+    JAR[name] = value;
+    return out;
+  };
+  out.clearCookie = (name: string) => {
+    delete JAR[name];
+    return out;
+  };
   return out;
 }
 
-const REQ = { protocol: 'https', headers: { host: 'api.example.com' } } as any;
+const REQ = {
+  protocol: 'https',
+  headers: { host: 'api.example.com' },
+  cookies: JAR,
+} as any;
 
 const OLD_ENV = { ...process.env };
 beforeEach(() => {
+  for (const k of Object.keys(JAR)) delete JAR[k];
   process.env.INSTAGRAM_APP_ID = 'ig-id';
   process.env.INSTAGRAM_APP_SECRET = 'ig-secret';
   process.env.META_APP_ID = 'fb-id';
@@ -139,7 +159,7 @@ async function authorizeAndGetState(
   provider: 'instagram' | 'facebook',
   user = { tenantId: 'tenant-a', id: 'user-1' },
 ) {
-  const { url } = await ctl.authorize({ ...REQ, user }, provider);
+  const { url } = await ctl.authorize({ ...REQ, user }, provider, res());
   return { url, state: new URL(url).searchParams.get('state')! };
 }
 
@@ -153,6 +173,7 @@ describe('authorize', () => {
       await ctl.authorize(
         { ...REQ, user: { tenantId: 't', id: 'u' } },
         'instagram',
+        res(),
       );
     } catch (err: any) {
       expect(err.getStatus()).toBe(503);
@@ -167,7 +188,7 @@ describe('authorize', () => {
   it('400s on an unknown provider rather than building a URL for it', async () => {
     const { ctl } = build();
     await expect(
-      ctl.authorize({ user: { tenantId: 't', id: 'u' } }, 'tiktok'),
+      ctl.authorize({ user: { tenantId: 't', id: 'u' } }, 'tiktok', res()),
     ).rejects.toMatchObject({ response: { code: 'SOCIAL_PROVIDER_UNKNOWN' } });
   });
 
@@ -361,5 +382,96 @@ describe('callback — Facebook Pages', () => {
     await ctl.callback(REQ, r, 'facebook', { code: 'CODE', state } as any);
     expect(r.redirectedTo).toContain('reason=no-pages-found');
     expect(prisma._state.connections).toHaveLength(0);
+  });
+});
+
+describe('callback — browser binding', () => {
+  function mockInstagram(svc: SocialService) {
+    svc.fetchImpl = async (url: string) => {
+      if (url.includes('api.instagram.com/oauth/access_token')) {
+        return reply(200, { access_token: 'short', user_id: '178414' });
+      }
+      if (url.includes('graph.instagram.com/access_token')) {
+        return reply(200, { access_token: 'long', expires_in: 5184000 });
+      }
+      if (/\/me$/.test(new URL(url).pathname)) {
+        return reply(200, { id: '178414', username: 'sunnyside' });
+      }
+      return reply(200, { data: [] });
+    };
+  }
+
+  it('authorize sets an HttpOnly, path-scoped, short-lived nonce cookie', async () => {
+    const { ctl } = build();
+    const r: any = res();
+    const seen: any[] = [];
+    r.cookie = (name: string, value: string, opts: any) => {
+      seen.push({ name, value, opts });
+      return r;
+    };
+    await ctl.authorize(
+      { ...REQ, user: { tenantId: 't', id: 'u' } },
+      'instagram',
+      r,
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0].name).toBe(BINDING_COOKIE);
+    expect(seen[0].opts.httpOnly).toBe(true);
+    expect(seen[0].opts.path).toBe('/api/v1/integrations/social/oauth');
+    expect(seen[0].opts.maxAge).toBeLessThanOrEqual(10 * 60 * 1000);
+  });
+
+  it('REFUSES a callback from a browser that never received the nonce', async () => {
+    const { ctl, svc, prisma } = build();
+    mockInstagram(svc);
+    const { state } = await authorizeAndGetState(ctl, 'instagram');
+    // A different browser: no cookie, no session.
+    const r = res();
+    await ctl.callback(
+      { protocol: 'https', headers: { host: 'api.example.com' } } as any,
+      r,
+      'instagram',
+      { code: 'CODE', state } as any,
+    );
+    expect(r.redirectedTo).toContain('reason=browser-mismatch');
+    expect(prisma._state.connections).toHaveLength(0);
+  });
+
+  it('REFUSES a callback carrying a different nonce (Redis path)', async () => {
+    const redis = fakeRedis();
+    const { ctl, svc, prisma } = build(redis.service);
+    mockInstagram(svc);
+    const { state } = await authorizeAndGetState(ctl, 'instagram');
+    const r = res();
+    await ctl.callback(
+      { ...REQ, cookies: { [BINDING_COOKIE]: 'not-the-nonce' } } as any,
+      r,
+      'instagram',
+      { code: 'CODE', state } as any,
+    );
+    expect(r.redirectedTo).toContain('reason=browser-mismatch');
+    expect(prisma._state.connections).toHaveLength(0);
+  });
+
+  it('accepts the express-session copy when the cookie was not stored', async () => {
+    const { ctl, svc, prisma } = build();
+    mockInstagram(svc);
+    const session: Record<string, unknown> = {};
+    const { url } = await ctl.authorize(
+      { ...REQ, cookies: {}, session, user: { tenantId: 'tenant-a', id: 'u' } },
+      'instagram',
+      { cookie: () => undefined } as any,
+    );
+    const state = new URL(url).searchParams.get('state')!;
+    const r = res();
+    await ctl.callback(
+      { protocol: 'https', headers: {}, session } as any,
+      r,
+      'instagram',
+      { code: 'CODE', state } as any,
+    );
+    expect(r.redirectedTo).toContain('social=connected');
+    expect(prisma._state.connections).toHaveLength(1);
+    expect(session.socialOAuthNonce).toBeUndefined();
   });
 });

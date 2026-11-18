@@ -46,16 +46,18 @@ The money in it is small: every build read today and yesterday ran on the Standa
 ## Vercel, as it stands
 
 - Billing rows for the two billing days ending 2026-11-15 08:00 UTC, effective cost $7.41: Pro seat 1.31, Build CPU Minutes 1.04, Observability Events 0.78, Function Invocations 0.39, Fluid Active CPU 0.30, Deployment Storage 0.14, Fast Origin Transfer 0.06.
-- The category "Subscription Licenses" is 4.65 for those two days: the seat plus 3.33. 3.33 a day is 100 over a 30 day cycle. Read: the Flat Rate CDN tier Vercel moved the team onto is still on in the cycle that began 2026-11-14. This is an inference from the rows; the service line itself falls outside the 50 service groups the billing tool returns.
+- The category "Subscription Licenses" is 4.65 for those two days: the seat plus 3.33. 3.33 a day is 100 over a 30 day cycle. Read: the Flat Rate CDN tier Vercel moved the team onto is still on in the cycle that began 2026-11-14. This is an inference from the rows; the service line itself falls outside the 50 service groups the billing tool returns. (2026-11-16: the rows of the next day name it, "Flat Rate CDN 50M", 3.3333 a day. The owner reports he lowered the tier on 2026-11-16; later rows will show it.)
 - Observability Plus was disabled at 15:05:51 UTC under the owner's login (team event `observability-disabled`). This session did not change it. Its event meter stops. Per-path request queries now answer 402, so the gateway's share can only be read from the billing rows it drives: Function Invocations, Fluid Active CPU, Fast Origin Transfer.
 - Out of an agent's reach: the Flat Rate CDN tier, spend alerts, and the build machine setting (the connector answers "You must be a team owner or project admin"). All three are dashboard settings. The third matters least: the build logs of 2026-11-14 and 2026-11-15 all read "4 cores, 8 GB (Standard Build Machine)", so pinning it only prevents a later automatic upgrade.
 
 ## Capacity, which is the real limit
 
-- After the fix a screen makes about 22,000 API requests a day.
-- **The API process.** 0.23 vCPU at 14 requests a second today. One Node process is one core, so about 60 to 75 requests a second: 240 to 300 screens on the single replica.
+**Corrected 2026-11-16.** The first two lines and the cost line below were written from the request budget's totals, which leave out the APK's own timers. Measured on 2026-11-16: 53,080 API requests in one hour from 40 screens, about 32,000 per screen per day, not 22,000. The gateway fix moved requests off Vercel; it did not reduce them. The corrected figures are in place below, and the measurement is in `docs/handoffs/2026-11-16-device-messages-fast-304.md`.
+
+- A screen makes about 32,000 API requests a day (measured; the first version of this line said 22,000).
+- **The API process.** 0.23 vCPU at 14 requests a second today. One Node process is one core, so about 60 to 75 requests a second: 160 to 200 screens on the single replica (the first version said 240 to 300).
 - **The database.** `GET /emergency/messages` reads Postgres 3 to 4 times per screen every 10 seconds, across the country (API in us-west2, database in us-east-1), on a pool of 10 connections. Ceiling 150 to 350 screens.
-- **Cost once those are removed**, per 1,000 screens a month: Railway about $190 (about 4 vCPU and 1.8 TB of egress), Vercel about $40 when screens are direct, Supabase $35 plus media egress, which is unmeasured. Roughly $0.27 a screen.
+- **Cost once those are removed**, per 1,000 screens a month: Railway about $275 (the first version said $190; scaled by the measured request rate), Vercel about $40 when screens are direct, Supabase $35 plus media egress, which is unmeasured. Roughly $0.35 a screen.
 - A screen on the gateway costs Vercel about 612,000 requests a month. A direct screen costs about 4,500.
 
 ## The API has no hostname of its own
@@ -70,7 +72,7 @@ The `api` service answers only on its `*.up.railway.app` service domain (Railway
 
 1. The on-glass bench drill for #311 and #322. The owner approves each test.
 2. Dashboard: the CDN tier back down before the cycle renews on 2026-12-14; a spend alert that notifies and never pauses (a paused project takes the player page down); pinning the build machine to Standard is optional.
-3. The alert-messages poll served from memory with write-through invalidation. Emergency CHANGE class.
+3. The alert-messages poll served from memory with write-through invalidation. Emergency CHANGE class. (2026-11-16: built on branch `claude/device-messages-fast-304`, shipped switched off; record in `docs/handoffs/2026-11-16-device-messages-fast-304.md`.)
 4. The API in the database's region.
 5. Back-off for 401, 402 and 429 (design in the audit handoff).
 6. Sentry trace sampling for device polls; an index on `fleet_samples(created_at)`.

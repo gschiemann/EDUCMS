@@ -43,7 +43,7 @@ import { safeFetch, SsrfError } from './safe-fetch';
 import { derivePalette, parseColor, ensureContrast, contrastRatio, bestTextOn, deriveReadableShades, readableShadeAdjustments, ContrastReport } from './color-utils';
 import { sanitizeLogoSvg } from './sanitize-svg';
 import { selectVectorLogo } from './select-vector-logo';
-import { normalizeLogoImage } from './logo-image';
+import { isSvgDocument, normalizeLogoImage, svgForStorage } from './logo-image';
 import { isLogoBackground, resolveStoredLogoBackground } from './logo-colors';
 
 import { createHash } from 'crypto';
@@ -196,7 +196,7 @@ export class BrandingController {
         if (/^data:image\/svg\+xml/i.test(body.logoDataUrl)) {
           try {
             const svg = Buffer.from(body.logoDataUrl.split(',')[1] || '', 'base64').toString('utf8');
-            if (svg.includes('<svg')) logoSvgInline = sanitizeLogoSvg(svg);
+            if (isSvgDocument(svg)) logoSvgInline = sanitizeLogoSvg(svg);
           } catch { /* best-effort inline */ }
         }
       } catch (e: any) {
@@ -205,24 +205,13 @@ export class BrandingController {
     }
 
     if (!logoUrl && chosenSvg && chosenSvgValid) {
-      // Two storage paths with different trust models:
+      // Both storage paths use the SANITIZED SVG:
       //
-      // 1) logoSvgInline — rendered by admins via dangerouslySetInnerHTML
-      //    in the same origin, so DOMPurify has to strip scripts + event
-      //    handlers + foreignObject. Aggressive sanitization is correct.
+      // 1) logoSvgInline — rendered by admins via dangerouslySetInnerHTML.
       //
-      // 2) logoUrl — served as a separate asset via <img src>. The browser
-      //    sandboxes img sources: no script execution, no DOM access to
-      //    the parent page. So the file stored on Supabase can be the
-      //    RAW scraped SVG, preserving every <image>, <use xlink:href>,
-      //    CSS filter, and embedded bitmap the real logo relies on.
-      //
-      // Before this fix we ran DOMPurify BEFORE the rehost. On SVGs with
-      // lots of <image> + xlink:href (Chardon's 12.8KB tree+text
-      // wordmark is 95% external references), sanitization shrank the
-      // file to a ~224-byte empty wrapper and the sidebar <img>
-      // rendered a blank/broken glyph even though the Supabase upload
-      // technically succeeded.
+      // 2) logoUrl — a file in the public branding-logos bucket, served as
+      //    image/svg+xml. Its URL can be opened directly as a document, not
+      //    only through <img>, so it must never hold unsanitized markup.
       const cleaned = sanitizeLogoSvg(chosenSvg);
       if (cleaned !== chosenSvg) {
         this.logger.warn(
@@ -231,9 +220,7 @@ export class BrandingController {
       }
       logoSvgInline = cleaned;
       try {
-        // Upload the RAW SVG (untrusted content served in a sandboxed
-        // <img>; XSS threat model is contained by the browser).
-        logoUrl = await this.rehost(chosenSvg, `branding/${tenantId}/logo.svg`, 'image/svg+xml');
+        logoUrl = await this.rehost(cleaned, `branding/${tenantId}/logo.svg`, 'image/svg+xml');
       } catch (e: any) {
         this.logger.warn(`Inline SVG logo upload failed, falling back to inline: ${e?.message}`);
       }
@@ -1273,6 +1260,13 @@ export class BrandingController {
    * "I picked the new logo and it kept the old one" (Greg, 2026-09-28).
    */
   private async rehost(content: string, path: string, contentType: string): Promise<string> {
+    // Belt and braces: an SVG written to the public bucket is always the
+    // sanitized document, whatever the caller passed (sanitizing twice is a
+    // no-op on already-clean markup).
+    if (/^image\/svg\+xml/i.test(contentType)) {
+      content = svgForStorage(sanitizeLogoSvg(content));
+      if (!content || !isSvgDocument(content)) throw new Error('SVG logo empty after sanitization');
+    }
     const body = Buffer.from(content, 'utf-8');
     const hash = createHash('sha256').update(body).digest('hex').slice(0, 12);
     const addressed = path.replace(/(\.[a-z0-9]+)$/i, `-${hash}$1`);
@@ -1315,10 +1309,8 @@ export class BrandingController {
     if (choice.kind === 'inline') {
       try {
         const cleaned = sanitizeLogoSvg(choice.svgInline);
-        // Store the RAW SVG (sandboxed via <img>) — preserves <image>,
-        // <use>, filters the inline-sanitizer would strip. The sanitized
-        // copy goes inline via dangerouslySetInnerHTML.
-        const url = await this.rehost(choice.svgInline, `${keyPrefix}/logo.svg`, 'image/svg+xml');
+        // The stored file and the inline copy are both the sanitized SVG.
+        const url = await this.rehost(cleaned, `${keyPrefix}/logo.svg`, 'image/svg+xml');
         this.logger.log(`[adopt] preserved vector logo (inline SVG) for tenant ${tenantId}`);
         return { logoUrl: url, logoSvgInline: cleaned };
       } catch (e: any) {
@@ -1376,11 +1368,8 @@ export class BrandingController {
       const cleaned = sanitizeLogoSvg(chosenSvg);
       logoSvgInline = cleaned;
       try {
-        // Upload the RAW (un-sanitized) SVG — served via <img> tag,
-        // sandboxed by the browser. Sanitized version goes inline
-        // via dangerouslySetInnerHTML where DOMPurify must strip
-        // scripts. Same dual-storage trust model as the global adopt.
-        logoUrl = await this.rehost(chosenSvg, `${keyPrefix}/logo.svg`, 'image/svg+xml');
+        // The stored file and the inline copy are both the sanitized SVG.
+        logoUrl = await this.rehost(cleaned, `${keyPrefix}/logo.svg`, 'image/svg+xml');
       } catch (e: any) {
         this.logger.warn(`[brand-kit] inline SVG upload failed for ${keyPrefix}: ${e?.message}`);
       }
@@ -1557,9 +1546,7 @@ function looksLikeImage(buf: Buffer, contentType?: string | null): boolean {
   if (b[0] === 0x42 && b[1] === 0x4d) return true; // BMP
   if (b.length >= 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') return true; // WEBP
   if (b[0] === 0x00 && b[1] === 0x00 && (b[2] === 0x01 || b[2] === 0x02) && b[3] === 0x00) return true; // ICO/CUR
-  const head = b.toString('utf8', 0, Math.min(b.length, 512)).trim().toLowerCase();
-  if (head.startsWith('<?xml') || head.includes('<svg')) return true; // SVG / XML
-  return false;
+  return isSvgDocument(b); // SVG, decided by parsing
 }
 
 // Shape of the /adopt body — deliberately loose; the client passes back

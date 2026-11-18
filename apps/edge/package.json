@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy",
     "deploy:staging": "wrangler deploy --env staging",
     "tail": "wrangler tail",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/origin-target.test.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240620.0",

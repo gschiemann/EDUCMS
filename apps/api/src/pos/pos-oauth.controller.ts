@@ -46,12 +46,32 @@ import { RequireRoles } from '../auth/roles.decorator';
 import { AppRole } from '@cms/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../realtime/redis.service';
-import { PosService } from './pos.service';
+import { PosService, PosStoreAlreadyConnectedError } from './pos.service';
 import { MenuService } from './menu.service';
 import { newOAuthStateToken, verifySquareSignature } from './providers/square';
 import { getConnector } from './providers/registry';
 import { getPosProvider } from '@cms/api-types';
 import { publicApiBase } from '../security/public-api-base';
+import { clientIpFromRequest } from '../security/client-ip';
+import { checkIngestLimit, peekIngestLimit } from '../security/ingest-rate-limit';
+import {
+  bindingMatches,
+  mintBindingNonce,
+  setBrowserBinding,
+  takeBrowserBinding,
+  type OAuthBindingSpec,
+} from '../security/oauth-browser-binding';
+
+/** Custom-webhook receiver: failed authentications allowed per IP per window. */
+export const CUSTOM_WEBHOOK_MAX_FAILURES = 10;
+export const CUSTOM_WEBHOOK_FAILURE_WINDOW_MS = 15 * 60 * 1000;
+
+/** Browser binding for the public callback (see oauth-browser-binding.ts). */
+const POS_OAUTH_BINDING: OAuthBindingSpec = {
+  cookie: 'venueos_pos_oauth',
+  path: '/api/v1/pos/oauth',
+  sessionKey: 'posOAuthNonce',
+};
 
 /** Where the provider redirects the operator after they approve. Derived
  *  from the public API origin so dev + staging + prod all work without per-
@@ -109,7 +129,7 @@ export class PosOAuthController {
   // (shared across replicas); see putState/takeState below. We mirror the
   // app's Redis-optional convention so a no-Redis deploy still works (worst
   // case on a multi-pod no-Redis deploy: the operator re-clicks "Connect").
-  private readonly stateCache = new Map<string, { tenantId: string; userId: string; provider: string; storeId?: string; expiresAt: number }>();
+  private readonly stateCache = new Map<string, { tenantId: string; userId: string; provider: string; storeId?: string; browserNonce?: string; expiresAt: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -126,7 +146,8 @@ export class PosOAuthController {
   async authorize(
     @Req() req: any,
     @Param('provider') provider: string,
-    @Query('shop') shop?: string,
+    @Query('shop') shop: string | undefined,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const connector = getConnector(provider);
     const meta = getPosProvider(provider);
@@ -163,12 +184,15 @@ export class PosOAuthController {
     }
 
     const state = newOAuthStateToken();
+    const browserNonce = mintBindingNonce();
     await this.putState(state, {
       tenantId: req.user.tenantId,
       userId: req.user.id,
       provider,
       storeId,
+      browserNonce,
     });
+    setBrowserBinding(req, res, POS_OAUTH_BINDING, browserNonce);
     const redirectUri = resolveRedirectUri(req, provider);
     const url = connector.authorizeUrl({ state, redirectUri, storeId });
     return { url };
@@ -187,6 +211,8 @@ export class PosOAuthController {
     const state = query.state;
     const errorParam = query.error;
     const webReturn = resolveWebReturnUrl();
+    // The handshake ends here whatever the outcome — clear the binding first.
+    const browserNonce = takeBrowserBinding(req, res, POS_OAUTH_BINDING);
     // The provider is part of the redirect URL — sanitize so a junk path
     // segment can't be reflected into the Location header.
     const safeProvider = /^[a-z0-9-]+$/.test(provider) ? provider : 'unknown';
@@ -211,6 +237,11 @@ export class PosOAuthController {
     const entry = await this.takeState(state);
     if (!entry) {
       return failRedirect('expired-state-token');
+    }
+    // Browser binding: the browser finishing the flow must be the one that
+    // started it (nonce cookie / session copy set at /authorize).
+    if (!bindingMatches(entry.browserNonce, browserNonce)) {
+      return failRedirect('browser-mismatch');
     }
     // Defense-in-depth: the nonce was minted for a specific provider; the
     // callback path's provider must match (a clover nonce can't be replayed
@@ -278,6 +309,10 @@ export class PosOAuthController {
       u.searchParams.set('status', 'ok');
       return res.redirect(u.toString());
     } catch (err: any) {
+      if (err instanceof PosStoreAlreadyConnectedError) {
+        this.logger.warn(`${provider} connect refused for tenant ${entry.tenantId}: store already connected to another tenant`);
+        return failRedirect('store-already-connected-to-another-organization');
+      }
       this.logger.error(`${provider} upsertConnection failed: ${err?.message || err}`);
       return failRedirect('persist-failed');
     }
@@ -464,12 +499,33 @@ export class PosOAuthController {
       // Unknown / unsupported provider for the generic receiver.
       throw new HttpException({ code: 'POS_WEBHOOK_PROVIDER_UNKNOWN', message: 'Unknown webhook provider' }, HttpStatus.NOT_FOUND);
     }
+    // Per-IP failed-attempt limit: an IP that has failed authentication
+    // CUSTOM_WEBHOOK_MAX_FAILURES times in the window is refused before any
+    // secret comparison. Successful pushes never consume this budget.
+    const failKey = `pos-custom-webhook-fail:${clientIpFromRequest(req) ?? 'unknown'}`;
+    const failures = await peekIngestLimit(
+      this.redis?.publisher,
+      failKey,
+      CUSTOM_WEBHOOK_MAX_FAILURES,
+      CUSTOM_WEBHOOK_FAILURE_WINDOW_MS,
+    );
+    if (failures.limited) {
+      throw new HttpException(
+        { code: 'POS_WEBHOOK_TOO_MANY_FAILURES', message: 'Too many failed attempts — try again later' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    const recordFailure = () =>
+      checkIngestLimit(this.redis?.publisher, failKey, CUSTOM_WEBHOOK_MAX_FAILURES, CUSTOM_WEBHOOK_FAILURE_WINDOW_MS);
+
     if (!secret) {
+      await recordFailure();
       throw new HttpException({ code: 'POS_WEBHOOK_SECRET_HEADER_MISSING', message: 'Missing X-Webhook-Secret header' }, HttpStatus.UNAUTHORIZED);
     }
 
     const conn = await this.svc.findCustomWebhookConnectionBySecret(secret);
     if (!conn) {
+      await recordFailure();
       // Don't leak whether the secret was wrong vs. the connection
       // missing — both are "we can't authenticate this push."
       this.logger.warn('Custom POS webhook: no connection matched the supplied secret');
@@ -589,7 +645,7 @@ export class PosOAuthController {
    *  in one pod's Map while the callback lands on another. */
   private async putState(
     state: string,
-    entry: { tenantId: string; userId: string; provider: string; storeId?: string },
+    entry: { tenantId: string; userId: string; provider: string; storeId?: string; browserNonce?: string },
   ): Promise<void> {
     const pub = this.redis?.publisher;
     if (pub) {
@@ -604,6 +660,7 @@ export class PosOAuthController {
             userId: entry.userId,
             provider: entry.provider,
             storeId: entry.storeId || '',
+            browserNonce: entry.browserNonce || '',
           }),
           'PX',
           STATE_TTL_MS,
@@ -622,6 +679,7 @@ export class PosOAuthController {
       userId: entry.userId,
       provider: entry.provider,
       storeId: entry.storeId,
+      browserNonce: entry.browserNonce,
       expiresAt: Date.now() + STATE_TTL_MS,
     });
   }
@@ -633,7 +691,7 @@ export class PosOAuthController {
    *  nonce across replicas), then the in-process Map. */
   private async takeState(
     state: string,
-  ): Promise<{ tenantId: string; userId: string; provider: string; storeId?: string } | null> {
+  ): Promise<{ tenantId: string; userId: string; provider: string; storeId?: string; browserNonce?: string } | null> {
     const pub = this.redis?.publisher;
     if (pub) {
       try {
@@ -654,6 +712,7 @@ export class PosOAuthController {
                 userId: parsed.userId,
                 provider: String(parsed.provider || ''),
                 storeId: parsed.storeId ? String(parsed.storeId) : undefined,
+                browserNonce: parsed.browserNonce ? String(parsed.browserNonce) : undefined,
               };
             }
           } catch {
@@ -682,7 +741,7 @@ export class PosOAuthController {
       return null;
     }
     this.stateCache.delete(state);
-    return { tenantId: local.tenantId, userId: local.userId, provider: local.provider, storeId: local.storeId };
+    return { tenantId: local.tenantId, userId: local.userId, provider: local.provider, storeId: local.storeId, browserNonce: local.browserNonce };
   }
 
   // ─── helpers ───────────────────────────────────────────────────────

@@ -61,10 +61,25 @@ export interface LaunchInput {
  * starts with `/`, so a naive `startsWith('/')` check waves it through.
  */
 export function isSafeNext(next: string | null | undefined): next is string {
-  if (!next) return false;
-  if (!next.startsWith('/')) return false;
-  if (next.startsWith('//')) return false;
+  if (typeof next !== 'string' || next.length === 0) return false;
+  // URL parsers silently strip tab/newline and handle other control
+  // characters inconsistently, so any control character refuses the value
+  // outright rather than being normalised.
+  for (let i = 0; i < next.length; i++) {
+    const code = next.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return false;
+  }
+  if (next[0] !== '/') return false;
+  if (next[1] === '/' || next[1] === '\\') return false;
   if (next.includes('\\')) return false; // some parsers fold \ to /
+  // Final authority: resolve against a fixed base and require the origin to
+  // be unchanged.
+  const BASE = 'https://x.invalid';
+  try {
+    if (new URL(next, BASE).origin !== BASE) return false;
+  } catch {
+    return false;
+  }
   return true;
 }
 

@@ -20,10 +20,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+const fs = require('node:fs');
+const path = require('node:path');
+
 const {
   prereleaseBase,
   prereleaseAliases,
   mergeAliasFindings,
+  findWaiver,
+  WAIVERS,
 } = require('../npm-advisory-audit.cjs');
 
 test('prereleaseBase strips the tag from a prerelease version', () => {
@@ -107,3 +112,41 @@ test('mergeAliasFindings dedupes by URL, falling back to title when a URL is mis
   const alias = [{ name: 'p', severity: 'high', title: 'Same title', url: '' }];
   assert.deepEqual(mergeAliasFindings(direct, alias, new Map()), []);
 });
+
+// ── Waivers (2026-11-17) ───────────────────────────────────────────────────
+
+const PICOMATCH = { name: 'picomatch', url: 'https://github.com/advisories/GHSA-fc5q-39xc-vjpf' };
+
+test('a waiver that names its advisory covers that advisory and nothing else on the package', () => {
+  const today = '2026-11-18';
+  const w = findWaiver(PICOMATCH, today);
+  assert.ok(w && !w.expired);
+  assert.equal(w.ghsa, 'GHSA-fc5q-39xc-vjpf');
+  // The id is matched whatever its case in the advisory URL.
+  assert.ok(findWaiver({ ...PICOMATCH, url: PICOMATCH.url.toLowerCase() }, today));
+  // Another advisory on the same package is NOT covered.
+  assert.equal(findWaiver({ name: 'picomatch', url: 'https://github.com/advisories/GHSA-aaaa-bbbb-cccc' }, today), null);
+  // A finding with no advisory URL is not covered.
+  assert.equal(findWaiver({ name: 'picomatch' }, today), null);
+  // Another package is not covered, even by the same advisory id.
+  assert.equal(findWaiver({ ...PICOMATCH, name: 'micromatch' }, today), null);
+});
+
+test('a waiver stops applying on its expiry date', () => {
+  assert.equal(findWaiver(PICOMATCH, '2026-12-16').expired, undefined);
+  assert.equal(findWaiver(PICOMATCH, '2026-12-17').expired, true);
+  assert.equal(findWaiver(PICOMATCH, '2027-06-01').expired, true);
+});
+
+test('every waiver names its advisory, says why, expires and has a proof module that exists', () => {
+  for (const w of WAIVERS) {
+    assert.match(String(w.name), /^[@a-z0-9][a-z0-9._/-]*$/, 'name');
+    assert.match(String(w.ghsa), /^GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}$/, `${w.name}: ghsa`);
+    assert.ok(String(w.reason).length >= 80, `${w.name}: a reason that names the unreachable path`);
+    assert.match(String(w.expires), /^\d{4}-\d{2}-\d{2}$/, `${w.name}: expires`);
+    assert.ok(typeof w.proof === 'string' && w.proof.length > 0, `${w.name}: proof`);
+    assert.ok(fs.existsSync(path.resolve(__dirname, '..', w.proof)), `${w.name}: proof module ${w.proof} exists`);
+    assert.equal(typeof require(path.resolve(__dirname, '..', w.proof)).verify, 'function', `${w.name}: proof exports verify()`);
+  }
+});
+
