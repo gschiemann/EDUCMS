@@ -24,7 +24,7 @@ ARG NODE_IMAGE=node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e68097
 # ═══════════════════════════════════════════════════════════════════════
 FROM ${NODE_IMAGE} AS builder
 WORKDIR /repo
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/renderer/package.json ./apps/renderer/package.json
@@ -36,7 +36,13 @@ COPY apps/renderer/package.json ./apps/renderer/package.json
 # and nothing of the root's.
 # --ignore-scripts: nothing in the closure has an install script (sharp 0.35
 # ships prebuilt @img/* binaries; puppeteer-core downloads nothing).
-RUN pnpm --filter renderer deploy --ignore-scripts /build
+# --legacy (2026-11-18, pnpm 10.34.9): from pnpm 10 a plain `deploy` refuses a
+# workspace without inject-workspace-packages (ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE).
+# The legacy form is the pnpm 9 behaviour. Replayed on a glibc host it gives the same
+# six top-level packages; the closure loses proxy-agent 6.5.0 and its 25 dependencies,
+# which pnpm 9 attached to @puppeteer/browsers as an optional peer it only uses to
+# DOWNLOAD a browser. This image launches the system Chromium and downloads none.
+RUN pnpm --filter renderer deploy --legacy --ignore-scripts /build
 
 WORKDIR /build
 COPY apps/renderer/tsconfig.json apps/renderer/tsconfig.build.json ./
@@ -49,10 +55,10 @@ RUN ./node_modules/.bin/tsc -p tsconfig.build.json
 # ═══════════════════════════════════════════════════════════════════════
 FROM ${NODE_IMAGE} AS proddeps
 WORKDIR /repo
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/renderer/package.json ./apps/renderer/package.json
-RUN pnpm --filter renderer deploy --prod --ignore-scripts /out \
+RUN pnpm --filter renderer deploy --legacy --prod --ignore-scripts /out \
     && rm -rf /root/.cache /root/.local/share/pnpm /tmp/* \
     # The bundle serves WOFF2 only; the WOFF twins fontsource ships for
     # older bundlers are dead weight here. (Licences stay.)

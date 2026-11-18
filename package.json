@@ -1,7 +1,7 @@
 {
   "license": "SEE LICENSE IN LICENSE",
   "name": "edu-cms-backend",
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@10.34.9",
   "version": "1.0.0",
   "description": "Secure multi-tenant School CMS API",
   "scripts": {

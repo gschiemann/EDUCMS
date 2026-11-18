@@ -46,7 +46,7 @@ Three things make it more than a slideshow player:
 
 ## Quickstart
 
-**Prerequisites:** Node.js 20+, [pnpm](https://pnpm.io) (`pnpm@9`), and a Postgres + Redis you can reach. The fastest local path uses the bundled `docker-compose.yml`.
+**Prerequisites:** Node.js 20+, [pnpm](https://pnpm.io) (`pnpm@10`), and a Postgres + Redis you can reach. The fastest local path uses the bundled `docker-compose.yml`.
 
 ```bash
 # 1. Install dependencies
