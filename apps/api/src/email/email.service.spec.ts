@@ -1,4 +1,10 @@
-import { EmailService } from './email.service';
+import {
+  DELIVERY_RECHECK_MS,
+  EmailService,
+  deliveryStatusFromEvent,
+  escapeHtml,
+  inviteHtml,
+} from './email.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 // isDeliverableToArbitraryRecipients() only reads process.env.EMAIL_FROM and
@@ -281,5 +287,235 @@ describe('EmailService — one-time link tokens are redacted in email_logs', () 
     expect(rows[0].kind).toBe('INVITE');
     expect(JSON.stringify(rows[0])).not.toContain('invite-tok-0987654321');
     expect(rows[0].body).toContain('/accept-invite/[redacted]');
+  });
+});
+
+// 2026-11-18 - two invitations were recorded SENT, reached the recipients'
+// mail server and were never seen. The subject carried the inviter's address,
+// the mail was text only, and nothing recorded what the provider reported.
+describe('EmailService - invitation shape and delivery state', () => {
+  const saved = {
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
+  };
+  let rows: Array<Record<string, any>>;
+  let fetchMock: jest.Mock;
+  let lastEvent: string | null;
+  let lookupOk: boolean;
+
+  function service(): EmailService {
+    const prisma = {
+      client: {
+        emailLog: {
+          create: jest.fn(async ({ data }: any) => {
+            const row = { id: `log-${rows.length + 1}`, createdAt: new Date(), ...data };
+            rows.push(row);
+            return row;
+          }),
+          update: jest.fn(async ({ where, data }: any) => {
+            const row = rows.find((r) => r.id === where.id)!;
+            Object.assign(row, data);
+            return row;
+          }),
+          findFirst: jest.fn(async ({ where }: any) => {
+            const hits = rows
+              .filter((r) => r.toEmail === where.toEmail && r.kind === where.kind && r.createdAt >= where.createdAt.gte)
+              .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+            return hits[0] ?? null;
+          }),
+        },
+      },
+    };
+    return new EmailService(prisma as unknown as PrismaService);
+  }
+  const posts = () => fetchMock.mock.calls.filter((c: any[]) => (c[1]?.method ?? 'GET') === 'POST');
+  const gets = () => fetchMock.mock.calls.filter((c: any[]) => (c[1]?.method ?? 'GET') === 'GET');
+  const sent = () => JSON.parse(posts()[0][1].body) as { subject: string; text: string; html?: string };
+  const invite = (over: Record<string, unknown> = {}) => ({
+    to: 'new.person@corp.test', inviterEmail: 'boss@corp.test', tenantName: 'Acme Houston',
+    role: 'CONTRIBUTOR', inviteToken: 'invite-tok-0987654321', ...over,
+  });
+
+  beforeEach(() => {
+    rows = [];
+    lastEvent = 'delivered';
+    lookupOk = true;
+    process.env.RESEND_API_KEY = 're_test_not_real';
+    process.env.EMAIL_FROM = 'VenueOS <noreply@venueos.example>';
+    process.env.APP_PUBLIC_URL = 'https://app.example.test';
+    fetchMock = jest.fn(async (url: string, init?: any) => {
+      if ((init?.method ?? 'GET') === 'POST') {
+        return { ok: true, text: async () => '', json: async () => ({ id: 'prov-1' }) };
+      }
+      if (!lookupOk) return { ok: false, status: 500, text: async () => 'boom', json: async () => ({}) };
+      // The provider's answer also carries the body, link included.
+      return { ok: true, json: async () => ({ id: 'prov-1', last_event: lastEvent, text: 'https://app.example.test/accept-invite/invite-tok-0987654321' }) };
+    });
+    (global as any).fetch = fetchMock;
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    delete (global as any).fetch;
+    jest.useRealTimers();
+  });
+
+  it('the subject names the workspace and never carries the inviter address', async () => {
+    await service().sendUserInvite(invite() as any);
+    expect(sent().subject).toBe("You're invited to Acme Houston on VenueOS");
+    expect(sent().subject).not.toContain('@');
+    expect(rows[0].subject).not.toContain('@');
+  });
+
+  it('the body names the inviter by name when the account has one, by address otherwise', async () => {
+    await service().sendUserInvite(invite({ inviterName: 'Pat Jones' }) as any);
+    expect(sent().text).toContain('Pat Jones invited you to join Acme Houston on VenueOS as Editor.');
+    expect(sent().text).not.toContain('boss@corp.test');
+    fetchMock.mockClear();
+    await service().sendUserInvite(invite({ inviterName: '   ' }) as any);
+    expect(sent().text).toContain('boss@corp.test invited you to join Acme Houston');
+  });
+
+  it('sends an HTML part beside the text, with the same link, and keeps neither it nor the token in the log row', async () => {
+    await service().sendUserInvite(invite() as any);
+    const { html, text } = sent();
+    expect(text).toContain('https://app.example.test/accept-invite/invite-tok-0987654321');
+    expect(html).toContain('href="https://app.example.test/accept-invite/invite-tok-0987654321"');
+    expect(html).toContain('Accept invitation');
+    expect(html).not.toMatch(/<img|<script|http:\/\//i);
+    expect(JSON.stringify(rows[0])).not.toContain('invite-tok-0987654321');
+    expect(JSON.stringify(rows[0])).not.toContain('<html');
+    expect(rows[0].body).toContain('/accept-invite/[redacted]');
+  });
+
+  it('a name typed by a person cannot inject markup into the HTML part or a second line into the subject', async () => {
+    await service().sendUserInvite(invite({
+      tenantName: 'Acme <img src=x onerror=alert(1)>\r\nBcc: evil@x.test',
+      inviterName: '"><script>alert(1)</script>',
+    }) as any);
+    const { html, subject } = sent();
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('&lt;script&gt;');
+    expect(subject).not.toMatch(/[\r\n]/);
+    expect(subject).toBe("You're invited to Acme <img src=x onerror=alert(1)> Bcc: evil@x.test on VenueOS");
+  });
+
+  it('escapeHtml escapes the five characters that matter in text and in an attribute', () => {
+    expect(escapeHtml(`a&b<c>d"e'f`)).toBe('a&amp;b&lt;c&gt;d&quot;e&#39;f');
+    expect(inviteHtml({ who: 'A', tenantName: 'B', role: 'C', url: 'https://x.test/a?b=1&c="2"' }))
+      .toContain('href="https://x.test/a?b=1&amp;c=&quot;2&quot;"');
+  });
+
+  it('other mail stays text only', async () => {
+    await service().sendPasswordReset({ to: 'a@b.test', resetToken: 'reset-tok' });
+    expect(sent().html).toBeUndefined();
+  });
+
+  it("stores the provider's id for the message, and survives an answer that has none", async () => {
+    await service().sendUserInvite(invite() as any);
+    expect(rows[0].status).toBe('SENT');
+    expect(rows[0].providerId).toBe('prov-1');
+    fetchMock.mockImplementationOnce(async () => ({ ok: true, text: async () => '' }));
+    await service().sendUserInvite(invite({ to: 'second@corp.test' }) as any);
+    expect(rows[1].status).toBe('SENT');
+    expect(rows[1].providerId).toBeUndefined();
+  });
+
+  it('maps the provider events to our words', () => {
+    expect(deliveryStatusFromEvent('delivered')).toBe('delivered');
+    expect(deliveryStatusFromEvent('opened')).toBe('delivered');
+    expect(deliveryStatusFromEvent('clicked')).toBe('delivered');
+    expect(deliveryStatusFromEvent('bounced')).toBe('bounced');
+    expect(deliveryStatusFromEvent('suppressed')).toBe('bounced');
+    expect(deliveryStatusFromEvent('delivery_delayed')).toBe('delayed');
+    expect(deliveryStatusFromEvent('complained')).toBe('complained');
+    expect(deliveryStatusFromEvent('failed')).toBe('failed');
+    expect(deliveryStatusFromEvent('sent')).toBe('sent');
+    expect(deliveryStatusFromEvent('something_new')).toBeNull();
+    expect(deliveryStatusFromEvent(undefined)).toBeNull();
+  });
+
+  it('reads the delivery state once, stores it, and never asks again once it is final', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-18T17:25:00Z') });
+    const svc = service();
+    const since = new Date();
+    await svc.sendUserInvite(invite() as any);
+    const first = await svc.inviteDelivery({ to: 'new.person@corp.test', since });
+    expect(first.status).toBe('delivered');
+    expect(first.checkedAt).toBeInstanceOf(Date);
+    expect(rows[0].deliveryStatus).toBe('delivered');
+    expect(gets()).toHaveLength(1);
+    expect(gets()[0][0]).toBe('https://api.resend.com/emails/prov-1');
+    const second = await svc.inviteDelivery({ to: 'new.person@corp.test', since });
+    expect(second.status).toBe('delivered');
+    expect(gets()).toHaveLength(1);
+    // long after the re-check window: a final state is still not asked for again
+    jest.setSystemTime(new Date(Date.now() + 10 * DELIVERY_RECHECK_MS));
+    lastEvent = 'bounced';
+    expect((await svc.inviteDelivery({ to: 'new.person@corp.test', since })).status).toBe('delivered');
+    expect(gets()).toHaveLength(1);
+    // the provider's answer held the live link: it is not kept anywhere
+    expect(JSON.stringify(rows)).not.toContain('invite-tok-0987654321');
+  });
+
+  it('a state that can still move is re-read, but not more than once per window', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-18T17:25:00Z') });
+    const svc = service();
+    const since = new Date();
+    await svc.sendUserInvite(invite() as any);
+    lastEvent = 'sent';
+    expect((await svc.inviteDelivery({ to: 'new.person@corp.test', since })).status).toBe('sent');
+    expect((await svc.inviteDelivery({ to: 'new.person@corp.test', since })).status).toBe('sent');
+    expect(gets()).toHaveLength(1);
+    jest.setSystemTime(new Date(Date.now() + DELIVERY_RECHECK_MS));
+    lastEvent = 'bounced';
+    expect((await svc.inviteDelivery({ to: 'new.person@corp.test', since })).status).toBe('bounced');
+    expect(gets()).toHaveLength(2);
+  });
+
+  it('refresh:false returns what is stored and never asks the provider', async () => {
+    const svc = service();
+    const since = new Date();
+    await svc.sendUserInvite(invite() as any);
+    const res = await svc.inviteDelivery({ to: 'new.person@corp.test', since, refresh: false });
+    expect(res.status).toBe('unknown');
+    expect(gets()).toHaveLength(0);
+  });
+
+  it('a lookup that fails, throws or returns an unknown event leaves the stored state alone', async () => {
+    const svc = service();
+    const since = new Date();
+    await svc.sendUserInvite(invite() as any);
+    lookupOk = false;
+    expect((await svc.inviteDelivery({ to: 'new.person@corp.test', since })).status).toBe('unknown');
+    lookupOk = true;
+    lastEvent = 'something_new';
+    expect((await svc.inviteDelivery({ to: 'new.person@corp.test', since })).status).toBe('unknown');
+    fetchMock.mockImplementationOnce(async () => { throw new Error('network down'); });
+    expect((await svc.inviteDelivery({ to: 'new.person@corp.test', since })).status).toBe('unknown');
+    expect(rows[0].deliveryStatus).toBeUndefined();
+  });
+
+  it('a row the provider never accepted is not_sent, and a row without a provider id is never looked up', async () => {
+    const svc = service();
+    const since = new Date(Date.now() - 1000);
+    rows.push({ id: 'log-a', toEmail: 'refused@corp.test', kind: 'INVITE', status: 'FAILED', createdAt: new Date() });
+    rows.push({ id: 'log-b', toEmail: 'old@corp.test', kind: 'INVITE', status: 'SENT', sentAt: new Date(), createdAt: new Date() });
+    expect((await svc.inviteDelivery({ to: 'refused@corp.test', since })).status).toBe('not_sent');
+    expect((await svc.inviteDelivery({ to: 'old@corp.test', since })).status).toBe('unknown');
+    expect((await svc.inviteDelivery({ to: 'nobody@corp.test', since })).status).toBe('unknown');
+    expect(gets()).toHaveLength(0);
+  });
+
+  it('only a mail written at or after the invitation counts, and only an INVITE', async () => {
+    const svc = service();
+    rows.push({ id: 'log-old', toEmail: 'p@corp.test', kind: 'INVITE', status: 'SENT', providerId: 'prov-old', deliveryStatus: 'bounced', createdAt: new Date(Date.now() - 3_600_000) });
+    rows.push({ id: 'log-code', toEmail: 'p@corp.test', kind: 'MFA_EMAIL_CODE', status: 'SENT', providerId: 'prov-code', deliveryStatus: 'delivered', createdAt: new Date() });
+    expect((await svc.inviteDelivery({ to: 'p@corp.test', since: new Date() })).status).toBe('unknown');
+    expect(gets()).toHaveLength(0);
   });
 });

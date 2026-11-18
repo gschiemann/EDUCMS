@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EULA_VERSION } from '@cms/api-types';
-import { OnboardingService, hashToken, PASSWORD_RESET_TTL_MS } from './onboarding.service';
+import { OnboardingService, hashToken, PASSWORD_RESET_TTL_MS, PENDING_INVITES_REFRESH_MAX } from './onboarding.service';
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -106,10 +106,32 @@ function createInMemoryPrisma() {
     },
     userInvite: {
       create: async ({ data }: any) => {
+        // `user_invites.user_id` is UNIQUE in the real schema. The fake did not
+        // enforce it, which is how "invite the same person again" stayed broken
+        // in production while these tests were green (2026-11-18).
+        if (data.userId && invites.some((i) => i.userId === data.userId)) {
+          throw new Error('Unique constraint failed on the fields: (`user_id`)');
+        }
         const row = { id: `invite-${invites.length + 1}`, createdAt: new Date(), acceptedAt: null, ...data };
         invites.push(row);
         return row;
       },
+      findFirst: async ({ where }: any) =>
+        invites.find(
+          (i) =>
+            i.tenantId === where.tenantId &&
+            i.userId === where.userId &&
+            (where.acceptedAt === undefined || i.acceptedAt === where.acceptedAt),
+        ) || null,
+      findMany: async ({ where, take }: any) =>
+        invites
+          .filter((i) => i.tenantId === where.tenantId && (where.acceptedAt === undefined || i.acceptedAt === where.acceptedAt))
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          .slice(0, take ?? invites.length)
+          .map((i) => {
+            const u = users.find((x) => x.id === i.userId);
+            return { ...i, user: u ? { status: u.status, deletedAt: u.deletedAt ?? null } : null };
+          }),
       findUnique: async ({ where, include }: any) => {
         const row = invites.find((i) => i.tokenHash === where.tokenHash);
         if (!row) return null;
@@ -1118,6 +1140,143 @@ describe('OnboardingService', () => {
       expect(row).toMatchObject({ status: 'ACTIVE', mustSetupCredentials: true, setupPasswordOnly: true });
       const audit = state.auditLogs.find((a) => a.action === 'USER_CREATED_DIRECT')!;
       expect(JSON.parse(audit.details)).toMatchObject({ method: 'admin-set-password', temporaryPassword: true });
+    });
+  });
+
+  // 2026-11-18 - two invitations reached the recipients' mail server and were
+  // never seen. The administrator could not get the link (it is only returned
+  // when the provider refuses the mail) and could not send it again (the
+  // second insert hit the unique `user_id`).
+  describe('invite again, and the list of pending invitations', () => {
+    async function adminWithPendingInvite() {
+      const admin = await service.signup({
+        districtName: 'Houston Shop', slug: 'houston-shop', adminEmail: 'admin@shop.test', password: 'admin-password-123',
+      });
+      await service.createInvite({
+        inviterId: admin.user.id, tenantId: admin.user.tenantId, email: 'new.person@corp.test', role: 'CONTRIBUTOR',
+      });
+      // The suite's own spy (beforeEach) records every invitation token as it is mailed.
+      const tokens = () => sentTokens.filter((t) => t.kind === 'invite').map((t) => t.token);
+      const sendSpy = emailService.sendUserInvite as unknown as jest.Mock;
+      return { admin, tokens, sendSpy };
+    }
+
+    it('inviting the same pending person again issues a new link, retires the old one and mails it again', async () => {
+      const { admin, tokens, sendSpy } = await adminWithPendingInvite();
+      const again = await service.createInvite({
+        inviterId: admin.user.id, tenantId: admin.user.tenantId, email: 'New.Person@corp.test', role: 'CONTRIBUTOR',
+      });
+      expect(tokens()).toHaveLength(2);
+      expect(tokens()[1]).not.toBe(tokens()[0]);
+      expect(again.acceptUrl).toContain(`/accept-invite/${tokens()[1]}`);
+      // exactly one invitation row for the person, and it is the new one
+      const mine = state.invites.filter((i) => i.email === 'new.person@corp.test');
+      expect(mine).toHaveLength(1);
+      await expect(service.getInvitePreview(tokens()[0])).rejects.toThrow();
+      await expect(service.getInvitePreview(tokens()[1])).resolves.toBeTruthy();
+      // one account, still waiting
+      expect(state.users.filter((u) => u.email === 'new.person@corp.test')).toHaveLength(1);
+      expect(sendSpy).toHaveBeenCalledTimes(2);
+      // the audit trail says which one was a re-issue
+      const audits = state.auditLogs.filter((a) => a.action === 'USER_INVITED').map((a) => JSON.parse(a.details));
+      expect(audits).toHaveLength(2);
+      expect(audits[0].reissued).toBeUndefined();
+      expect(audits[1].reissued).toBe(true);
+    });
+
+    it('the old link cannot be accepted after a re-issue; the new one can', async () => {
+      const { admin, tokens } = await adminWithPendingInvite();
+      await service.createInvite({
+        inviterId: admin.user.id, tenantId: admin.user.tenantId, email: 'new.person@corp.test', role: 'CONTRIBUTOR',
+      });
+      await expect(service.acceptInvite({ token: tokens()[0], password: 'a-long-enough-password-1' })).rejects.toThrow('Invalid invite link.');
+      await expect(service.acceptInvite({ token: tokens()[1], password: 'a-long-enough-password-1' })).resolves.toBeTruthy();
+    });
+
+    it('an accepted person cannot be invited again', async () => {
+      const { admin, tokens } = await adminWithPendingInvite();
+      await service.acceptInvite({ token: tokens()[0], password: 'a-long-enough-password-1' });
+      await expect(
+        service.createInvite({ inviterId: admin.user.id, tenantId: admin.user.tenantId, email: 'new.person@corp.test', role: 'CONTRIBUTOR' }),
+      ).rejects.toThrow('A user with that email already exists.');
+    });
+
+    it("the invitation mail carries the inviter's name when the account has one", async () => {
+      const { admin, sendSpy } = await adminWithPendingInvite();
+      expect(sendSpy.mock.calls[0][0].inviterName ?? null).toBeNull();
+      const row = state.users.find((u) => u.id === admin.user.id)!;
+      row.firstName = 'Pat';
+      row.lastName = 'Jones';
+      await service.createInvite({
+        inviterId: admin.user.id, tenantId: admin.user.tenantId, email: 'second@corp.test', role: 'CONTRIBUTOR',
+      });
+      expect(sendSpy.mock.calls[1][0].inviterName).toBe('Pat Jones');
+    });
+
+    it('lists only this tenant, only people still waiting, with what the provider reported', async () => {
+      const { admin, tokens } = await adminWithPendingInvite();
+      await service.createInvite({
+        inviterId: admin.user.id, tenantId: admin.user.tenantId, email: 'accepted@corp.test', role: 'CONTRIBUTOR',
+      });
+      await service.acceptInvite({ token: tokens()[1], password: 'a-long-enough-password-1' });
+      const other = await service.signup({
+        districtName: 'Other Shop', slug: 'other-shop', adminEmail: 'admin@other.test', password: 'admin-password-123',
+      });
+      await service.createInvite({
+        inviterId: other.user.id, tenantId: other.user.tenantId, email: 'theirs@other.test', role: 'CONTRIBUTOR',
+      });
+      const delivery = jest.spyOn(emailService, 'inviteDelivery').mockResolvedValue({
+        status: 'delivered', sentAt: new Date(), checkedAt: new Date('2026-11-18T17:30:00Z'),
+      });
+      const { invites } = await service.listPendingInvites({ tenantId: admin.user.tenantId });
+      expect(invites.map((i) => i.email)).toEqual(['new.person@corp.test']);
+      expect(invites[0]).toMatchObject({ role: 'CONTRIBUTOR', delivery: 'delivered', expired: false });
+      expect(invites[0].expiresAt.getTime()).toBeGreaterThan(Date.now());
+      expect(JSON.stringify(invites)).not.toContain('tokenHash');
+      expect(delivery).toHaveBeenCalledTimes(1);
+      expect(delivery.mock.calls[0][0]).toMatchObject({ to: 'new.person@corp.test', refresh: true });
+      const theirs = await service.listPendingInvites({ tenantId: other.user.tenantId });
+      expect(theirs.invites.map((i) => i.email)).toEqual(['theirs@other.test']);
+    });
+
+    it('a person who is no longer waiting is not listed, even with an unaccepted invitation row', async () => {
+      const { admin } = await adminWithPendingInvite();
+      await service.createInvite({
+        inviterId: admin.user.id, tenantId: admin.user.tenantId, email: 'given-a-password@corp.test', role: 'CONTRIBUTOR',
+      });
+      await service.createInvite({
+        inviterId: admin.user.id, tenantId: admin.user.tenantId, email: 'removed@corp.test', role: 'CONTRIBUTOR',
+      });
+      // one was then set up directly by an administrator, one was removed
+      state.users.find((u) => u.email === 'given-a-password@corp.test')!.status = 'ACTIVE';
+      state.users.find((u) => u.email === 'removed@corp.test')!.deletedAt = new Date();
+      expect(state.invites.filter((i) => i.acceptedAt === null)).toHaveLength(3);
+      jest.spyOn(emailService, 'inviteDelivery').mockResolvedValue({ status: 'sent', sentAt: null, checkedAt: null });
+      const { invites } = await service.listPendingInvites({ tenantId: admin.user.tenantId });
+      expect(invites.map((i) => i.email)).toEqual(['new.person@corp.test']);
+    });
+
+    it('only the newest few pending invitations may ask the provider in one load', async () => {
+      const { admin } = await adminWithPendingInvite();
+      for (let n = 0; n < PENDING_INVITES_REFRESH_MAX + 2; n++) {
+        await service.createInvite({
+          inviterId: admin.user.id, tenantId: admin.user.tenantId, email: `p${n}@corp.test`, role: 'CONTRIBUTOR',
+        });
+      }
+      const delivery = jest.spyOn(emailService, 'inviteDelivery').mockResolvedValue({ status: 'sent', sentAt: null, checkedAt: null });
+      const { invites } = await service.listPendingInvites({ tenantId: admin.user.tenantId });
+      expect(invites).toHaveLength(PENDING_INVITES_REFRESH_MAX + 3);
+      const flags = delivery.mock.calls.map((c) => c[0].refresh);
+      expect(flags.filter((f) => f === true)).toHaveLength(PENDING_INVITES_REFRESH_MAX);
+      expect(flags.filter((f) => f === false)).toHaveLength(3);
+    });
+
+    it('an expired pending invitation is listed as expired, so it can be sent again', async () => {
+      const { admin } = await adminWithPendingInvite();
+      state.invites[0].expiresAt = new Date(Date.now() - 1000);
+      jest.spyOn(emailService, 'inviteDelivery').mockResolvedValue({ status: 'unknown', sentAt: null, checkedAt: null });
+      const { invites } = await service.listPendingInvites({ tenantId: admin.user.tenantId });
+      expect(invites[0].expired).toBe(true);
     });
   });
 });

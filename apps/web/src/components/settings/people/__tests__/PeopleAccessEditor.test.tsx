@@ -117,7 +117,11 @@ it('shows the copyable accept link when the API reports email was not delivered'
   expect(screen.getByText(/Email isn't set up/i)).toBeInTheDocument();
 });
 
-it('reports a real invite as sent, with no copy-link fallback', async () => {
+// 2026-11-18: this test used to pin "no link when the mail was sent". Two
+// invitations were accepted by the recipients' mail server and never reached
+// an inbox, and the administrator had no link to hand over. "Sent" is not
+// "arrived", so the one-time link now stays on screen every time.
+it('reports a real invite as sent AND keeps the one-time link on screen', async () => {
   apiFetch.mockImplementation(async (path: string) => {
     if (path === '/users') return [JUNIOR];
     if (path === '/tenants/me/content-approval') return { enabled: false };
@@ -132,7 +136,91 @@ it('reports a real invite as sent, with no copy-link fallback', async () => {
   fireEvent.click(screen.getByRole('button', { name: /send invitation/i }));
 
   await screen.findByText('Invitation sent to new@x.edu.');
-  expect(screen.queryByLabelText('Invitation accept link')).toBeNull();
+  expect(screen.getByLabelText('Invitation accept link')).toHaveValue('https://app.example/accept/tok123');
+  expect(screen.getByText(/If it does not arrive, send them this one-time link yourself/)).toBeInTheDocument();
+  // it is the success panel, not the "email isn't set up" warning
+  expect(screen.queryByText(/Email isn't set up/i)).toBeNull();
+});
+
+describe('pending invitations: delivery state and send again (2026-11-18)', () => {
+  const PENDING = (over: Record<string, unknown> = {}) => ({
+    invites: [{
+      userId: 'inv', email: 'new@x.edu', role: 'CONTRIBUTOR', sentAt: '2026-11-18T17:25:29.000Z',
+      expiresAt: '2026-11-25T17:25:29.000Z', expired: false, delivery: 'delivered', deliveryCheckedAt: '2026-11-18T17:30:00.000Z', ...over,
+    }],
+  });
+  function mockInvites(list: unknown, post: (body: any) => unknown = () => ({ emailDelivered: true, acceptUrl: 'https://app.example/accept/fresh' })) {
+    apiFetch.mockImplementation(async (path: string, opts?: any) => {
+      if (path === '/users') return [ME, INVITED];
+      if (path === '/tenants/me/content-approval') return { enabled: false };
+      if (path === '/invites' && opts?.method === 'POST') return post(JSON.parse(opts.body));
+      if (path === '/invites') return list;
+      return {};
+    });
+  }
+  const posts = () => apiFetch.mock.calls.filter((c) => c[0] === '/invites' && (c[1] as any)?.method === 'POST');
+
+  it('says what the mail provider reported and when the invitation expires', async () => {
+    mockInvites(PENDING());
+    renderEditor();
+    const state = await screen.findByTestId('invite-state-inv');
+    expect(state).toHaveTextContent('Reached their mail server. If they cannot find it, ask them to check junk or quarantine.');
+    expect(state).toHaveTextContent(`Expires ${new Date('2026-11-25T17:25:29.000Z').toLocaleDateString()}.`);
+  });
+
+  it.each([
+    ['bounced', /Bounced\. Their mail server refused it/],
+    ['delayed', /Delayed\. Their mail server has not accepted it yet/],
+    ['complained', /Delivered, then marked as spam/],
+    ['failed', /Not sent\. The mail provider could not send it/],
+    ['not_sent', /Not sent\. The mail provider could not send it/],
+    ['sent', /Sent\. Delivery is not confirmed yet/],
+    ['unknown', /Sent\. Delivery was not recorded for this one/],
+    ['a_new_word', /Sent\. Delivery was not recorded for this one/],
+  ])('delivery "%s" has its own sentence', async (delivery, text) => {
+    mockInvites(PENDING({ delivery }));
+    renderEditor();
+    expect(await screen.findByTestId('invite-state-inv')).toHaveTextContent(text);
+  });
+
+  it('an expired invitation says so', async () => {
+    mockInvites(PENDING({ expired: true, expiresAt: '2026-11-10T00:00:00.000Z' }));
+    renderEditor();
+    expect(await screen.findByTestId('invite-state-inv')).toHaveTextContent(/Expired /);
+  });
+
+  it('Send again re-invites the same address and role, then shows the new one-time link', async () => {
+    mockInvites(PENDING());
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: 'Send again' }));
+    await screen.findByText('A new invitation was sent to new@x.edu. The earlier link no longer works.');
+    expect(posts()).toHaveLength(1);
+    expect(JSON.parse((posts()[0][1] as any).body)).toEqual({ email: 'new@x.edu', role: 'CONTRIBUTOR' });
+    expect(screen.getByLabelText('Invitation accept link')).toHaveValue('https://app.example/accept/fresh');
+  });
+
+  it('Send again still hands over the link when the mail could not be sent', async () => {
+    mockInvites(PENDING(), () => ({ emailDelivered: false, acceptUrl: 'https://app.example/accept/fresh' }));
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: 'Send again' }));
+    await screen.findByText(/The mail could not be sent\. Share this one-time link with new@x\.edu yourself/);
+    expect(screen.getByLabelText('Invitation accept link')).toHaveValue('https://app.example/accept/fresh');
+  });
+
+  it('Send again shows the server refusal and no link', async () => {
+    mockInvites(PENDING(), () => { throw new Error('You cannot assign that role.'); });
+    renderEditor();
+    fireEvent.click(await screen.findByRole('button', { name: 'Send again' }));
+    await screen.findByText('You cannot assign that role.');
+    expect(screen.queryByLabelText('Invitation accept link')).toBeNull();
+  });
+
+  it('a pending row without a listed invitation still offers Send again and shows no state line', async () => {
+    mockInvites({ invites: [] });
+    renderEditor();
+    expect(await screen.findByRole('button', { name: 'Send again' })).toBeInTheDocument();
+    expect(screen.queryByTestId('invite-state-inv')).toBeNull();
+  });
 });
 
 it('stacks a row — who, then role + badges, then a wrapping actions row — so nothing can overlap (2026-10-12)', async () => {

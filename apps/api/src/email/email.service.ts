@@ -38,6 +38,103 @@ export const REDACTED_TOKEN = '[redacted]';
 /** How one dispatch ended —`SENT_UNVERIFIED` is the shared-sender case (see #dispatch). */
 export type EmailDispatchStatus = 'SENT' | 'SENT_UNVERIFIED' | 'FAILED';
 
+/**
+ * What the provider last reported for a message it had ACCEPTED (2026-11-18).
+ *
+ * `email_logs.status = SENT` only ever meant "handed to the provider". Two
+ * invitations were recorded SENT, reached the recipients' own mail server and
+ * were never seen, and the dashboard had said "Invitation sent" and nothing
+ * else. This is the provider's last event for the message, in our words:
+ *   delivered  - the recipient's mail server accepted it. NOT "it is in the
+ *                inbox": a filter can still junk or quarantine it afterwards,
+ *                and no sender can see that.
+ *   bounced    - the recipient's server refused it, or the address is on the
+ *                provider's suppression list.
+ *   delayed    - a temporary failure; the provider is still trying.
+ *   complained - delivered, then marked as spam by the recipient.
+ *   failed     - the provider could not send it at all.
+ *   sent       - accepted by the provider, nothing further reported yet.
+ */
+export type EmailDeliveryStatus = 'delivered' | 'bounced' | 'delayed' | 'complained' | 'failed' | 'sent';
+
+/** Statuses that will not change again, so they are never asked for twice. */
+const FINAL_DELIVERY: ReadonlySet<string> = new Set(['delivered', 'bounced', 'complained', 'failed']);
+
+/** A status that can still move is re-read at most this often per message. */
+export const DELIVERY_RECHECK_MS = 30_000;
+
+/** One delivery lookup may hold a request this long, then gives up. */
+export const DELIVERY_LOOKUP_TIMEOUT_MS = 4_000;
+
+/** Resend's `last_event` (retrieve-email) in our words; null for a value we do not know. */
+export function deliveryStatusFromEvent(lastEvent: unknown): EmailDeliveryStatus | null {
+  switch (lastEvent) {
+    case 'delivered':
+    case 'opened':
+    case 'clicked':
+      return 'delivered';
+    case 'bounced':
+    case 'suppressed':
+      return 'bounced';
+    case 'delivery_delayed':
+      return 'delayed';
+    case 'complained':
+      return 'complained';
+    case 'failed':
+    case 'canceled':
+      return 'failed';
+    case 'sent':
+    case 'queued':
+    case 'scheduled':
+      return 'sent';
+    default:
+      return null;
+  }
+}
+
+/** Text that lands inside the invitation's HTML part. Names are typed by people. */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** A subject is one line: a name must not be able to add a header line or a control character. */
+function oneLine(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** The invitation as HTML. No remote image, no tracking pixel, one link (shown twice). */
+export function inviteHtml(p: { who: string; tenantName: string; role: string; url: string }): string {
+  const e = escapeHtml;
+  return [
+    '<!doctype html>',
+    '<html lang="en"><body style="margin:0;padding:24px;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#1a1d21;">',
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">',
+    '<table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff;border-radius:8px;padding:28px;text-align:left;">',
+    `<tr><td style="font-size:18px;font-weight:bold;padding-bottom:12px;">You're invited to ${e(p.tenantName)}</td></tr>`,
+    `<tr><td style="font-size:15px;line-height:22px;padding-bottom:20px;">${e(p.who)} invited you to join ${e(p.tenantName)} on VenueOS as ${e(p.role)}.</td></tr>`,
+    `<tr><td style="padding-bottom:20px;"><a href="${e(p.url)}" style="display:inline-block;background:#1f6feb;color:#ffffff;text-decoration:none;font-size:15px;font-weight:bold;padding:12px 20px;border-radius:6px;">Accept invitation</a></td></tr>`,
+    `<tr><td style="font-size:13px;line-height:19px;color:#555b63;padding-bottom:8px;">Or paste this link into your browser:<br><a href="${e(p.url)}" style="color:#1f6feb;word-break:break-all;">${e(p.url)}</a></td></tr>`,
+    '<tr><td style="font-size:13px;line-height:19px;color:#555b63;">This invitation expires in 7 days. If you were not expecting it, you can ignore this email.</td></tr>',
+    '</table></td></tr></table></body></html>',
+  ].join('');
+}
+
+/** The provider's id for an accepted message (Resend answers `{ "id": "..." }`); null when it gave none. */
+async function providerIdOf(resp: { json?: () => Promise<unknown> }): Promise<string | null> {
+  try {
+    const data = typeof resp.json === 'function' ? await resp.json() : null;
+    const id = (data as { id?: unknown } | null)?.id;
+    return typeof id === 'string' && id.length > 0 && id.length <= 100 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -89,18 +186,31 @@ export class EmailService {
   async sendUserInvite(params: {
     to: string;
     inviterEmail: string;
+    /** The inviter's own name, when their account has one. */
+    inviterName?: string | null;
     tenantName: string;
     role: string;
     inviteToken: string;
   }): Promise<void> {
-    const subject = `${params.inviterEmail} invited you to ${params.tenantName} on VenueOS`;
+    const tenantName = oneLine(params.tenantName);
+    // The body names the inviter by NAME when the account has one; the address
+    // is the fallback, because "someone invited you" is not a mail to trust.
+    const who = oneLine(params.inviterName || '') || params.inviterEmail;
+    // 2026-11-18: the subject no longer carries the inviter's ADDRESS. A mail
+    // from outside whose subject starts with an address inside the recipient's
+    // own organisation is the shape impersonation filters look for; the first
+    // two invitations sent to a corporate domain were accepted by its mail
+    // server and never reached an inbox.
+    const subject = `You're invited to ${tenantName} on VenueOS`;
+    const role = friendlyRoleLabel(params.role);
+    const url = (token: string) => `${this.appUrl}/accept-invite/${token}`;
     // Like the reset link: the durable row records the link with the token
     // replaced by `[redacted]`; the real message is what is dispatched.
     const lines = (token: string) => [
-      `${params.inviterEmail} invited you to join ${params.tenantName} on VenueOS as ${friendlyRoleLabel(params.role)}.`,
+      `${who} invited you to join ${tenantName} on VenueOS as ${role}.`,
       ``,
       `Accept your invitation and choose a password:`,
-      `${this.appUrl}/accept-invite/${token}`,
+      url(token),
       ``,
       `This invitation expires in 7 days.`,
       ``,
@@ -111,9 +221,90 @@ export class EmailService {
       to: params.to,
       subject,
       body: lines(encodeURIComponent(params.inviteToken)).join('\n'),
+      // A text part AND an HTML part, like ordinary transactional mail. Only
+      // the text (with the token redacted) is kept in `email_logs`.
+      html: inviteHtml({ who, tenantName, role, url: url(encodeURIComponent(params.inviteToken)) }),
       kind: 'INVITE',
       logBody: lines(REDACTED_TOKEN).join('\n'),
     });
+  }
+
+  /**
+   * What the provider last reported for the newest invitation mailed to `to`
+   * at or after `since` (2026-11-18).
+   *
+   * ON DEMAND ONLY: nothing calls this on a timer. It is asked when an
+   * administrator opens the list of pending invitations, and it asks the
+   * provider at most once per DELIVERY_RECHECK_MS per message, never again
+   * once the status is final, and never for longer than
+   * DELIVERY_LOOKUP_TIMEOUT_MS. A lookup that fails or times out returns what
+   * the row already holds; it is never an error for the caller.
+   * `refresh: false` never asks the provider and returns what is stored.
+   *
+   *   not_sent - the provider refused the message, or mail is not configured
+   *   unknown  - no row, or the row predates `provider_id` (nothing to ask)
+   */
+  async inviteDelivery(params: { to: string; since: Date; refresh?: boolean }): Promise<{
+    status: EmailDeliveryStatus | 'not_sent' | 'unknown';
+    sentAt: Date | null;
+    checkedAt: Date | null;
+  }> {
+    const row = await this.prisma.client.emailLog.findFirst({
+      where: {
+        toEmail: params.to,
+        kind: 'INVITE',
+        // The log row is written a moment AFTER the invite row it belongs to.
+        createdAt: { gte: new Date(params.since.getTime() - 5_000) },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, status: true, sentAt: true, providerId: true, deliveryStatus: true, deliveryCheckedAt: true },
+    });
+    if (!row) return { status: 'unknown', sentAt: null, checkedAt: null };
+    if (row.status === 'FAILED' || row.status === 'QUEUED') {
+      return { status: 'not_sent', sentAt: null, checkedAt: null };
+    }
+    let status = row.deliveryStatus as EmailDeliveryStatus | null;
+    let checkedAt = row.deliveryCheckedAt;
+    const isFinal = !!status && FINAL_DELIVERY.has(status);
+    const isStale = !checkedAt || Date.now() - checkedAt.getTime() >= DELIVERY_RECHECK_MS;
+    if (params.refresh !== false && row.providerId && !isFinal && isStale) {
+      const fresh = await this.#readDelivery(row.providerId);
+      if (fresh) {
+        status = fresh;
+        checkedAt = new Date();
+        try {
+          await this.prisma.client.emailLog.update({
+            where: { id: row.id },
+            data: { deliveryStatus: fresh, deliveryCheckedAt: checkedAt },
+          });
+        } catch (err: any) {
+          this.logger.warn(`[email] delivery status not saved. logId=${row.id} err=${err?.message ?? err}`);
+        }
+      }
+    }
+    return { status: status ?? 'unknown', sentAt: row.sentAt, checkedAt };
+  }
+
+  /**
+   * Ask the provider for one message's last event. Reads `last_event` and
+   * nothing else: the answer also carries the message body, which holds a
+   * live one-time link, so it is neither logged nor kept.
+   */
+  async #readDelivery(providerId: string): Promise<EmailDeliveryStatus | null> {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) return null;
+    try {
+      const resp = await fetch(`https://api.resend.com/emails/${encodeURIComponent(providerId)}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(DELIVERY_LOOKUP_TIMEOUT_MS),
+      });
+      if (!resp.ok) return null;
+      const data = (await resp.json()) as { last_event?: unknown } | null;
+      return deliveryStatusFromEvent(data?.last_event);
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -329,6 +520,8 @@ export class EmailService {
     to: string;
     subject: string;
     body: string;
+    /** Optional HTML part, sent beside the text. Never stored. */
+    html?: string;
     kind: string;
     logSubject?: string;
     logBody?: string;
@@ -369,12 +562,17 @@ export class EmailService {
       // owner will actually receive it — see #dispatch). Recording the
       // distinction on the durable row keeps us from over-claiming a
       // confident "SENT" for arbitrary recipients.
-      const sendStatus = await this.#dispatch(params);
+      const sent = await this.#dispatch(params);
       await this.prisma.client.emailLog.update({
         where: { id: row.id },
-        data: { status: sendStatus, sentAt: new Date() },
+        data: {
+          status: sent.status,
+          sentAt: new Date(),
+          // The provider's id for the message, so its delivery can be read back.
+          ...(sent.providerId ? { providerId: sent.providerId } : {}),
+        },
       });
-      return sendStatus;
+      return sent.status;
     } catch (err: any) {
       this.logger.warn(
         `Email dispatch FAILED — log row persisted, marking FAILED. ` +
@@ -702,8 +900,8 @@ export class EmailService {
   }
 
   async #dispatch(
-    params: { to: string; subject: string; body: string; kind: string },
-  ): Promise<'SENT' | 'SENT_UNVERIFIED'> {
+    params: { to: string; subject: string; body: string; html?: string; kind: string },
+  ): Promise<{ status: 'SENT' | 'SENT_UNVERIFIED'; providerId: string | null }> {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       // Production fail-closed (2026-05-23 launch audit P0): in prod a
@@ -729,7 +927,7 @@ export class EmailService {
       // durable record (#enqueue already wrote it), so recovery is just
       // "set the env var + replay QUEUED rows" if we ever need to.
       this.logger.log(`[email stub:${params.kind}] to=${params.to} subject="${params.subject}" — set RESEND_API_KEY to actually send`);
-      return 'SENT';
+      return { status: 'SENT', providerId: null };
     }
 
     const from = resolveEmailFrom();
@@ -744,6 +942,7 @@ export class EmailService {
       subject: params.subject,
       text: params.body,
     };
+    if (params.html) payload.html = params.html;
     if (replyTo) payload.reply_to = replyTo;
 
     const resp = await fetch('https://api.resend.com/emails', {
@@ -768,10 +967,11 @@ export class EmailService {
     // account owner; every other recipient is silently dropped. Don't let a
     // 200 masquerade as a confident "sent to anyone": warn loudly and report
     // SENT_UNVERIFIED so the durable row + logs tell the truth.
+    const providerId = await providerIdOf(resp as { json?: () => Promise<unknown> });
     const status = resendAcceptedStatus();
     if (status === 'SENT_UNVERIFIED') {
       this.logger.warn(sharedSenderWarning({ kind: params.kind, to: params.to, from }));
     }
-    return status;
+    return { status, providerId };
   }
 }

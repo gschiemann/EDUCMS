@@ -55,6 +55,17 @@ export class OnboardingController {
   }
 
   // --- Invites (admin side) --------------------------------------------
+  // 2026-11-18 - the tenant's pending invitations with their delivery state.
+  // Same roles as creating one; scoped to the caller's own tenant. It has no
+  // parameter, so it cannot be mistaken for the public `GET invites/:token`.
+  @Get('invites')
+  @UseGuards(JwtAuthGuard, RbacGuard)
+  @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  async listPendingInvites(@Request() req: any) {
+    return this.onboarding.listPendingInvites({ tenantId: req.user.tenantId });
+  }
+
   @Post('invites')
   @UseGuards(JwtAuthGuard, RbacGuard)
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)

@@ -1313,6 +1313,17 @@ model EmailLog {
   error     String?
   createdAt DateTime  @default(now()) @map("created_at")
   sentAt    DateTime? @map("sent_at")
+  // 2026-11-18 - what the provider reported AFTER it accepted the message.
+  // `status` above only ever meant "handed to the provider"; two invitations
+  // were recorded SENT, reached the recipients' mail server and were never
+  // seen, and nothing here could say which. `providerId` is the provider's
+  // id for the message (Resend: the `id` of its 2xx answer), so its delivery
+  // event can be read back on demand. `deliveryStatus` is that event in our
+  // own words (delivered | bounced | delayed | complained | failed | sent),
+  // NULL until someone asks. All three are NULL on every earlier row.
+  providerId        String?   @map("provider_id")
+  deliveryStatus    String?   @map("delivery_status")
+  deliveryCheckedAt DateTime? @map("delivery_checked_at")
 
   @@index([status])
   @@index([toEmail])

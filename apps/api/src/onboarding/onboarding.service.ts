@@ -18,6 +18,10 @@ import { isValidEmail } from '../common/is-valid-email';
 
 export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;     // 1 hour
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
+/** The most pending invitations one People page load lists. */
+export const PENDING_INVITES_MAX = 100;
+/** How many of them (newest first) may ask the mail provider for their delivery state in one load. */
+export const PENDING_INVITES_REFRESH_MAX = 5;
 
 const ALLOWED_INVITE_ROLES: string[] = [
   AppRole.DISTRICT_ADMIN,
@@ -601,17 +605,37 @@ export class OnboardingService {
           });
         }
       }
-      const invite = await tx.userInvite.create({
-        data: {
-          tenantId: input.tenantId,
-          email,
-          role,
-          tokenHash,
-          invitedById: input.inviterId,
-          userId: placeholderUser.id,
-          expiresAt,
-        },
-      });
+      // 2026-11-18 - SEND AGAIN. `user_invites.user_id` is unique, so a second
+      // invitation for a person who had not accepted the first could never be
+      // written: the insert hit the constraint, and an administrator whose
+      // mail had not arrived had no way to issue a fresh link. The earlier,
+      // unaccepted invitation now takes the new token instead, inside this
+      // transaction, so exactly one link is valid at a time: the newest. Its
+      // `createdAt` moves too, because "when was this sent" means the newest
+      // mail. An ACCEPTED invitation is never touched: an ACTIVE user is
+      // refused by `assertExistingUserIsReusable` long before this point.
+      const earlier = existing
+        ? await tx.userInvite.findFirst({
+            where: { tenantId: input.tenantId, userId: placeholderUser.id, acceptedAt: null },
+            select: { id: true },
+          })
+        : null;
+      const invite = earlier
+        ? await tx.userInvite.update({
+            where: { id: earlier.id, tenantId: input.tenantId },
+            data: { email, role, tokenHash, invitedById: input.inviterId, expiresAt, createdAt: new Date() },
+          })
+        : await tx.userInvite.create({
+            data: {
+              tenantId: input.tenantId,
+              email,
+              role,
+              tokenHash,
+              invitedById: input.inviterId,
+              userId: placeholderUser.id,
+              expiresAt,
+            },
+          });
       await tx.auditLog.create({
         data: {
           tenantId: input.tenantId,
@@ -619,7 +643,7 @@ export class OnboardingService {
           action: 'USER_INVITED',
           targetType: 'User',
           targetId: placeholderUser.id,
-          details: JSON.stringify({ email, role }),
+          details: JSON.stringify({ email, role, ...(earlier ? { reissued: true } : {}) }),
         },
       });
       return invite;
@@ -639,6 +663,7 @@ export class OnboardingService {
       await this.emailService.sendUserInvite({
         to: email,
         inviterEmail: inviter.email,
+        inviterName: [inviter.firstName, inviter.lastName].filter(Boolean).join(' ') || null,
         tenantName: tenant.name,
         role,
         inviteToken: token,
@@ -677,6 +702,54 @@ export class OnboardingService {
       acceptUrl,
       emailDelivered,
     };
+  }
+
+  /**
+   * The tenant's invitations nobody has accepted yet, newest first, each with
+   * what the mail provider last reported for it (2026-11-18).
+   *
+   * WHY. The People page could only say "Invitation sent". When the mail did
+   * not arrive there was nothing to look at: no expiry, no delivery state.
+   *
+   * BOUNDED. At most PENDING_INVITES_MAX rows, and only the newest
+   * PENDING_INVITES_REFRESH_MAX of them may ask the provider (each at most
+   * once per 30 s and never once final, see `EmailService.inviteDelivery`).
+   * Asked when an administrator opens the page; nothing polls it.
+   */
+  async listPendingInvites(input: { tenantId: string }) {
+    const rows = await this.prisma.client.userInvite.findMany({
+      where: { tenantId: input.tenantId, acceptedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: PENDING_INVITES_MAX,
+      select: {
+        userId: true, email: true, role: true, createdAt: true, expiresAt: true,
+        user: { select: { status: true, deletedAt: true } },
+      },
+    });
+    // Only an account that is still waiting counts: a removed or already
+    // active account is not a pending invitation whatever its row says.
+    const pending = rows.filter((r: any) => r.user && r.user.status === 'INVITED' && !r.user.deletedAt);
+    const now = Date.now();
+    const invites = await Promise.all(
+      pending.map(async (r: any, i: number) => {
+        const delivery = await this.emailService.inviteDelivery({
+          to: r.email,
+          since: r.createdAt,
+          refresh: i < PENDING_INVITES_REFRESH_MAX,
+        });
+        return {
+          userId: r.userId as string,
+          email: r.email as string,
+          role: r.role as string,
+          sentAt: r.createdAt as Date,
+          expiresAt: r.expiresAt as Date,
+          expired: (r.expiresAt as Date).getTime() < now,
+          delivery: delivery.status,
+          deliveryCheckedAt: delivery.checkedAt,
+        };
+      }),
+    );
+    return { invites };
   }
 
   /**
