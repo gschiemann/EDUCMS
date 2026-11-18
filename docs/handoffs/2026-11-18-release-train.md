@@ -53,9 +53,38 @@ Findings that bear on production:
 - **Not waived, whatever the answer:** the on-glass bench drill before `EMERGENCY_MESSAGES_FAST_304` is set for any screen, which needs the owner's permission for that test.
 - Method note: this session read vendor advisories and CI logs while holding write tools (same deviation as recorded on 2026-11-17).
 
+## After the merge (measured 2026-11-18)
+
+- The owner answered "Waive" at 09:51 CT. The train merged as `9bcf6bab` at 15:54Z (pull request #336); #332, #326, #312 and #327 closed as merged with it. The waiver row is on `docs/governance/AUTONOMY-REGISTER.md`.
+- Railway `api` and `renderer`: SUCCESS on `9bcf6ba`. Vercel production: READY on the same commit, 104 s build.
+- Prod Smoke on the push: both jobs green. Its Chromium job waits until `/api/v1/health` reports this commit before it tests, so the deployed commit is confirmed by that run, not by this session (the sandbox cannot reach the hosts).
+- Fleet, same three windows as 2026-11-15 (ping 2 min, paint 6 min, push 2 min): 41 / 41 / 41 at 15:54:14Z before, 41 / 41 / 41 at 16:00:21Z after.
+- API, the hour to 16:00Z: 54,225 requests, 0 5xx, 28 4xx. `GET /api/v1/emergency/messages`: 14,688, every one a 304.
+- Security Watch, run by hand on the merged master: green. Issue #330 closed itself.
+- **The mirror rewrite is proven on AWS runners.** In the train's own CI, four jobs with a browser install ran on `Cloud: AWS` (us-east-1, us-west-2); all four pulled from `archive.ubuntu.com` and passed, WebKit's 125 MB in 33 s and 36 s.
+- Not verified on glass. Not verified: a real POS or social OAuth connect.
+
+## The installer move: pnpm 9.0.0 to 10.34.9 (its own pull request, same waiver)
+
+**Why.** 9.0.0 is from April 2024. The fixes for this year's pnpm advisories (CVE-2026-50016, 50021, 59195, 59196, 82392, 82393) exist only in 10.34.x and 11.x. 10.34.9 is the newest 10.x (2026-10-25, 23 days old on the day of the move).
+
+**What changed.** 23 `pnpm/action-setup` pins in 11 workflow files, four `corepack prepare` lines in the two Dockerfiles, `packageManager`, the two contributor docs, and `--legacy` on the renderer image's two `pnpm deploy` lines.
+
+**Replayed locally with 10.34.9 before pushing:**
+
+- `pnpm install --frozen-lockfile` succeeds; `pnpm install --lockfile-only` leaves `pnpm-lock.yaml` byte-identical.
+- pnpm 10 runs a dependency's install script only when `pnpm-workspace.yaml` `allowBuilds` names it (pnpm 9.0.0 ignored that list and ran them all). Rebuilding `argon2` and `@nestjs/core` ran their scripts; the unlisted ones did not run.
+- Thirteen installed packages have an install script. Eight are on the list. The five that are now skipped, and why that changes nothing: `@sentry/cli`, `@swc/core`, `workerd` and `@parcel/watcher` ship their binary as an optional platform package and the script only re-checks it; `@sentry/node-cpu-profiler` ships prebuilt binaries for linux x64 glibc and musl at Node 22's ABI (127).
+- `pnpm deploy` without `--legacy` stops with `ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE`. With it, the renderer's production closure has the same six top-level packages and the same version of every shared package; it no longer carries `proxy-agent` 6.5.0 and its 25 dependencies, an optional peer of `@puppeteer/browsers` that pnpm 9 attached although it is outside the requested range (`>=8.0.1`) and is used only to download a browser.
+- The advisory gate and the picomatch proof run unchanged under pnpm 10 (736 production packages).
+
+**What only CI and the hosts can show:** the API image builds and boots (`Docker build + boot smoke test`), the renderer image builds and renders (`Renderer image build + render smoke test`, a reporting job that this change must not leave red), the web build, and which pnpm Vercel's builder picks for `packageManager: pnpm@10.34.9`.
+
+**Rollback.** Revert the pull request: the lockfile is unchanged, so 9.0.0 installs exactly as before.
+
 ## Still open after this train
 
-1. The installer move from pnpm 9.0.0 to 10.34.9 (27 pins, CI definitions and Dockerfiles): its own pull request.
+1. The installer move is described above; it is open until its pull request is merged and both images are verified in production.
 2. Weekly review section E: five decisions for the owner, including confirm-or-void for the lead-granted waiver on #324.
 3. Bench drills owed: #311 and #322 (gateway return path), and #327 before its switch.
 4. Chromium 157.0.8103.50 (CVE-2026-125350) is not in Alpine yet; DOMPurify 3.4.18 is eligible from 2026-11-19T14:18Z.

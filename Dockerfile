@@ -105,7 +105,7 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++ openssl libc6-compat
 
 # Enable corepack for pnpm support
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 
 # Copy configuration and package manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
@@ -177,7 +177,7 @@ WORKDIR /app
 # original Railway "Application failed to respond" failure exactly.
 RUN apk add --no-cache python3 make g++ openssl libc6-compat
 
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/api/package.json ./apps/api/package.json

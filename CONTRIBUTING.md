@@ -91,7 +91,7 @@ This repo is frequently worked by parallel AI agents. The standing rules
 
 ## Conventions (quick reference — see docs/ORIENTATION.md for the rest)
 
-- **Package manager:** pnpm (`pnpm@9`). Never `npm` / `yarn`.
+- **Package manager:** pnpm (`pnpm@10`). Never `npm` / `yarn`.
 - **Deploy:** Railway (API) + Vercel (web). Push to `master` = production.
 - **TypeScript:** `strict: true`. No `any` without a deliberate reason.
 - **DB:** always via Prisma. Schema is
