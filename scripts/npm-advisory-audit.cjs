@@ -58,9 +58,9 @@ const FAIL_SEVERITIES = new Set(['high', 'critical']);
  *   - A waived advisory is still printed, loudly, on every run.
  */
 const WAIVERS = [
-  // ── EMPTY, AND THAT IS THE POINT ────────────────────────────────────────
+  // ── HISTORY: EMPTY FROM 2026-09-08 TO 2026-11-17 ────────────────────────
   //
-  // The only entry this list ever held was `extract-zip`
+  // Before the entry below, the only entry this list ever held was `extract-zip`
   // (GHSA-jmr9-qjv8-65gv, HIGH, CVSS 8.1, no fixed version — the advisory
   // covers <=2.0.1, i.e. every published release). It was REMOVED on
   // 2026-09-08, not silenced: extract-zip is no longer in the production
@@ -98,6 +98,34 @@ const WAIVERS = [
   // If you are about to ADD an entry here, re-read the rules above first: no
   // fixed version, a named unreachable code path, a mandatory expiry, and a
   // `proof` module that re-derives the claim on every run.
+
+  // ── picomatch, GHSA-fc5q-39xc-vjpf (2026-11-17) ─────────────────────────
+  //
+  // High, CVE-2026-112366: a glob PATTERN such as `+(*)` compiles to a
+  // regular expression that backtracks exponentially, so whoever supplies the
+  // pattern can block the event loop. Published 2026-10-19 and widened on
+  // 2026-11-17 to `<= 4.0.7`, which is the newest release: there is no fixed
+  // version, so no override can pin one, and this gate went red on `master`
+  // and on every pull request the same day.
+  //
+  // Decision record: docs/governance/decisions/2026-11-17-picomatch-waiver.md.
+  // The entry names the ONE advisory it accepts (`ghsa`); a second picomatch
+  // advisory is not covered by it and fails the gate on its own.
+  {
+    name: 'picomatch',
+    ghsa: 'GHSA-fc5q-39xc-vjpf',
+    reason:
+      'The attacker must supply the glob pattern. picomatch is in the production closure of `web` only, ' +
+      'under @sentry/nextjs (its build-time webpack wrapping loader, through @rollup/plugin-commonjs) and ' +
+      'next-intl (its source-file watcher, through @parcel/watcher); both compile globs from plugin ' +
+      'configuration, never from a request. It is not in the closure of `api` or `renderer`, and no ' +
+      'first-party file imports a glob matcher.',
+    fix:
+      'Pin the first picomatch release that fixes GHSA-fc5q-39xc-vjpf in root package.json pnpm.overrides ' +
+      '(upstream: micromatch/picomatch pull request 254), then delete this entry and its proof.',
+    proof: './check-picomatch-unreachable.cjs',
+    expires: '2026-12-17',
+  },
 ];
 
 /**
@@ -133,6 +161,10 @@ function runWaiverProof(waiver) {
 function findWaiver(finding, today) {
   for (const w of WAIVERS) {
     if (w.name !== finding.name) continue;
+    // A waiver that names its advisory covers that advisory and no other one
+    // on the same package (2026-11-17): the id must appear in the finding's
+    // advisory URL. A finding without a URL is never matched by such a waiver.
+    if (w.ghsa && !String(finding.url || '').toLowerCase().includes(String(w.ghsa).toLowerCase())) continue;
     if (w.expires <= today) return { ...w, expired: true };
     return w;
   }
@@ -409,4 +441,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { prereleaseBase, prereleaseAliases, mergeAliasFindings, findWaiver };
+module.exports = { prereleaseBase, prereleaseAliases, mergeAliasFindings, findWaiver, WAIVERS };
