@@ -60,7 +60,13 @@ concurrency:
 jobs:
   axe:
     name: axe-core Automated Audit
-    runs-on: ubuntu-latest
+    # 2026-11-19 - PINNED to ubuntu-24.04 (was ubuntu-latest), for the reason
+    # written on the `prod-smoke` job in prod-smoke.yml: `ubuntu-latest` is
+    # Ubuntu 26.04 now and Playwright 1.59.1 cannot install Chromium there. The
+    # scheduled run of 2026-11-19 failed in "Install Playwright Chromium"
+    # (issue #340), as did this job on pull request #341. Unpin after a
+    # Playwright upgrade that passes this job on ubuntu-latest.
+    runs-on: ubuntu-24.04
     # 2026-08-24 (a11y wave, §1 fix) — was 15. The job now also boots a real
     # Postgres + the NestJS API so the scan covers AUTHENTICATED content
     # instead of just the login shell (see a11y-audit.ts's header comment).
