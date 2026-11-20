@@ -84,8 +84,8 @@ Findings that bear on production:
 
 ## Still open after this train
 
-1. The installer move is described above; it is open until its pull request is merged and both images are verified in production.
+1. ~~The installer move is open.~~ Closed 2026-11-18: PR #337 merged as `4fb09095` at 16:26Z; both images built with pnpm 10.34.9, the fleet read 42 checking in, 42 painting, 42 on push before and after, and the API served no 5xx.
 2. Weekly review section E: five decisions for the owner, including confirm-or-void for the lead-granted waiver on #324.
 3. Bench drills owed: #311 and #322 (gateway return path), and #327 before its switch.
-4. Chromium 157.0.8103.50 (CVE-2026-125350) is not in Alpine yet; DOMPurify 3.4.18 is eligible from 2026-11-19T14:18Z.
+4. Chromium 157.0.8103.50 (CVE-2026-125350) is not in Alpine yet; DOMPurify 3.4.18 is eligible from 2026-11-19T14:18Z. Both are carried forward in `docs/handoffs/2026-11-19-dompurify-and-runner-image.md`.
 5. The on-call routine secrets are unset, so a red scheduled job only opens an issue and emails the owner.
