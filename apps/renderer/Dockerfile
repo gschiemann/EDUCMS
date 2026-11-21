@@ -78,12 +78,12 @@ FROM ${NODE_IMAGE} AS runner
 # processes a killed browser leaves behind are reaped, not left as zombies.
 #
 # These packages are only as fresh as the last time this layer was BUILT
-# (2026-11-17): they are not pinned, and a builder that keeps layers reuses
+# (2026-11-21, for Chromium 158.0.8127.36-r0): they are not pinned, and a builder that keeps layers reuses
 # this one while the instruction and the base image are unchanged. Moving the
 # date below fetches them again - do it when Alpine ships a Chromium security
 # update. The root Dockerfile carries the same line and the full note; move
 # both together.
-ARG OS_PACKAGES_REFRESHED=2026-11-17
+ARG OS_PACKAGES_REFRESHED=2026-11-21
 RUN echo "os packages refreshed on ${OS_PACKAGES_REFRESHED}" && apk add --no-cache \
       chromium \
       nss \
