@@ -442,7 +442,7 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
     note: 'A wrong or stale pin makes the server DECLINE to advertise that build; it can never advertise a bad one.' },
   { name: 'OTA_EMERGENCY_HOLD_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,
     purpose: 'Lead kill switch over the OTA emergency hold: set, update checks offer APKs during an alert exactly as before (nothing is read, nothing is held).',
-    note: 'Unset = no Player (or legacy-lane Manager) APK is offered while the screen, its tenant or an ancestor has an alert or drill, a pushed message is live, or its own render proof shows an alert; the answer is { uptoDate: true, heldFor: "emergency" } and a held push stays pending. Unreadable state holds. Case-insensitive. Code: apps/api/src/player-ota/ota-emergency-hold.ts.' },
+    note: 'Unset = no Player (or legacy-lane Manager) APK is offered while the screen or any other side of its double-sided unit, its tenant or an ancestor has an alert or drill, a pushed message of any severity is live, or the render proof of any side shows an alert; the answer is { uptoDate: true, heldFor: "emergency" } and a held push stays pending. Unreadable state holds. Case-insensitive. Code: apps/api/src/player-ota/ota-emergency-hold.ts.' },
   { name: 'OTA_REQUIRE_DEVICE_AUTH', type: 'boolean', default: false, accepts: 'true', failureDirection: 'closed',
     purpose: 'Opt-in hard gate: refuse player update checks that do not carry a device credential (401 OTA_DEVICE_AUTH_REQUIRED).',
     note: 'Off by default; turn on only once a token-sending player build is fleet-wide.' },

@@ -15,7 +15,11 @@
  *   • unreadable emergency state holds (fail-closed);
  *   • OTA_EMERGENCY_HOLD_DISABLED=1 restores the old behaviour exactly;
  *   • the Manager bootstrap (no Player installed) is not held, and the
- *     re-opened legacy Manager lane is.
+ *     re-opened legacy Manager lane is;
+ *   • a double-sided unit is held when ANY side has an alert (review round 1:
+ *     one Player process drives every side, but the update check only ever
+ *     arrives with the primary's fingerprint);
+ *   • a canary-cohort offer is held like any other.
  * Every "held" case below fails on the code before this change: it offered.
  */
 import { PlayerOtaController } from './player-ota.controller';
@@ -28,11 +32,15 @@ import {
   resolveOtaEmergencyHold,
 } from './ota-emergency-hold';
 import { legacyWorkerWouldDownload } from './manager-update-lane';
+import { screenCohortBucket } from './canary-cohort';
 
 const SCREEN = '11111111-1111-4111-8111-111111111111';
 const TENANT = '22222222-2222-4222-8222-222222222222';
 const DISTRICT = '33333333-3333-4333-8333-333333333333';
 const GROUP = '44444444-4444-4444-8444-444444444444';
+/** Side B of a double-sided unit whose primary is SCREEN (screen-faces.ts). */
+const FACE = '55555555-5555-4555-8555-555555555555';
+const FACE_GROUP = '66666666-6666-4666-8666-666666666666';
 const MIN = 60_000;
 const realFetch = global.fetch;
 const saved = { ...process.env };
@@ -49,10 +57,17 @@ const HELD = { uptoDate: true, heldFor: 'emergency' };
 
 /** Emergency facts the hold reads, mutable per test. */
 interface EmState {
+  /** A per-screen override; it belongs to the screen its `screenId` names. */
   override: any;
   tenants: Record<string, any>;
-  messages: any[];
-  fail: null | 'override' | 'tenant' | 'message';
+  /**
+   * Live messages. `forScreen` / `forGroup` aim one at a device or a group;
+   * neither = tenant-wide (visible to every screen of the tenant).
+   */
+  messages: Array<{ id: string; forScreen?: string; forGroup?: string }>;
+  /** The OTHER rows of the asker's double-sided unit (none = single-sided). */
+  unit: any[];
+  fail: null | 'override' | 'tenant' | 'message' | 'unit';
 }
 const calm = (): EmState => ({
   override: null,
@@ -73,15 +88,18 @@ const calm = (): EmState => ({
     },
   },
   messages: [],
+  unit: [],
   fail: null,
 });
 
 function emergencyDelegates(em: EmState) {
   return {
     screenEmergencyOverride: {
-      findUnique: jest.fn(async () => {
+      findUnique: jest.fn(async ({ where }: any) => {
         if (em.fail === 'override') throw new Error('pool timeout');
-        return em.override;
+        return em.override && em.override.screenId === where.screenId
+          ? em.override
+          : null;
       }),
     },
     tenant: {
@@ -97,9 +115,39 @@ function emergencyDelegates(em: EmState) {
         // "an active message this screen may see".
         expect(where.tenantId).toBe(TENANT);
         expect(where.clearedAt).toBeNull();
-        return em.messages[0] ?? null;
+        const scope = JSON.stringify(where.AND);
+        const hit = em.messages.find((m) =>
+          m.forScreen
+            ? scope.includes(`"scopeId":"${m.forScreen}"`)
+            : m.forGroup
+              ? scope.includes(`"scopeId":"${m.forGroup}"`)
+              : true,
+        );
+        return hit ? { id: hit.id } : null;
       }),
     },
+  };
+}
+
+/** The unit read: the asker's own row plus the other sides in `em.unit`. */
+function unitFindMany(em: EmState, asker: () => any) {
+  return jest.fn(async ({ where }: any) => {
+    if (em.fail === 'unit') throw new Error('pool timeout');
+    // Same tenant only (the device-scoped fan-out's scope).
+    expect(where.tenantId).toBe(TENANT);
+    return [{ ...asker() }, ...em.unit.map((r) => ({ ...r }))];
+  });
+}
+
+function faceRow(over: Record<string, unknown> = {}) {
+  return {
+    id: FACE,
+    tenantId: TENANT,
+    screenGroupId: FACE_GROUP,
+    lastRenderedHash: 'pl:side-b',
+    lastRenderedAt: new Date(),
+    faceOfScreenId: SCREEN,
+    ...over,
   };
 }
 
@@ -124,6 +172,7 @@ function screenRow(over: Record<string, unknown> = {}) {
     lastOtaAt: null,
     lastRenderedHash: 'pl:abc123',
     lastRenderedAt: new Date(),
+    faceOfScreenId: null,
     tenant: {
       autoUpdatePlayerEnabled: false,
       otaWindowStart: null,
@@ -163,6 +212,7 @@ function harness(initial: any, em: EmState, opts: { auth?: boolean } = {}) {
       ...emergencyDelegates(em),
       screen: {
         findFirst: jest.fn(async () => ({ ...row })),
+        findMany: unitFindMany(em, () => row),
         update: jest.fn().mockResolvedValue({}),
         updateMany,
       },
@@ -396,6 +446,151 @@ describe('a pushed build during an alert (field-build push)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// A double-sided unit (review round 1). Side B is its own Screen row with its
+// own override, group, messages and render proof (screen-faces.ts), but ONE
+// Player process drives both sides and only the primary asks update-check.
+// An install takes side B's alert off the glass too, so side B holds.
+// ─────────────────────────────────────────────────────────────────────────
+describe('a double-sided unit: an alert on ANY side holds the install', () => {
+  beforeEach(() => {
+    process.env.PLAYER_APK_FIELD_CANDIDATE = release.versionName;
+    process.env.PLAYER_APK_FIELD_TENANT_ID = TENANT;
+    process.env.PLAYER_APK_FIELD_SCREEN_IDS = SCREEN;
+    process.env.PLAYER_APK_FIELD_EXPIRES_AT = new Date(
+      Date.now() + 60 * MIN,
+    ).toISOString();
+    jest.spyOn(field, 'configuredFieldRelease').mockReturnValue(release as any);
+    jest.spyOn(field, 'verifiedFieldBytes').mockResolvedValue(Buffer.alloc(8));
+  });
+
+  it('control: side B clear — the push is offered; the unit read is the primary and its faces, same tenant', async () => {
+    const em = calm();
+    em.unit = [faceRow()];
+    const { c, prisma, row } = harness(screenRow(), em);
+    const res: any = await c.updateCheck(playerBody, req);
+    expect(res.latest?.versionName).toBe(release.versionName);
+    expect(row.forceApkUpdateOfferCount).toBe(1);
+    const where = prisma.client.screen.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({
+      tenantId: TENANT,
+      OR: [{ id: SCREEN }, { faceOfScreenId: SCREEN }],
+    });
+    // Side B was read with its OWN id (override) — not only the primary's.
+    const overrideIds =
+      prisma.client.screenEmergencyOverride.findUnique.mock.calls.map(
+        (x: any) => x[0].where.screenId,
+      );
+    expect(overrideIds).toEqual([SCREEN, FACE]);
+  });
+
+  it("a per-screen override on side B only: the primary's install is held, the push untouched; offered once it expires", async () => {
+    const em = calm();
+    em.unit = [faceRow()];
+    em.override = {
+      screenId: FACE,
+      type: 'LOCKDOWN',
+      expiresAt: new Date(Date.now() + 10 * MIN),
+    };
+    const initial = screenRow();
+    const { c, row, prisma, lines } = harness(initial, em);
+
+    expect(await c.updateCheck(playerBody, req)).toEqual(HELD);
+    expect(lines.join('\n')).toMatch(
+      new RegExp(
+        `held-for-emergency .*source=screen unit-screen=${FACE} .*push stays pending`,
+      ),
+    );
+    expect(prisma.client.screen.updateMany).not.toHaveBeenCalled();
+    expect(audits(prisma, 'PLAYER_FIELD_APK_OFFER')).toHaveLength(0);
+    expect(row.forceApkUpdateOfferCount).toBe(0);
+    expect(row.forceApkUpdatePendingAt).toEqual(
+      initial.forceApkUpdatePendingAt,
+    );
+
+    em.override = { ...em.override, expiresAt: new Date(Date.now() - MIN) };
+    const after: any = await c.updateCheck(playerBody, req);
+    expect(after.latest?.versionName).toBe(release.versionName);
+  });
+
+  it("side B's own fresh em: render proof holds (the server records nothing)", async () => {
+    const em = calm();
+    em.unit = [
+      faceRow({
+        lastRenderedHash: 'pending|em:lockdown-2',
+        lastRenderedAt: new Date(Date.now() - MIN),
+      }),
+    ];
+    const { c, lines } = harness(screenRow(), em);
+    expect(await c.updateCheck(playerBody, req)).toEqual(HELD);
+    expect(lines.join('\n')).toContain(`source=glass unit-screen=${FACE}`);
+  });
+
+  it('a device-scoped message aimed at side B holds', async () => {
+    const em = calm();
+    em.unit = [faceRow()];
+    em.messages = [{ id: 'sos-b', forScreen: FACE }];
+    const { c, lines } = harness(screenRow(), em);
+    expect(await c.updateCheck(playerBody, req)).toEqual(HELD);
+    expect(lines.join('\n')).toContain(`source=message unit-screen=${FACE}`);
+  });
+
+  it('a group message whose group holds side B but not the primary holds', async () => {
+    const em = calm();
+    em.unit = [faceRow()];
+    em.messages = [{ id: 'grp-b', forGroup: FACE_GROUP }];
+    const { c, lines } = harness(screenRow(), em);
+    expect(await c.updateCheck(playerBody, req)).toEqual(HELD);
+    expect(lines.join('\n')).toContain(`source=message unit-screen=${FACE}`);
+  });
+
+  it('a message aimed at another screen entirely does not hold (control for the two above)', async () => {
+    const em = calm();
+    em.unit = [faceRow()];
+    em.messages = [{ id: 'elsewhere', forScreen: 'some-other-screen' }];
+    const { c } = harness(screenRow(), em);
+    const res: any = await c.updateCheck(playerBody, req);
+    expect(res.latest?.versionName).toBe(release.versionName);
+  });
+
+  it('the unit cannot be read: held (fail-closed)', async () => {
+    const em = calm();
+    em.fail = 'unit';
+    const { c, row, lines } = harness(screenRow(), em);
+    expect(await c.updateCheck(playerBody, req)).toEqual(HELD);
+    expect(row.forceApkUpdateOfferCount).toBe(0);
+    expect(lines.join('\n')).toContain('source=unreadable');
+  });
+
+  it("asked by a face row itself: the unit root is its primary, and the primary's override holds", async () => {
+    const em = calm();
+    // The asker is side B; the unit read returns it plus its primary.
+    em.unit = [{ ...screenRow(), id: SCREEN, faceOfScreenId: null }];
+    em.override = {
+      screenId: SCREEN,
+      type: 'LOCKDOWN',
+      expiresAt: new Date(Date.now() + 10 * MIN),
+    };
+    const prisma: any = {
+      client: {
+        ...emergencyDelegates(em),
+        screen: { findMany: unitFindMany(em, () => faceRow()) },
+      },
+    };
+    const v = await resolveOtaEmergencyHold(prisma, faceRow(), { env: {} });
+    expect(v).toEqual({
+      held: true,
+      source: 'screen',
+      disabled: false,
+      unitScreenId: SCREEN,
+    });
+    expect(prisma.client.screen.findMany.mock.calls[0][0].where.OR).toEqual([
+      { id: SCREEN },
+      { faceOfScreenId: SCREEN },
+    ]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // The stable path (GitHub catalogue): the hold answers before any release
 // lookup. The catalogue is empty and cached per module, so "got past the
 // hold" is read from the controller's own decision line, not from fetch.
@@ -428,6 +623,33 @@ describe('stable channel offers during an alert', () => {
     expect(after.heldFor).toBeUndefined();
     expect(lines.join('\n')).toContain('decision=offer-latest');
     expect(lines.join('\n')).not.toContain('held-for-emergency');
+  });
+
+  it('a canary-cohort offer during an alert: held (the cohort is not an exemption)', async () => {
+    const pct = screenCohortBucket(SCREEN) + 1; // SCREEN is just inside the cohort
+    expect(pct).toBeLessThan(100); // the canary gate only runs below 100
+    const em = calm();
+    em.tenants[TENANT].emergencyStatus = 'CRITICAL';
+    const { c, lines } = harness(
+      screenRow({
+        forceApkUpdateOverrideWindow: false,
+        tenant: { ...screenRow().tenant, canaryFleetPercent: pct },
+      }),
+      em,
+    );
+    expect(await c.updateCheck(playerBody, req)).toEqual(HELD);
+    expect(lines.join('\n')).toMatch(
+      new RegExp(
+        `held-for-emergency .*would-have=\\S*-canary-cohort-pct${pct}`,
+      ),
+    );
+
+    em.tenants[TENANT].emergencyStatus = 'INACTIVE';
+    lines.length = 0;
+    await c.updateCheck(playerBody, req);
+    expect(lines.join('\n')).toMatch(
+      new RegExp(`decision=offer-latest .*canary-cohort-pct${pct}`),
+    );
   });
 
   it('panel tap during a lockdown: held, and no PANEL_USER_UPDATE row (nothing was updated)', async () => {
@@ -546,6 +768,31 @@ describe('the Manager self-update lane', () => {
     );
   });
 
+  it('re-opened legacy lane: side B of a double-sided unit holds the Manager too', async () => {
+    process.env.MANAGER_SELF_UPDATE_LEGACY_LANE = 'on';
+    const em = calm();
+    em.unit = [faceRow()];
+    em.override = {
+      screenId: FACE,
+      type: 'LOCKDOWN',
+      expiresAt: new Date(Date.now() + 10 * MIN),
+    };
+    const { c, lines } = harness(screenRow(), em);
+    expect(await c.managerUpdateCheck(mgrBody, req)).toEqual(HELD);
+    expect(lines.join('\n')).toContain(`source=screen unit-screen=${FACE}`);
+  });
+
+  it('re-opened legacy lane: a fingerprint no screen row matches is not held, and says so in the log', async () => {
+    process.env.MANAGER_SELF_UPDATE_LEGACY_LANE = 'on';
+    const { c, prisma, lines } = harness(screenRow(), calm());
+    prisma.client.screen.findFirst.mockResolvedValueOnce(null);
+    const res: any = await c.managerUpdateCheck(mgrBody, req);
+    expect(res.heldFor).toBeUndefined();
+    expect(lines.join('\n')).toMatch(
+      /\[mgr-ota\] emergency-hold: no screen row matches fp=.* not held/,
+    );
+  });
+
   it('re-opened legacy lane: a failed screen lookup holds', async () => {
     process.env.MANAGER_SELF_UPDATE_LEGACY_LANE = 'on';
     const { c, prisma } = harness(screenRow(), calm());
@@ -612,7 +859,14 @@ describe('ota-emergency-hold pieces', () => {
 
   it("the message query is the device poll's own scope: tenant, group, this screen, not cleared, not expired", async () => {
     const em = calm();
-    const prisma: any = { client: emergencyDelegates(em) };
+    const prisma: any = {
+      client: {
+        ...emergencyDelegates(em),
+        screen: {
+          findMany: unitFindMany(em, () => ({ id: SCREEN, tenantId: TENANT })),
+        },
+      },
+    };
     await resolveOtaEmergencyHold(
       prisma,
       { id: SCREEN, tenantId: TENANT, screenGroupId: GROUP },

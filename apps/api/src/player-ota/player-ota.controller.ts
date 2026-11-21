@@ -81,7 +81,22 @@ import { apkAssetName, legacyApkAssetName, resolveApkDelivery, type ApkDelivery,
 import { isFieldCandidateTarget, configuredFieldRelease, mintFieldTicket, verifyFieldTicket, verifiedFieldBytes } from './field-candidate';
 import { isFieldBenchScreen } from './fleet-push-policy';
 import { signDownloadTag, verifyDownloadTag, DOWNLOAD_TAG_PARAM } from './download-tag';
-import { heldForEmergencyAnswer, otaEmergencyHoldDisabled, resolveOtaEmergencyHold, type OtaEmergencyHoldScreen } from './ota-emergency-hold';
+import {
+  heldForEmergencyAnswer,
+  otaEmergencyHoldDisabled,
+  otaHoldScreenFrom,
+  resolveOtaEmergencyHold,
+  OTA_EMERGENCY_HOLD_SCREEN_SELECT,
+  type OtaEmergencyHoldScreen,
+  type OtaEmergencyHoldScreenRow,
+  type OtaEmergencyHoldVerdict,
+} from './ota-emergency-hold';
+
+/** The legacy Manager lane's reading of the OTA emergency hold (FLT-04). */
+type ManagerLaneHold = Pick<
+  OtaEmergencyHoldVerdict,
+  'held' | 'source' | 'unitScreenId'
+>;
 
 interface UpdateCheckBody {
   fingerprint?: string;
@@ -372,26 +387,35 @@ export class PlayerOtaController {
   /**
    * FLT-04 — the emergency hold for the Manager's legacy self-update lane
    * (only reached with MANAGER_SELF_UPDATE_LEGACY_LANE=on). The Manager speaks
-   * fingerprints; an unpaired kiosk (no screen row) has no alert to protect.
-   * A failed lookup holds.
+   * fingerprints. A failed lookup holds. No matching screen row is logged and
+   * not held: there is no alert recorded for it to read, and it has not been
+   * proven on hardware that the Manager's `android-<ANDROID_ID>` always equals
+   * the Player's stored fingerprint, so holding there could close the
+   * owner-approved incident lane on every device (FLT-04 review round 1).
    */
-  private async managerLaneEmergencyHold(fp: string): Promise<{ held: boolean; source: string | null }> {
+  private async managerLaneEmergencyHold(fp: string): Promise<ManagerLaneHold> {
     // Kill switch first: with it set nothing is read, exactly as before.
     if (otaEmergencyHoldDisabled() || !fp) return { held: false, source: null };
     let screen: OtaEmergencyHoldScreen | null;
     try {
-      screen = await this.prisma.client.screen.findFirst({
+      const row = await this.prisma.client.screen.findFirst({
         where: { deviceFingerprint: fp },
-        select: { id: true, tenantId: true, screenGroupId: true, lastRenderedHash: true, lastRenderedAt: true },
+        select: OTA_EMERGENCY_HOLD_SCREEN_SELECT,
       });
+      screen = row ? otaHoldScreenFrom(row) : null;
     } catch (e: unknown) {
       this.logger.warn(
         `[mgr-ota] emergency-hold screen lookup failed fp=${fp.slice(0, 10)} ` +
-        `err=${e instanceof Error ? e.message : String(e)} — holding`,
+          `err=${e instanceof Error ? e.message : String(e)} — holding`,
       );
       return { held: true, source: 'unreadable' };
     }
-    if (!screen) return { held: false, source: null };
+    if (!screen) {
+      this.logger.warn(
+        `[mgr-ota] emergency-hold: no screen row matches fp=${fp.slice(0, 10)} — no alert state to read, not held`,
+      );
+      return { held: false, source: null };
+    }
     return resolveOtaEmergencyHold(this.prisma, screen);
   }
 
@@ -762,6 +786,9 @@ export class PlayerOtaController {
             // means an alert was on its glass (ota-emergency-hold.ts).
             lastRenderedHash: true,
             lastRenderedAt: true,
+            // FLT-04 — a face of a double-sided unit names its primary; the
+            // hold reads every side of the unit (ota-emergency-hold.ts).
+            faceOfScreenId: true,
             tenant: {
               select: {
                 autoUpdatePlayerEnabled: true,
@@ -776,13 +803,7 @@ export class PlayerOtaController {
         if (screen) {
           lookupScreenId = screen.id;
           lookupTenantId = screen.tenantId;
-          holdScreen = {
-            id: screen.id,
-            tenantId: screen.tenantId ?? null,
-            screenGroupId: screen.screenGroupId ?? null,
-            lastRenderedHash: screen.lastRenderedHash ?? null,
-            lastRenderedAt: screen.lastRenderedAt ?? null,
-          };
+          holdScreen = otaHoldScreenFrom(screen as OtaEmergencyHoldScreenRow);
           fieldTarget = isFieldCandidateTarget(screen.id,screen.tenantId);
           // Phase B canary — pull the tenant's current rollout %.
           // Missing/null defaults to 100 (full rollout, no change in
@@ -985,16 +1006,24 @@ export class PlayerOtaController {
     // installed, nothing on that glass) is not held. Kill switch:
     // OTA_EMERGENCY_HOLD_DISABLED=1.
     if (allowUpdate && !isBootstrapCall && !otaEmergencyHoldDisabled()) {
-      const hold = holdScreen
+      // Every side of a double-sided unit is read, not only the pane that
+      // asked: one Player process drives them all (review round 1). No screen
+      // row is unreachable today (only the bootstrap offers without one); if
+      // it ever happens, an unknown screen is held, never offered.
+      const hold: OtaEmergencyHoldVerdict = holdScreen
         ? await resolveOtaEmergencyHold(this.prisma, holdScreen)
-        // Unreachable today (only the bootstrap offers without a screen row);
-        // if it ever happens, an unknown screen is held, never offered.
-        : { held: true, source: 'unreadable' as const, disabled: false };
+        : { held: true, source: 'unreadable', disabled: false };
       if (hold.held) {
+        const unit = hold.unitScreenId
+          ? ` unit-screen=${hold.unitScreenId}`
+          : '';
+        const pending = forcedPendingScreenId
+          ? ' — push stays pending, offered after the alert'
+          : '';
         this.logger.warn(
           `[ota] decision=uptoDate-held-for-emergency caller=${callerVn} screen=${lookupScreenId || '-'} ` +
-          `tenant=${lookupTenantId || '-'} fp=${fpShort} source=${hold.source} would-have=${allowReason}` +
-          (forcedPendingScreenId ? ' — push stays pending, offered after the alert' : ''),
+            `tenant=${lookupTenantId || '-'} fp=${fpShort} source=${hold.source}${unit} ` +
+            `would-have=${allowReason}${pending}`,
         );
         return heldForEmergencyAnswer();
       }
@@ -1549,8 +1578,12 @@ export class PlayerOtaController {
     // exactly like the Player's (ota-emergency-hold.ts). Fail-closed.
     const mgrHold = await this.managerLaneEmergencyHold(fp);
     if (mgrHold.held) {
+      const unit = mgrHold.unitScreenId
+        ? ` unit-screen=${mgrHold.unitScreenId}`
+        : '';
       this.logger.warn(
-        `[mgr-ota] decision=uptoDate-held-for-emergency caller=${callerVn} fp=${fpShort} source=${mgrHold.source}`,
+        `[mgr-ota] decision=uptoDate-held-for-emergency caller=${callerVn} fp=${fpShort} ` +
+          `source=${mgrHold.source}${unit}`,
       );
       return heldForEmergencyAnswer();
     }

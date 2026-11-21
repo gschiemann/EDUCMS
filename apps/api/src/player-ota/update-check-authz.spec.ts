@@ -76,6 +76,8 @@ function harness(priorScreen: any) {
       emergencyMessage: { findFirst: jest.fn().mockResolvedValue(null) },
       screen: {
         findFirst: jest.fn().mockResolvedValue(priorScreen),
+        // FLT-04: a single-sided screen — no other side of a unit for the hold to read.
+        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue(priorScreen),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },

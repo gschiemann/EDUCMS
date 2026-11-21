@@ -115,7 +115,8 @@ function harness(opts: {
       screenEmergencyOverride: { findUnique: jest.fn().mockResolvedValue(null) },
       tenant: { findUnique: jest.fn(async ({ where }: any) => ({ id: where.id, parentId: null, archivedAt: null, emergencyStatus: 'INACTIVE' })) },
       emergencyMessage: { findFirst: jest.fn().mockResolvedValue(null) },
-      screen: { findFirst: jest.fn().mockResolvedValue(row), update: jest.fn().mockResolvedValue({}), updateMany: jest.fn() },
+      // FLT-04: findMany = a single-sided screen, no other side of a unit for the hold to read.
+      screen: { findFirst: jest.fn().mockResolvedValue(row), findMany: jest.fn().mockResolvedValue([]), update: jest.fn().mockResolvedValue({}), updateMany: jest.fn() },
       screenDeviceInventory: { findUnique: jest.fn().mockResolvedValue(opts.inventory === undefined ? { report: armed } : opts.inventory) },
       displaySchedule: { findMany: jest.fn().mockResolvedValue(opts.scheduleTz ? [{ screenId: SID, timezone: opts.scheduleTz }] : []) },
       auditLog: { create: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue(null) },

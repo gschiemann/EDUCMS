@@ -30,6 +30,23 @@
  *     server no longer records but the screen still shows (a cached manifest
  *     raises, never releases).
  *
+ * THE WHOLE UNIT, NOT ONE PANE (review round 1). A double-sided display is
+ * one Screen row per side (screen-faces.ts: side B is linked to the primary
+ * by `faceOfScreenId`, with its own fingerprint, override, group, messages
+ * and render proof), but ONE Player process drives every side. Installing
+ * the APK takes every side's alert off the glass, and the update check only
+ * ever arrives with the primary's fingerprint. So the same checks run for
+ * every other row of the unit — the primary and all its faces, in the same
+ * tenant (the scope the device-scoped alert fan-out uses) — and any one of
+ * them holds the install. A failed read of the unit holds. The read is one
+ * query, paid only when an install is about to be offered.
+ *
+ * MESSAGES OF EVERY SEVERITY HOLD. A live INFO or WARN banner holds the
+ * install exactly like a CRITICAL one or an SOS (no severity filter), for as
+ * long as the sender made it last. That errs toward delaying an update; it
+ * is written in docs/ENVIRONMENT.md and the autonomy register so the owner
+ * can narrow it deliberately.
+ *
  * FAILURE DIRECTION: CLOSED. When the state cannot be read the install is
  * held (`source: 'unreadable'`). An update delayed is safe; an install during
  * an alert is not.
@@ -87,6 +104,11 @@ export interface OtaEmergencyHoldVerdict {
   source: OtaEmergencyHoldSource | null;
   /** The kill switch is set: nothing was read and nothing is held. */
   disabled: boolean;
+  /**
+   * Set when the row that holds is ANOTHER side of the asker's double-sided
+   * unit (its primary or one of its faces), not the asker itself. For logs.
+   */
+  unitScreenId?: string;
 }
 
 /** The facts of the screen that asked (all read from its own row). */
@@ -96,6 +118,8 @@ export interface OtaEmergencyHoldScreen {
   screenGroupId?: string | null;
   lastRenderedHash?: string | null;
   lastRenderedAt?: Date | string | null;
+  /** The primary this row is a face of; null on a primary and on a single-sided screen. */
+  faceOfScreenId?: string | null;
 }
 
 export interface OtaEmergencyHoldPrisma {
@@ -103,6 +127,41 @@ export interface OtaEmergencyHoldPrisma {
     screenEmergencyOverride: { findUnique: (args: any) => Promise<any> };
     tenant: { findUnique: (args: any) => Promise<any> };
     emergencyMessage: { findFirst: (args: any) => Promise<unknown> };
+    screen: { findMany: (args: any) => Promise<unknown> };
+  };
+}
+
+/** The columns the hold reads from a screen row (the asker's lookup selects these too). */
+export const OTA_EMERGENCY_HOLD_SCREEN_SELECT = {
+  id: true,
+  tenantId: true,
+  screenGroupId: true,
+  lastRenderedHash: true,
+  lastRenderedAt: true,
+  faceOfScreenId: true,
+} as const;
+
+/** A screen row as read with (at least) OTA_EMERGENCY_HOLD_SCREEN_SELECT. */
+export interface OtaEmergencyHoldScreenRow {
+  id: string;
+  tenantId?: string | null;
+  screenGroupId?: string | null;
+  lastRenderedHash?: string | null;
+  lastRenderedAt?: Date | string | null;
+  faceOfScreenId?: string | null;
+}
+
+/** The hold's facts from a screen row the caller already read. */
+export function otaHoldScreenFrom(
+  row: OtaEmergencyHoldScreenRow,
+): OtaEmergencyHoldScreen {
+  return {
+    id: row.id,
+    tenantId: row.tenantId ?? null,
+    screenGroupId: row.screenGroupId ?? null,
+    lastRenderedHash: row.lastRenderedHash ?? null,
+    lastRenderedAt: row.lastRenderedAt ?? null,
+    faceOfScreenId: row.faceOfScreenId ?? null,
   };
 }
 
@@ -141,6 +200,51 @@ export function glassReportsEmergency(
 }
 
 /**
+ * What holds for ONE screen row: its own glass, its per-screen override, its
+ * tenant and ancestors, then a live message it may see. Null = nothing.
+ * Throws when a read fails (the caller fails closed).
+ */
+async function rowHoldSource(
+  prisma: OtaEmergencyHoldPrisma,
+  row: OtaEmergencyHoldScreen,
+  now: Date,
+): Promise<OtaEmergencyHoldSource | null> {
+  if (
+    glassReportsEmergency(
+      row.lastRenderedHash,
+      row.lastRenderedAt,
+      now.getTime(),
+    )
+  ) {
+    return 'glass';
+  }
+
+  // Per-screen override, own tenant, ancestors. Fails closed on its own
+  // ('unreadable' counts as active).
+  const state = await resolveEmergencyHold(prisma, {
+    id: row.id,
+    tenantId: row.tenantId,
+  });
+  if (state.active) return state.source ?? 'unreadable';
+
+  // An unpaired screen has no tenant, so no alert can be aimed at it.
+  if (!row.tenantId) return null;
+
+  const message = await prisma.client.emergencyMessage.findFirst({
+    where: deviceMessagesWhere(
+      {
+        tenantId: row.tenantId,
+        screenId: row.id,
+        groupId: row.screenGroupId ?? null,
+      },
+      now,
+    ),
+    select: { id: true },
+  });
+  return message ? 'message' : null;
+}
+
+/**
  * Should an APK install offer to this screen be withheld right now?
  * Never throws: any failure to read is `{ held: true, source: 'unreadable' }`.
  */
@@ -154,44 +258,36 @@ export async function resolveOtaEmergencyHold(
   }
   const now = opts.now ?? new Date();
   try {
-    if (
-      glassReportsEmergency(
-        screen.lastRenderedHash,
-        screen.lastRenderedAt,
-        now.getTime(),
-      )
-    ) {
-      return { held: true, source: 'glass', disabled: false };
-    }
+    const own = await rowHoldSource(prisma, screen, now);
+    if (own) return { held: true, source: own, disabled: false };
 
-    // Per-screen override, own tenant, ancestors. Fails closed on its own
-    // ('unreadable' counts as active).
-    const state = await resolveEmergencyHold(prisma, {
-      id: screen.id,
-      tenantId: screen.tenantId,
-    });
-    if (state.active)
-      return {
-        held: true,
-        source: state.source ?? 'unreadable',
-        disabled: false,
-      };
-
-    // An unpaired screen has no tenant, so no alert can be aimed at it.
+    // An unpaired screen belongs to no unit an alert could reach.
     if (!screen.tenantId) return { held: false, source: null, disabled: false };
 
-    const message = await prisma.client.emergencyMessage.findFirst({
-      where: deviceMessagesWhere(
-        {
-          tenantId: screen.tenantId,
-          screenId: screen.id,
-          groupId: screen.screenGroupId ?? null,
-        },
-        now,
-      ),
-      select: { id: true },
+    // The rest of a double-sided unit: one Player process drives every side,
+    // so an install takes every side's alert off the glass. The unit is the
+    // primary and every face of it, in the same tenant — the scope the
+    // device-scoped alert fan-out uses (emergency.controller.ts). For an
+    // ordinary single-sided screen this returns only the asker.
+    const unitRoot = screen.faceOfScreenId || screen.id;
+    const unit = await prisma.client.screen.findMany({
+      where: {
+        tenantId: screen.tenantId,
+        OR: [{ id: unitRoot }, { faceOfScreenId: unitRoot }],
+      },
+      select: OTA_EMERGENCY_HOLD_SCREEN_SELECT,
     });
-    if (message) return { held: true, source: 'message', disabled: false };
+    if (!Array.isArray(unit)) {
+      throw new Error('double-sided unit read returned no rows array');
+    }
+    for (const raw of unit as Array<OtaEmergencyHoldScreenRow | null>) {
+      if (!raw || raw.id === screen.id) continue;
+      const other = otaHoldScreenFrom(raw);
+      const source = await rowHoldSource(prisma, other, now);
+      if (source) {
+        return { held: true, source, disabled: false, unitScreenId: other.id };
+      }
+    }
 
     return { held: false, source: null, disabled: false };
   } catch (e: unknown) {

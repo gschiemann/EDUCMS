@@ -107,6 +107,8 @@ function harness(initial: any, opts: { auth?: boolean; inventory?: unknown } = {
       emergencyMessage: { findFirst: jest.fn().mockResolvedValue(null) },
       screen: {
         findFirst: jest.fn(async () => ({ ...row })),
+        // FLT-04: a single-sided screen — no other side of a unit for the hold to read.
+        findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({}),
         updateMany,
       },

@@ -90,6 +90,8 @@ async function boot() {
       },
       screen: {
         findFirst: jest.fn(async () => screenRow),
+        // FLT-04: a single-sided screen — no other side of a unit for the hold to read.
+        findMany: jest.fn().mockResolvedValue([]),
         updateMany: jest.fn(async (args: any) => {
           // A push cancel guarded on the push's identity (screen-commands.ts) clears it.
           const guard = args?.where?.forceApkUpdatePendingAt;
