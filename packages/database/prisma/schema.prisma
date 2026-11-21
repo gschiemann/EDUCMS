@@ -67,6 +67,16 @@ model Tenant {
   // (emergencyStatus / emergencyType / emergencyPlaylistId) is a drill; the
   // manifest carries it as `isDrill` so the player paints the drill banner.
   emergencyIsDrill                Boolean            @default(false) @map("emergency_is_drill")
+  /// 2026-11-21 (EMG-01) — the IDENTITY of the active tenant-wide alert: the
+  /// trigger's overrideId, written in the same `tenant.update` that sets
+  /// emergencyStatus (and by the district fan-out on every descendant), and
+  /// nulled by every write that clears the tenant. The tenant all-clear is a
+  /// compare-and-set on it: an all-clear naming an older alert cannot end a
+  /// newer one (409 ALERT_CHANGED). NULL = an alert raised before this column
+  /// existed, or no alert — the all-clear then behaves exactly as before.
+  emergencyAlertId                String?            @map("emergency_alert_id")
+  /// When the active tenant-wide alert was raised (same write as above).
+  emergencyTriggeredAt            DateTime?          @map("emergency_triggered_at")
   drillLockdownPlaylistId         String?            @map("drill_lockdown_playlist_id")
   drillEvacuatePlaylistId         String?            @map("drill_evacuate_playlist_id")
   drillWeatherPlaylistId          String?            @map("drill_weather_playlist_id")

@@ -113,6 +113,21 @@ export async function broadcastEmergency(payload: EmergencyPayload): Promise<Bro
   return { success: true, overrideId, ...(affectedScreenCount !== undefined ? { affectedScreenCount } : {}) };
 }
 
+/** What `allClearEmergency` resolves with. It never throws. */
+export interface AllClearEmergencyResult {
+  success: boolean;
+  /** Starts with "All clear failed: <status>" — the surfaces route on 401/403/network. */
+  error?: string;
+  /**
+   * The server's error code when it sent one. `ALERT_CHANGED` (EMG-01,
+   * 2026-11-21): the alert this all-clear named was replaced by a newer one,
+   * and NOTHING was cleared — the newer alert is still on every screen.
+   */
+  code?: string;
+  /** With `ALERT_CHANGED`: the incident type of the alert that is active now ("LOCKDOWN"). */
+  currentAlertType?: string | null;
+}
+
 export async function allClearEmergency(payload: {
   schoolId: string;
   token?: string;
@@ -126,7 +141,7 @@ export async function allClearEmergency(payload: {
   scopeId?: string;
   /** 2026-10-10 — "End Drill": the server may end drill state only, never a live alert. */
   isDrill?: boolean;
-}) {
+}): Promise<AllClearEmergencyResult> {
   const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
   // emergency-002 fix: previously this hardcoded the literal string
@@ -161,7 +176,29 @@ export async function allClearEmergency(payload: {
   }
 
   if (!res.ok) {
-    return { success: false, error: `All clear failed: ${res.status}` };
+    // EMG-01 (2026-11-21) — a 409 `ALERT_CHANGED` means the alert this
+    // all-clear named was replaced by a newer one and nothing was cleared.
+    // Pass the code and the newer alert's type through so the overlay and
+    // /panic can say so in the operator's language. The error string keeps
+    // its "All clear failed: <status>" head exactly as before.
+    let code: string | undefined;
+    let currentAlertType: string | null | undefined;
+    try {
+      const body = await res.json();
+      if (body && typeof body.code === 'string') code = body.code;
+      if (body && body.currentAlert && typeof body.currentAlert === 'object') {
+        const ty = (body.currentAlert as { type?: unknown }).type;
+        currentAlertType = typeof ty === 'string' ? ty : null;
+      }
+    } catch {
+      /* no JSON body */
+    }
+    return {
+      success: false,
+      error: `All clear failed: ${res.status}`,
+      ...(code ? { code } : {}),
+      ...(currentAlertType !== undefined ? { currentAlertType } : {}),
+    };
   }
 
   // See above — same dead `revalidatePath` removed (audit P2 #4).

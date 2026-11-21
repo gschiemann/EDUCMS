@@ -154,6 +154,18 @@ import { CustomerAlertEmailsService } from '../notifications/customer-alerts/cus
 // 2026-11-14 — panic phones: a trigger sent with one names it on its audit
 // row. Empty for every other caller (the row is unchanged for a session).
 import { panicDeviceAuditFields } from './panic-device/panic-device.policy';
+// 2026-11-21 (EMG-01) — the tenant-wide alert carries an id, and the tenant
+// all-clear is a compare-and-set on it. See the module header for the rule.
+import {
+  CLEAR_REFUSED_ACTION,
+  alertChangedBody,
+  isRecordNotFound,
+  isTenantAlertActive,
+  namedAlertId,
+  tenantAlertChanged,
+  tenantClearGuard,
+  type TenantAlertState,
+} from './tenant-alert-identity';
 
 @Controller('api/v1/emergency')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -423,7 +435,7 @@ export class EmergencyController {
       );
       const drillTenants = (await this.prisma.client.tenant.findMany({
         where: { id: { in: organisationIds }, emergencyIsDrill: true } as any,
-        select: { id: true, emergencyStatus: true, emergencyIsDrill: true } as any,
+        select: { id: true, emergencyStatus: true, emergencyIsDrill: true, emergencyAlertId: true } as any,
       })) as any[];
       // Re-checked on the row (not only in the where-clause): only a tenant
       // that is IN a drill right now is ended here, never a live one.
@@ -443,9 +455,15 @@ export class EmergencyController {
       }
       if (drillTenantIds.length === 0 && changedScreenIds.size === 0) return null;
 
-      // The tenant-wide drill's own id lives only in its audit row (the Tenant
-      // row has no alert-id column); read it so the drill log can close it.
+      // The tenant-wide drill's own id: on the Tenant row since EMG-01
+      // (2026-11-21); for a drill raised before that column existed, only in
+      // its audit row — read it so the drill log can close it.
       for (const tid of drillTenantIds) {
+        const rowId = drillTenants.find((t) => t.id === tid)?.emergencyAlertId;
+        if (typeof rowId === 'string' && rowId) {
+          endedDrillIds.add(rowId);
+          continue;
+        }
         try {
           const started: any = await this.prisma.client.auditLog.findFirst({
             where: { tenantId: tid, action: DRILL_TRIGGER_ACTION, targetType: 'tenant' },
@@ -471,6 +489,9 @@ export class EmergencyController {
         emergencyPlaylistId: null,
         emergencyPortraitPlaylistId: null,
         emergencyIsDrill: false,
+        // EMG-01 — a cleared tenant holds no alert, so no alert identity.
+        emergencyAlertId: null,
+        emergencyTriggeredAt: null,
       } as any;
       await this.prisma.client.$transaction([
         ...(drillTenantIds.length > 0
@@ -1176,6 +1197,8 @@ export class EmergencyController {
           : [],
       );
       const locationTriggeredAt = new Date().toISOString();
+      // EMG-01 — the same instant is the tenant-wide alert's raise time.
+      const tenantTriggeredAt = new Date(locationTriggeredAt);
       const locationExpiresAt = this.emergencyExpiresAt(overridePayload.expiresAt);
 
       // Build the whole subtree's writes, then commit them in ONE
@@ -1309,6 +1332,12 @@ export class EmergencyController {
               // 2026-10-10 — a live trigger writes `false` here, so a live
               // alert over a running drill REPLACES it (one slot per tenant).
               emergencyIsDrill: isDrill,
+              // 2026-11-21 (EMG-01) — WHICH alert this is, in the same write
+              // as the status: the tenant all-clear compares against it, so a
+              // clear sent for the alert this one replaced cannot end it. A
+              // district alert writes its one id on every descendant.
+              emergencyAlertId: overrideId,
+              emergencyTriggeredAt: tenantTriggeredAt,
             } as any,
           }),
           // AUDIT: one immutable row PER AFFECTED TENANT. The forensic
@@ -1625,6 +1654,69 @@ export class EmergencyController {
     };
   }
 
+  /**
+   * EMG-01 (2026-11-21) — refuse a tenant all-clear that names an alert the
+   * tenant no longer holds, and say which alert it holds instead. Nothing has
+   * been written when this runs (before the dispatch, or after the batch rolled
+   * back), so the newer alert stays on every screen.
+   *
+   * The refusal is audited like every other emergency action — who, from
+   * where, the id they named and the id the tenant holds — on the tenant's own
+   * trail. If that audit write itself fails, the all-clear is STILL refused:
+   * ending a lockdown nobody asked to end is the worse failure; the miss goes
+   * to Sentry.
+   */
+  private async refuseStaleTenantClear(args: {
+    scopeId: string;
+    expectedAlertId: string;
+    current: TenantAlertState | null;
+    drillIntent: boolean;
+    stage: 'before-dispatch' | 'at-commit';
+    req: any;
+  }): Promise<never> {
+    const body = alertChangedBody(args.scopeId, args.current, args.expectedAlertId);
+    const user = args.req?.user;
+    try {
+      await this.prisma.client.auditLog.create({
+        data: {
+          action: CLEAR_REFUSED_ACTION,
+          targetType: 'tenant',
+          targetId: args.scopeId,
+          tenantId: args.scopeId,
+          userId: user?.id,
+          details: JSON.stringify({
+            reason: body.code,
+            requestedAlertId: args.expectedAlertId,
+            currentAlertId: body.currentAlert.alertId,
+            currentType: body.currentAlert.type,
+            currentSeverity: body.currentAlert.severity,
+            currentIsDrill: body.currentAlert.isDrill,
+            currentTriggeredAt: body.currentAlert.triggeredAt,
+            drillIntent: args.drillIntent,
+            stage: args.stage,
+            scopeType: 'tenant',
+            scopeId: args.scopeId,
+            triggeredByTenant: user?.tenantId,
+            // The immediate caller's address (for a dashboard request, the web
+            // server that relayed it).
+            requestIp: typeof args.req?.ip === 'string' ? args.req.ip : null,
+            ...panicDeviceAuditFields(user),
+          }),
+        },
+      });
+    } catch (e) {
+      Sentry.withScope((s) => {
+        s.setTag('emergency.action', 'all-clear.refused.audit');
+        s.setUser({ id: user?.id });
+        s.setExtra('tenantId', args.scopeId);
+        s.setExtra('requestedAlertId', args.expectedAlertId);
+        Sentry.captureException(e);
+      });
+      console.warn(`[Emergency] audit row for a refused all-clear could not be written: ${e}`);
+    }
+    throw new ConflictException(body);
+  }
+
   @Post(':overrideId/all-clear')
   @AllowPanicBypass()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
@@ -1674,17 +1766,49 @@ export class EmergencyController {
     // all-clear ends nothing. Without it the state decides, as before.
     const drillIntent = body.isDrill === true;
     let clearingDrill = drillIntent;
-    if (scopeType === 'tenant' && !drillIntent) {
+    // 2026-11-21 (EMG-01) — WHICH tenant-wide alert this all-clear is for.
+    // Null when the caller does not know (no id, a `clear_<uuid>` an older
+    // client minted, the legacy literal): that request takes exactly today's
+    // path. Group / device scope already matches by identity further down.
+    const expectedAlertId = scopeType === 'tenant' ? namedAlertId(overrideId) : null;
+    // The same single read as before (now also the alert's identity), plus a
+    // read for an "End Drill" that names its drill — before the dispatch, so
+    // a refused all-clear pushes nothing to any screen.
+    let rootState: TenantAlertState | null = null;
+    if (scopeType === 'tenant' && (!drillIntent || expectedAlertId)) {
       try {
-        const root: any = await this.prisma.client.tenant.findUnique({
+        rootState = (await this.prisma.client.tenant.findUnique({
           where: { id: scopeId },
-          select: { emergencyStatus: true, emergencyIsDrill: true } as any,
-        });
-        clearingDrill =
-          !!root && !!root.emergencyStatus && root.emergencyStatus !== 'INACTIVE' && root.emergencyIsDrill === true;
+          select: {
+            emergencyStatus: true,
+            emergencyIsDrill: true,
+            emergencyType: true,
+            emergencyAlertId: true,
+            emergencyTriggeredAt: true,
+          } as any,
+        })) as TenantAlertState | null;
+        if (!drillIntent) {
+          clearingDrill = isTenantAlertActive(rootState) && rootState?.emergencyIsDrill === true;
+        }
       } catch {
-        clearingDrill = false;
+        // A read that fails reads as "live" (the wider clear) and as "the
+        // alert is unknown" (no refusal here) — the compare-and-set on the
+        // write below still keeps a newer alert from being ended.
+        rootState = null;
+        if (!drillIntent) clearingDrill = false;
       }
+    }
+    // A newer alert replaced the one this all-clear names: refuse with 409
+    // before anything is dispatched or written, and audit the refusal.
+    if (scopeType === 'tenant' && expectedAlertId && tenantAlertChanged(rootState, expectedAlertId)) {
+      await this.refuseStaleTenantClear({
+        scopeId,
+        expectedAlertId,
+        current: rootState,
+        drillIntent,
+        stage: 'before-dispatch',
+        req,
+      });
     }
 
     if (scopeType === 'tenant') {
@@ -1730,6 +1854,9 @@ export class EmergencyController {
         emergencyPortraitPlaylistId: null,
         // 2026-10-10 — a cleared tenant is never "in a drill".
         emergencyIsDrill: false,
+        // 2026-11-21 (EMG-01) — and holds no alert identity.
+        emergencyAlertId: null,
+        emergencyTriggeredAt: null,
       } as any;
       // A DRILL all-clear writes only rows that are still in a drill — the
       // compare-and-set on `emergencyIsDrill` is what keeps a school that went
@@ -1740,6 +1867,13 @@ export class EmergencyController {
           id: typeof ids === 'string' ? ids : { in: ids },
           ...(clearingDrill ? { emergencyIsDrill: true } : {}),
         }) as any;
+      // EMG-01 — the ROOT row is written only while it still holds the alert
+      // this all-clear names (or an unidentified one, or none). A trigger that
+      // landed after the read above makes the live path's `tenant.update`
+      // match no row: Prisma throws P2025 and the WHOLE batch below rolls back
+      // (descendants, override rows, audit rows). Empty when the request names
+      // no real id, so that write is exactly the one it always was.
+      const rootGuard = tenantClearGuard(expectedAlertId);
 
       // Per-screen override rows across the WHOLE subtree that belong to the
       // tenant-wide alert. Without them a rebooted screen in a child school
@@ -1765,11 +1899,11 @@ export class EmergencyController {
           : (_row, e) => e.scopeType === 'tenant' || !e.alertId,
       );
 
-      await this.prisma.client.$transaction([
+      const tenantClearOps = [
         clearingDrill
-          ? this.prisma.client.tenant.updateMany({ where: tenantClearWhere(scopeId), data: clearedState })
+          ? this.prisma.client.tenant.updateMany({ where: { ...tenantClearWhere(scopeId), ...rootGuard }, data: clearedState })
           : this.prisma.client.tenant.update({
-              where: { id: scopeId },
+              where: { id: scopeId, ...rootGuard } as any,
               data: clearedState,
             }),
         // Descendants clear in ONE statement — the data is identical for
@@ -1813,7 +1947,54 @@ export class EmergencyController {
             },
           }),
         ),
-      ]);
+      ];
+      try {
+        await this.prisma.client.$transaction(tenantClearOps);
+      } catch (e) {
+        // EMG-01 — the root compare-and-set matched no row: a newer alert was
+        // raised between the read above and this commit, and the batch rolled
+        // back. Anything else (and a root that simply does not exist) is the
+        // error it always was.
+        if (!expectedAlertId || clearingDrill || !isRecordNotFound(e)) throw e;
+        let current: TenantAlertState | null = null;
+        try {
+          current = (await this.prisma.client.tenant.findUnique({
+            where: { id: scopeId },
+            select: {
+              emergencyStatus: true,
+              emergencyIsDrill: true,
+              emergencyType: true,
+              emergencyAlertId: true,
+              emergencyTriggeredAt: true,
+            } as any,
+          })) as TenantAlertState | null;
+        } catch {
+          current = null;
+        }
+        if (!current) throw e;
+        // The ALL_CLEAR push already went out (fast path). The player answers
+        // it by re-reading its manifest, which reads the row this rollback
+        // kept, so the newer alert stays on the glass. Move every affected
+        // tenant's revision again so no screen trusts a read taken while the
+        // clear was in flight, and put the root's "an alert is up" flag back.
+        for (const tid of affectedTenantIds) {
+          invalidateTenantState(tid);
+          bumpTenantEmergencyEpoch(
+            { redis: this.redisService },
+            tid,
+            tid === scopeId && isTenantAlertActive(current) ? { active: true } : {},
+          );
+        }
+        if (clearFanout !== null) await clearFanout.catch(() => undefined);
+        await this.refuseStaleTenantClear({
+          scopeId,
+          expectedAlertId,
+          current,
+          drillIntent,
+          stage: 'at-commit',
+          req,
+        });
+      }
     } else {
       // ── GROUP / DEVICE — end EXACTLY this alert (2026-10-05) ──────────────
       //
@@ -2890,7 +3071,9 @@ export class EmergencyController {
    * its target, so each can be listed and ended on its own.
    *
    *   • the tenant-wide ("All screens") alert of the caller's tenant — read
-   *     off the Tenant row, the state the manifest itself reads;
+   *     off the Tenant row, the state the manifest itself reads — with its id
+   *     (`Tenant.emergencyAlertId`, EMG-01; null for an alert raised before
+   *     that column existed);
    *   • one entry per GROUP / ONE-SCREEN alert, grouped from the override
    *     rows by alert identity (shown or covered — a covered alert is still
    *     live and comes back when the one over it clears);
@@ -2915,7 +3098,17 @@ export class EmergencyController {
     const [tenantRows, screenRows, overrideRows] = await Promise.all([
       this.prisma.client.tenant.findMany({
         where: { id: { in: subtreeIds } },
-        select: { id: true, name: true, parentId: true, emergencyStatus: true, emergencyType: true, emergencyIsDrill: true } as any,
+        select: {
+          id: true,
+          name: true,
+          parentId: true,
+          emergencyStatus: true,
+          emergencyType: true,
+          emergencyIsDrill: true,
+          // EMG-01 — the tenant-wide alert's identity, so its all-clear names it.
+          emergencyAlertId: true,
+          emergencyTriggeredAt: true,
+        } as any,
       }),
       this.prisma.client.screen.findMany({
         where: { tenantId: { in: subtreeIds } },
@@ -2951,8 +3144,14 @@ export class EmergencyController {
       : visibleIds.filter((id) => id !== rootId && isActive(tenants.get(id)));
     for (const tid of tenantWideIds) {
       const t = tenants.get(tid);
+      const raisedAt = t?.emergencyTriggeredAt;
       alerts.push({
-        alertId: null,
+        // 2026-11-21 (EMG-01) — the trigger's overrideId, written with the
+        // status. The dashboard and /panic send it back on the all-clear, and
+        // the server refuses one that names an alert the tenant no longer
+        // holds. NULL = an alert raised before alert identity: its all-clear
+        // behaves exactly as before.
+        alertId: typeof t?.emergencyAlertId === 'string' && t.emergencyAlertId ? t.emergencyAlertId : null,
         scopeType: 'tenant',
         scopeId: tid,
         targetName: t?.name ?? null,
@@ -2964,7 +3163,7 @@ export class EmergencyController {
         isDrill: t?.emergencyIsDrill === true,
         screenCount: subtreeScreenCount(tid),
         showingCount: null,
-        triggeredAt: null,
+        triggeredAt: raisedAt instanceof Date ? raisedAt.toISOString() : typeof raisedAt === 'string' ? raisedAt : null,
       });
     }
 

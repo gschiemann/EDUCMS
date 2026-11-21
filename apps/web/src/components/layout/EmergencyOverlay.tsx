@@ -108,6 +108,30 @@ export function EmergencyOverlay() {
   };
   const labelOf = (a: ActiveAlert) => activeAlertLabel(t, typeName(a.type), a);
 
+  // ── THE ALERT CHANGED (EMG-01, 2026-11-21) ───────────────────────────
+  // The tenant-wide alert now carries an id, and the server refuses (409
+  // ALERT_CHANGED) an all-clear that names an alert a newer one replaced —
+  // another operator escalated a Hold to a Lockdown while this overlay was
+  // open. Nothing was cleared then. Say so, show the current list, and make
+  // the operator confirm again for the alert that is actually live.
+  const alertChangedMessage = (apiType: string | null | undefined) =>
+    t('emergency.overlay.alertChanged', { type: typeName(apiType ?? null) });
+  // The same rule on this side of the wire: if the alert under a typed CLEAR
+  // is replaced by another one when the list refreshes (the operator did not
+  // pick it — `selectedKey` is not it), the CLEAR does not carry over to it.
+  const selectedIdentity = selected ? alertKey(selected) : null;
+  const lastIdentityRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = lastIdentityRef.current;
+    lastIdentityRef.current = selectedIdentity;
+    if (prev !== null && selectedIdentity !== null && prev !== selectedIdentity && selectedIdentity !== selectedKey) {
+      setConfirmKey('');
+      setClearError(alertChangedMessage(selected?.type));
+    }
+    // `selected` / `selectedKey` are read only when the identity moved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIdentity]);
+
   // A11y audit 2026-05-12 — the takeover overlay was a bare <div> that
   // never told assistive tech "this is a blocking dialog" and let Tab
   // wander into the disabled main content underneath. role="alertdialog"
@@ -163,8 +187,9 @@ export function EmergencyOverlay() {
                 // district admin may end one school's own alert).
                 schoolId: target.scopeType === 'tenant' ? target.scopeId : user?.tenantId || 'global',
                 token: token || undefined,
-                // Exactly this alert. The tenant-wide alert carries no id on
-                // the Tenant row, so it keeps the one the modal recorded.
+                // Exactly this alert. Since EMG-01 the tenant-wide entry carries
+                // its id too; one raised before that (id null) keeps the id the
+                // modal recorded, which the server treats as before.
                 overrideId: target.alertId ?? (target.scopeType === 'tenant' ? activeOverrideId || undefined : undefined),
                 // Its own scope — or, if that target was deleted mid-alert, the
                 // scope the server says still reaches it.
@@ -176,10 +201,28 @@ export function EmergencyOverlay() {
             : {
                 schoolId: user?.tenantId || 'global',
                 token: token || undefined,
-                overrideId: activeOverrideId || undefined,
+                // The list is unavailable: name the alert the tenant status
+                // this overlay describes says is live (EMG-01), else the one
+                // this browser sent.
+                overrideId:
+                  (tenant as { emergencyAlertId?: string | null } | undefined)?.emergencyAlertId ||
+                  activeOverrideId ||
+                  undefined,
                 ...(drillOnly ? { isDrill: true } : {}),
               },
         );
+        // EMG-01 — a newer alert replaced the one this all-clear named, and
+        // the server cleared NOTHING. Show the live list and ask for a fresh
+        // confirmation for the alert that is actually on the screens.
+        if (result && result.success !== true && result.code === 'ALERT_CHANGED') {
+          setConfirmKey('');
+          setSelectedKey(null);
+          setClearError(alertChangedMessage(result.currentAlertType));
+          void queryClient.invalidateQueries({ queryKey: ['tenant-status'] });
+          if (mayClear && token) void activeQuery.refetch();
+          inputRef.current?.focus();
+          return;
+        }
         // LIFE-SAFETY: the action reports failure in its RESULT. It used to
         // be ignored and the overlay closed anyway — telling the operator the
         // incident was over while every screen stayed locked down.

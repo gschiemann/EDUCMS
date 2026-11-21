@@ -213,8 +213,10 @@ export default function MobilePanicPage() {
   const [sentAlert, setSentAlert] = useState<{ overrideId?: string; target: EmergencyTarget; isDrill?: boolean } | null>(null);
   const firedRef = useRef<{ overrideId?: string; target: EmergencyTarget; isDrill?: boolean } | null>(null);
   // The overrideId of an "All screens" alert sent from this page, so its
-  // all-clear pairs with the trigger in the audit log (the Tenant row carries
-  // no id). Same chain-of-custody rule as the dashboard overlay (P2 #3).
+  // all-clear pairs with the trigger in the audit log. Since EMG-01 the
+  // active list carries the tenant-wide alert's own id, which wins; this is
+  // the fallback for an alert raised before that (its entry's id is null).
+  // Same chain-of-custody rule as the dashboard overlay (P2 #3).
   const tenantOverrideIdRef = useRef<string | undefined>(undefined);
 
   const allScreens = allScreensTarget(verifiedUser?.tenantId ?? '', targets?.allScreensCount ?? null);
@@ -359,6 +361,14 @@ export default function MobilePanicPage() {
       const next = await auth.recover();
       // Only a dashboard session may end an alert — never a panic phone.
       if (next?.kind === 'session') result = await clearWith(next.token, next.user.tenantId);
+    }
+    if (!result?.success && result?.code === 'ALERT_CHANGED') {
+      // EMG-01 (2026-11-21) — a newer alert replaced the one this all-clear
+      // named, and the server cleared NOTHING. Re-read the list so the sheet
+      // shows the alert that is live now; ending it takes its own hold.
+      if (alert.scopeType === 'tenant') tenantOverrideIdRef.current = undefined;
+      try { if (credential) setActiveAlerts(await readActive(credential)); } catch { /* next poll */ }
+      return { ok: false, error: t('emergency.panic.alertChanged', { type: alertTypeName(result.currentAlertType ?? null) }) };
     }
     if (!result?.success) {
       const raw = result?.error || '';

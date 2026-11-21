@@ -987,6 +987,11 @@ export class TenantsController {
         // 2026-10-10 — whether the active tenant-wide alert is a DRILL, so the
         // dashboard overlay can say DRILL even when its alert list is down.
         emergencyIsDrill: true,
+        // 2026-11-21 (EMG-01) — WHICH tenant-wide alert is active, so the
+        // overlay's all-clear names it even when its alert list is down.
+        // NULL = no alert, or one raised before alert identity existed.
+        emergencyAlertId: true,
+        emergencyTriggeredAt: true,
         panicLockdownPlaylistId: true,
         panicWeatherPlaylistId: true,
         panicEvacuatePlaylistId: true,

@@ -376,3 +376,50 @@ describe('2026-11-14 — panic phones on the page', () => {
     expect(push).toHaveBeenCalledWith('/login?redirect=/panic&reason=panic-enroll');
   });
 });
+
+// EMG-01 (2026-11-21) — the tenant-wide alert carries an id. Ending it from
+// /panic sends that id; if another operator replaced the alert in the
+// meantime the server refuses (409 ALERT_CHANGED) and clears NOTHING, and the
+// page must say so, re-read the list, and leave the newer alert to its own hold.
+describe('6 — ending an alert that was replaced meanwhile', () => {
+  const tenantAlert = (alertId: string, type: string) => ({ ...LIVE_TENANT_ALERT, alertId, type });
+  it('sends the listed id, says a newer alert is active, and shows it for review', async () => {
+    const defaultActive = fetchActiveAlerts.getMockImplementation();
+    let serverHolds: 'hold' | 'lockdown' = 'hold';
+    (fetchActiveAlerts as jest.Mock).mockImplementation(async () => [
+      serverHolds === 'hold' ? tenantAlert('ovr_hold', 'HOLD') : tenantAlert('ovr_lockdown', 'LOCKDOWN'),
+    ]);
+    allClearEmergency.mockImplementation(async () => {
+      serverHolds = 'lockdown';
+      return { success: false, error: 'All clear failed: 409', code: 'ALERT_CHANGED', currentAlertType: 'LOCKDOWN' };
+    });
+    try {
+      act(() => {
+        useUIStore.setState({ token: 'tab.jwt', user: TEACHER as never });
+      });
+      render(<MobilePanicPage />);
+      await flush();
+      expect(screen.getByTestId('panic-active-alerts')).toHaveTextContent(/Hold/);
+
+      fireEvent.click(screen.getByTestId('panic-active-alerts'));
+      const end = screen.getByTestId('panic-hold-to-end');
+      fireEvent.keyDown(end, { key: ' ' });
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+      await flush(10);
+
+      expect(allClearEmergency).toHaveBeenCalledTimes(1);
+      expect(allClearEmergency.mock.calls[0][0]).toMatchObject({ overrideId: 'ovr_hold', scopeType: 'tenant', scopeId: 't1', token: 'tab.jwt' });
+      const sheet = screen.getByTestId('panic-alerts-sheet');
+      expect(sheet).toHaveTextContent('All-clear was NOT sent — the alert is still on screens.');
+      expect(sheet).toHaveTextContent('A newer alert is now active (Lockdown), so nothing was cleared.');
+      // The list was re-read: the Lockdown is what the sheet now offers to end.
+      expect(screen.getByTestId('panic-active-alerts')).toHaveTextContent(/Lockdown/);
+      expect(sheet).toHaveTextContent(/Lockdown/);
+    } finally {
+      if (defaultActive) fetchActiveAlerts.mockImplementation(defaultActive);
+      allClearEmergency.mockReset();
+    }
+  });
+});

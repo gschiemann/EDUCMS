@@ -87,4 +87,27 @@ describe('allClearEmergency', () => {
       allClearEmergency({ schoolId: 't1', overrideId: 'ovr_1', scopeType: 'device', scopeId: 's-lobby' }),
     ).resolves.toEqual({ success: false, error: 'All clear failed: 500' });
   });
+
+  // EMG-01 (2026-11-21) — the server refuses an all-clear naming an alert a
+  // newer one replaced. The action passes the code and the newer alert's type
+  // through, and keeps the "All clear failed: <status>" head the surfaces route on.
+  it('a 409 ALERT_CHANGED is reported with its code and the type of the alert that is live now', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        code: 'ALERT_CHANGED',
+        message: 'A newer LOCKDOWN alert is active.',
+        requestedAlertId: 'ovr_hold',
+        currentAlert: { alertId: 'ovr_lockdown', scopeType: 'tenant', scopeId: 't1', type: 'LOCKDOWN' },
+      }),
+    });
+    await expect(allClearEmergency({ schoolId: 't1', token: 'tok', overrideId: 'ovr_hold' })).resolves.toEqual({
+      success: false,
+      error: 'All clear failed: 409',
+      code: 'ALERT_CHANGED',
+      currentAlertType: 'LOCKDOWN',
+    });
+    expect(sent().url).toMatch(/\/emergency\/ovr_hold\/all-clear$/);
+  });
 });

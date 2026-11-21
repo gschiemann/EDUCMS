@@ -115,6 +115,7 @@
       "selected": "已选择",
       "loadFailed": "无法加载警报列表，正在重试…",
       "clearFailed": "解除警报未发送——警报仍显示在屏幕上。{error}",
+      "alertChanged": "未解除任何警报：现在有一个更新的警报处于活动状态（{type}）。请先在上方查看，然后再次输入 CLEAR 以结束该警报。",
       "noAuthority": "只有拥有紧急权限的人员才能发送解除警报。",
       "sendAnother": "发送另一条警报"
     },
@@ -173,7 +174,8 @@
       "turnOffTitle": "要关闭此手机上的紧急功能吗？",
       "turnOffMessage": "此手机需要登录后才能再次发送警报。",
       "turnOffConfirm": "关闭",
-      "endNeedsSignIn": "要结束警报，需要在此手机上完整登录。"
+      "endNeedsSignIn": "要结束警报，需要在此手机上完整登录。",
+      "alertChanged": "现在有一个更新的警报处于活动状态（{type}），因此未解除任何警报。请先查看，然后再次长按以结束该警报。"
     },
     "broadcast": {
       "title": "广播",
