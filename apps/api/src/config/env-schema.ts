@@ -316,7 +316,7 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
     note: 'Subtractive. Emergency delivery still works through the manifest polling path.' },
   { name: 'REDIS_URL', type: 'secret', default: null, failureDirection: 'open',
     purpose: 'Redis connection for realtime pub/sub fan-out, leader leases, replay claims and the session store.',
-    note: 'Unset: the API boots anyway and falls back to HTTP-polling realtime (7 s connect hard-cap).' },
+    note: 'Unset: the API boots anyway and falls back to HTTP-polling realtime (7 s connect hard-cap). Set but unreachable: boot still waits at most 7 s, then both connections reconnect forever (backoff capped at 5 s); while instant push is down the API delivers pushes to its own screens, every screen still polls, and /api/v1/health/emergency-path reports degraded (still 200).' },
   { name: 'SENTRY_DSN', type: 'url', default: null, failureDirection: 'open',
     purpose: 'Sentry project DSN for API error tracking.',
     note: 'Unset: error tracking is disabled and a warning is logged at boot.' },

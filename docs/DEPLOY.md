@@ -10,7 +10,7 @@ Every Railway redeploy must come up without hand-holding. Below is how to verify
 - `GET /api/v1/health` — liveness. Always 200 (even if DB/Redis degraded — the truth is in the body). Returns `{ status, db, redis, uptime, version, commit, timestamp }`. Monitoring uses it (`keep-warm.yml`, `node scripts/venueos.cjs status`); Railway's deploy healthcheck does NOT.
 - `GET /api/v1/health/started` — the Railway deploy healthcheck (`healthcheckPath` in `railway.json`). A one-way latch: 503 until the DB has served a real query and Redis has settled (or a ceiling of about 45 s passes), 200 forever after — it can never fail a running pod.
 - `GET /api/v1/health/ready` — readiness. 503 when DB unreachable. Use for monitoring, NOT Railway.
-- `GET /api/v1/health/emergency-path` — verifies DB + WS signer chain before a drill.
+- `GET /api/v1/health/emergency-path` — verifies DB + WS signer chain before a drill. 503 only when the DB or the signer fails. While instant push to screens is down (Redis away, or its push subscription lost) it answers 200 with `status: "degraded"`, `checks.push: "degraded"` and a plain `push_reason`; the API reconnects by itself and delivers to its own screens meanwhile.
 
 **Verify a deploy succeeded:**
 1. `curl https://<railway-api>/api/v1/health` returns 200 with `db:"ok"` **and a `commit` equal to the merge commit's SHA.** `/api/v1/health` is 200 even when degraded, and the previous container keeps answering until the new one takes over, so the `commit` field is the proof of a deploy (`node scripts/venueos.cjs status` shows local, origin, DEPLOYED and CI in one view). A `commit` of `dev` or the previous SHA means it is not deployed.

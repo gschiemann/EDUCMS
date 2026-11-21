@@ -19,6 +19,12 @@ interface HealthReport {
   // Flat convenience fields (what the Railway healthcheck + ops dashboard read)
   db?: CheckState;
   redis?: CheckState;
+  /**
+   * EMG-03 — `/emergency-path` only, and only while instant push to screens
+   * is down: one plain sentence saying so (fixed wording, never an upstream
+   * error text). Alerts still reach screens; the HTTP status is unchanged.
+   */
+  push_reason?: string;
   uptime?: number;
   timestamp?: string;
 }
@@ -202,6 +208,29 @@ export class HealthController {
     } else {
       report.checks.redis = 'fallback';
       report.redis = 'fallback';
+    }
+
+    // EMG-03 — the push channel itself. A PING proves the publisher answers;
+    // screens get instant pushes only while the subscriber is listening too.
+    // A lost channel is DEGRADED, never a 503: alerts still reach screens
+    // (this API delivers to its own sockets, and every screen polls), and
+    // the status codes below stay exactly what docs/DEPLOY.md documents.
+    let push: ReturnType<RedisService['pushChannelState']> | undefined;
+    try {
+      push = this.redis.pushChannelState?.();
+    } catch {
+      push = undefined;
+    }
+    if (push && push.configured) {
+      if (push.live) {
+        report.checks.push = 'ok';
+      } else {
+        report.checks.push = 'degraded';
+        report.status = 'degraded';
+        if (push.reason) report.push_reason = push.reason;
+      }
+    } else if (push) {
+      report.checks.push = 'off';
     }
 
     try {
