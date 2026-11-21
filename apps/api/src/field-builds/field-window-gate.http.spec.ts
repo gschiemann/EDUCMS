@@ -76,6 +76,11 @@ function liveWindow(patch: Record<string, unknown> = {}) {
 async function boot() {
   prisma = {
     client: {
+      // No alert anywhere: the OTA emergency hold (FLT-04, ota-emergency-hold.ts)
+      // reads these before an install offer, and holds when it cannot.
+      screenEmergencyOverride: { findUnique: jest.fn().mockResolvedValue(null) },
+      tenant: { findUnique: jest.fn(async ({ where }: any) => ({ id: where.id, parentId: null, archivedAt: null, emergencyStatus: 'INACTIVE' })) },
+      emergencyMessage: { findFirst: jest.fn().mockResolvedValue(null) },
       // What the table "returns" for the newest open window (the query filters
       // cancelled and expired rows, so a test models that by setting null).
       fieldBuildWindow: {

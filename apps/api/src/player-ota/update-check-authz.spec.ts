@@ -69,6 +69,11 @@ const FP = 'android-abcdef123456';
 function harness(priorScreen: any) {
   const prisma: any = {
     client: {
+      // No alert anywhere: the OTA emergency hold (FLT-04, ota-emergency-hold.ts)
+      // reads these before an install offer, and holds when it cannot.
+      screenEmergencyOverride: { findUnique: jest.fn().mockResolvedValue(null) },
+      tenant: { findUnique: jest.fn(async ({ where }: any) => ({ id: where.id, parentId: null, archivedAt: null, emergencyStatus: 'INACTIVE' })) },
+      emergencyMessage: { findFirst: jest.fn().mockResolvedValue(null) },
       screen: {
         findFirst: jest.fn().mockResolvedValue(priorScreen),
         findUnique: jest.fn().mockResolvedValue(priorScreen),

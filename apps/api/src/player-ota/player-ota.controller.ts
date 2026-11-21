@@ -81,6 +81,7 @@ import { apkAssetName, legacyApkAssetName, resolveApkDelivery, type ApkDelivery,
 import { isFieldCandidateTarget, configuredFieldRelease, mintFieldTicket, verifyFieldTicket, verifiedFieldBytes } from './field-candidate';
 import { isFieldBenchScreen } from './fleet-push-policy';
 import { signDownloadTag, verifyDownloadTag, DOWNLOAD_TAG_PARAM } from './download-tag';
+import { heldForEmergencyAnswer, otaEmergencyHoldDisabled, resolveOtaEmergencyHold, type OtaEmergencyHoldScreen } from './ota-emergency-hold';
 
 interface UpdateCheckBody {
   fingerprint?: string;
@@ -366,6 +367,32 @@ export class PlayerOtaController {
       // Non-fatal — next poll will try again.
       this.logger.warn(`Version persist failed: ${e?.message}`);
     }
+  }
+
+  /**
+   * FLT-04 — the emergency hold for the Manager's legacy self-update lane
+   * (only reached with MANAGER_SELF_UPDATE_LEGACY_LANE=on). The Manager speaks
+   * fingerprints; an unpaired kiosk (no screen row) has no alert to protect.
+   * A failed lookup holds.
+   */
+  private async managerLaneEmergencyHold(fp: string): Promise<{ held: boolean; source: string | null }> {
+    // Kill switch first: with it set nothing is read, exactly as before.
+    if (otaEmergencyHoldDisabled() || !fp) return { held: false, source: null };
+    let screen: OtaEmergencyHoldScreen | null;
+    try {
+      screen = await this.prisma.client.screen.findFirst({
+        where: { deviceFingerprint: fp },
+        select: { id: true, tenantId: true, screenGroupId: true, lastRenderedHash: true, lastRenderedAt: true },
+      });
+    } catch (e: unknown) {
+      this.logger.warn(
+        `[mgr-ota] emergency-hold screen lookup failed fp=${fp.slice(0, 10)} ` +
+        `err=${e instanceof Error ? e.message : String(e)} — holding`,
+      );
+      return { held: true, source: 'unreadable' };
+    }
+    if (!screen) return { held: false, source: null };
+    return resolveOtaEmergencyHold(this.prisma, screen);
   }
 
   /**
@@ -704,6 +731,9 @@ export class PlayerOtaController {
     let lookupTenantId: string | null = null;
     let lookupScreenName: string | null = null;
     let fieldTarget = false;
+    // FLT-04 (2026-11-21) — the facts the emergency hold reads before any
+    // install offer (ota-emergency-hold.ts). Null = no screen row.
+    let holdScreen: OtaEmergencyHoldScreen | null = null;
     // Phase B canary — captured at screen-lookup time, defaults to
     // full-rollout (100) when no screen row exists.
     let tenantCanaryPct = 100;
@@ -728,6 +758,10 @@ export class PlayerOtaController {
             lastOtaState: true,
             lastOtaMessage: true,
             lastOtaAt: true,
+            // FLT-04 — the screen's own render proof: an `em:` signature
+            // means an alert was on its glass (ota-emergency-hold.ts).
+            lastRenderedHash: true,
+            lastRenderedAt: true,
             tenant: {
               select: {
                 autoUpdatePlayerEnabled: true,
@@ -742,6 +776,13 @@ export class PlayerOtaController {
         if (screen) {
           lookupScreenId = screen.id;
           lookupTenantId = screen.tenantId;
+          holdScreen = {
+            id: screen.id,
+            tenantId: screen.tenantId ?? null,
+            screenGroupId: screen.screenGroupId ?? null,
+            lastRenderedHash: screen.lastRenderedHash ?? null,
+            lastRenderedAt: screen.lastRenderedAt ?? null,
+          };
           fieldTarget = isFieldCandidateTarget(screen.id,screen.tenantId);
           // Phase B canary — pull the tenant's current rollout %.
           // Missing/null defaults to 100 (full rollout, no change in
@@ -931,6 +972,31 @@ export class PlayerOtaController {
         );
       } else {
         allowReason = `${allowReason}-canary-cohort-pct${tenantCanaryPct}`;
+      }
+    }
+
+    // ── FLT-04 (2026-11-21) — no install while an alert is on the glass ──
+    // Every reason this check would hand over an APK (an automatic offer, an
+    // operator or field-build push, a panel tap, a canary cohort) passes
+    // here, after every other gate and BEFORE anything is resolved, counted,
+    // audited or cleared — so a held push stays exactly as it was and is
+    // offered on the screen's next check after the alert (ota-emergency-
+    // hold.ts). Fail-closed: unreadable state holds. The bootstrap (no Player
+    // installed, nothing on that glass) is not held. Kill switch:
+    // OTA_EMERGENCY_HOLD_DISABLED=1.
+    if (allowUpdate && !isBootstrapCall && !otaEmergencyHoldDisabled()) {
+      const hold = holdScreen
+        ? await resolveOtaEmergencyHold(this.prisma, holdScreen)
+        // Unreachable today (only the bootstrap offers without a screen row);
+        // if it ever happens, an unknown screen is held, never offered.
+        : { held: true, source: 'unreadable' as const, disabled: false };
+      if (hold.held) {
+        this.logger.warn(
+          `[ota] decision=uptoDate-held-for-emergency caller=${callerVn} screen=${lookupScreenId || '-'} ` +
+          `tenant=${lookupTenantId || '-'} fp=${fpShort} source=${hold.source} would-have=${allowReason}` +
+          (forcedPendingScreenId ? ' — push stays pending, offered after the alert' : ''),
+        );
+        return heldForEmergencyAnswer();
       }
     }
 
@@ -1478,6 +1544,16 @@ export class PlayerOtaController {
       `[mgr-ota] LEGACY GitHub lane is ON (MANAGER_SELF_UPDATE_LEGACY_LANE=on) — a manager-v* release ` +
       `reaches every Manager that asks, outside the Player's ladder. caller=${callerVn} fp=${fpShort}`,
     );
+
+    // FLT-04 (2026-11-21) — the re-opened lane is held during an alert too,
+    // exactly like the Player's (ota-emergency-hold.ts). Fail-closed.
+    const mgrHold = await this.managerLaneEmergencyHold(fp);
+    if (mgrHold.held) {
+      this.logger.warn(
+        `[mgr-ota] decision=uptoDate-held-for-emergency caller=${callerVn} fp=${fpShort} source=${mgrHold.source}`,
+      );
+      return heldForEmergencyAnswer();
+    }
 
     try {
       const info = await resolveLatestManagerReleaseInfo(callerAbi);
