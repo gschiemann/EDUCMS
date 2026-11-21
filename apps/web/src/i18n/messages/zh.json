@@ -116,6 +116,7 @@
       "loadFailed": "无法加载警报列表，正在重试…",
       "clearFailed": "解除警报未发送——警报仍显示在屏幕上。{error}",
       "alertChanged": "未解除任何警报：现在有一个更新的警报处于活动状态（{type}）。请先在上方查看，然后再次输入 CLEAR 以结束该警报。",
+      "selectionChanged": "您选择的警报已不在列表中，因此未解除任何警报。请查看上方列表，然后再次输入 CLEAR。",
       "noAuthority": "只有拥有紧急权限的人员才能发送解除警报。",
       "sendAnother": "发送另一条警报"
     },

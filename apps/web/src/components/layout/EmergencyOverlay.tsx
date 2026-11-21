@@ -119,16 +119,29 @@ export function EmergencyOverlay() {
   // The same rule on this side of the wire: if the alert under a typed CLEAR
   // is replaced by another one when the list refreshes (the operator did not
   // pick it — `selectedKey` is not it), the CLEAR does not carry over to it.
+  // Review round 1: only when a typed CLEAR is actually dropped (a refresh
+  // with the box empty says nothing), and in words that fit: the same target
+  // now holding a different alert is "a newer alert"; the alert the operator
+  // had picked simply being gone (another one is auto-selected) is not.
   const selectedIdentity = selected ? alertKey(selected) : null;
-  const lastIdentityRef = useRef<string | null>(null);
+  const selectedScope = selected ? `${selected.scopeType}:${selected.scopeId}` : null;
+  const lastSelectedRef = useRef<{ key: string; scope: string | null } | null>(null);
   useEffect(() => {
-    const prev = lastIdentityRef.current;
-    lastIdentityRef.current = selectedIdentity;
-    if (prev !== null && selectedIdentity !== null && prev !== selectedIdentity && selectedIdentity !== selectedKey) {
+    const prev = lastSelectedRef.current;
+    lastSelectedRef.current = selectedIdentity !== null ? { key: selectedIdentity, scope: selectedScope } : null;
+    const movedUnderTypedClear =
+      prev !== null &&
+      selectedIdentity !== null &&
+      prev.key !== selectedIdentity &&
+      selectedIdentity !== selectedKey &&
+      confirmKey !== '';
+    if (movedUnderTypedClear) {
       setConfirmKey('');
-      setClearError(alertChangedMessage(selected?.type));
+      setClearError(
+        prev.scope === selectedScope ? alertChangedMessage(selected?.type) : t('emergency.overlay.selectionChanged'),
+      );
     }
-    // `selected` / `selectedKey` are read only when the identity moved.
+    // `selected` / `selectedKey` / `confirmKey` are read only when the identity moved.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIdentity]);
 
@@ -219,8 +232,19 @@ export function EmergencyOverlay() {
           setSelectedKey(null);
           setClearError(alertChangedMessage(result.currentAlertType));
           void queryClient.invalidateQueries({ queryKey: ['tenant-status'] });
-          if (mayClear && token) void activeQuery.refetch();
           inputRef.current?.focus();
+          if (mayClear && token) {
+            const refreshed = await activeQuery.refetch().catch(() => null);
+            // A 409 that did not carry the newer alert's type (an API older
+            // than review round 1, or a proxy that stripped the body): name it
+            // from the list just re-read, for the same target.
+            if (!result.currentAlertType && target) {
+              const now = refreshed?.data?.find(
+                (a) => a.scopeType === target.scopeType && a.scopeId === target.scopeId,
+              );
+              if (now?.type) setClearError(alertChangedMessage(now.type));
+            }
+          }
           return;
         }
         // LIFE-SAFETY: the action reports failure in its RESULT. It used to

@@ -422,4 +422,37 @@ describe('6 — ending an alert that was replaced meanwhile', () => {
       allClearEmergency.mockReset();
     }
   });
+
+  // Review round 1 — a 409 without the type (an API older than the filter
+  // fix, a proxy that stripped the body) still names the newer alert, from
+  // the list the page just re-read.
+  it('names the newer alert from the re-read list when the 409 carries no type', async () => {
+    const defaultActive = fetchActiveAlerts.getMockImplementation();
+    let serverHolds: 'hold' | 'lockdown' = 'hold';
+    (fetchActiveAlerts as jest.Mock).mockImplementation(async () => [
+      serverHolds === 'hold' ? tenantAlert('ovr_hold', 'HOLD') : tenantAlert('ovr_lockdown', 'LOCKDOWN'),
+    ]);
+    allClearEmergency.mockImplementation(async () => {
+      serverHolds = 'lockdown';
+      return { success: false, error: 'All clear failed: 409', code: 'ALERT_CHANGED' };
+    });
+    try {
+      act(() => {
+        useUIStore.setState({ token: 'tab.jwt', user: TEACHER as never });
+      });
+      render(<MobilePanicPage />);
+      await flush();
+      fireEvent.click(screen.getByTestId('panic-active-alerts'));
+      const end = screen.getByTestId('panic-hold-to-end');
+      fireEvent.keyDown(end, { key: ' ' });
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+      await flush(10);
+      expect(screen.getByTestId('panic-alerts-sheet')).toHaveTextContent('A newer alert is now active (Lockdown), so nothing was cleared.');
+    } finally {
+      if (defaultActive) fetchActiveAlerts.mockImplementation(defaultActive);
+      allClearEmergency.mockReset();
+    }
+  });
 });

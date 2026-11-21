@@ -6,6 +6,7 @@
 import {
   ALERT_CHANGED_CODE,
   alertChangedBody,
+  alertIdentityDisabled,
   isRecordNotFound,
   namedAlertId,
   tenantAlertChanged,
@@ -109,4 +110,24 @@ describe('alertChangedBody / isRecordNotFound', () => {
     expect(isRecordNotFound(new Error('boom'))).toBe(false);
     expect(isRecordNotFound(null)).toBe(false);
   });
+});
+
+describe('alertIdentityDisabled — the owner’s kill switch (review round 1)', () => {
+  it.each(['1', 'true', 'TRUE', ' yes ', 'Yes'])('%p → off', (v) => {
+    expect(
+      alertIdentityDisabled({
+        EMERGENCY_ALERT_IDENTITY_DISABLED: v,
+      } as NodeJS.ProcessEnv),
+    ).toBe(true);
+  });
+  it.each([undefined, '', '0', 'false', 'no', 'off', 'disabled', 'on'])(
+    '%p → the rule stays on',
+    (v) => {
+      expect(
+        alertIdentityDisabled({
+          EMERGENCY_ALERT_IDENTITY_DISABLED: v,
+        } as NodeJS.ProcessEnv),
+      ).toBe(false);
+    },
+  );
 });

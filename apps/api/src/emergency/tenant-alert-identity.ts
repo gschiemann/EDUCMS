@@ -27,6 +27,16 @@
  * root's `tenant.update` then matches no row, Prisma throws P2025, and the
  * whole batch — descendants, override rows, audit rows — rolls back.
  *
+ * THE DISTRICT PATH (review round 1). A district alert writes its one id on
+ * every school; a school whose row holds a DIFFERENT identified alert raised
+ * its own afterwards. A district all-clear naming the district's alert leaves
+ * that school alone (its row, its override rows, its push, its CLEAR row), and
+ * the descendants' write carries the same `tenantClearGuard` as the root's.
+ *
+ * THE KILL SWITCH. `EMERGENCY_ALERT_IDENTITY_DISABLED` (below) turns all of
+ * this off without a code change: every tenant all-clear then takes the
+ * pre-EMG-01 path.
+ *
  * Pure: no Prisma, no Nest. Unit-tested in tenant-alert-identity.spec.ts and
  * end to end in emergency.alert-identity.spec.ts.
  */
@@ -155,4 +165,22 @@ export function isRecordNotFound(e: unknown): boolean {
   return (
     !!e && typeof e === 'object' && (e as { code?: unknown }).code === 'P2025'
   );
+}
+
+/**
+ * `EMERGENCY_ALERT_IDENTITY_DISABLED` — the owner's kill switch for this rule
+ * (EMG-01 review round 1). SUBTRACTIVE: unset (or any value but the three
+ * below) = the rule applies. Set = every tenant all-clear is treated as one
+ * that names no alert, i.e. exactly the pre-EMG-01 all-clear: never refused,
+ * no compare-and-set on any row, the whole subtree cleared. The trigger keeps
+ * writing the id and /emergency/active keeps listing it, so unsetting it
+ * restores the rule with nothing lost. Read on every request.
+ */
+export function alertIdentityDisabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const raw = String(env.EMERGENCY_ALERT_IDENTITY_DISABLED ?? '')
+    .trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
 }

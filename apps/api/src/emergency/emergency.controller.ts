@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, Query, Req, Res, UseGuards, ForbiddenException, BadRequestException, NotFoundException, ConflictException, Optional } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, Req, Res, UseGuards, UseFilters, ForbiddenException, BadRequestException, NotFoundException, ConflictException, Optional } from '@nestjs/common';
 import type { Response } from 'express';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -159,6 +159,7 @@ import { panicDeviceAuditFields } from './panic-device/panic-device.policy';
 import {
   CLEAR_REFUSED_ACTION,
   alertChangedBody,
+  alertIdentityDisabled,
   isRecordNotFound,
   isTenantAlertActive,
   namedAlertId,
@@ -166,6 +167,16 @@ import {
   tenantClearGuard,
   type TenantAlertState,
 } from './tenant-alert-identity';
+// EMG-01 review round 1 — the 409's facts survive the global filter.
+import { TenantAlertChangedConflict, TenantAlertChangedConflictFilter } from './tenant-alert-changed.filter';
+
+/** A school a tenant all-clear left alone because it holds its own alert (EMG-01 review round 1). */
+interface KeptTenantAlert {
+  tenantId: string;
+  alertId: string;
+  type: string | null;
+  isDrill: boolean;
+}
 
 @Controller('api/v1/emergency')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -1714,12 +1725,19 @@ export class EmergencyController {
       });
       console.warn(`[Emergency] audit row for a refused all-clear could not be written: ${e}`);
     }
-    throw new ConflictException(body);
+    // A dedicated type so the method-scoped filter below puts `currentAlert`
+    // on the wire (the global filter keeps only `{ error, code, message }`).
+    throw new TenantAlertChangedConflict(body);
   }
 
   @Post(':overrideId/all-clear')
   @AllowPanicBypass()
   @RequireRoles(AppRole.SUPER_ADMIN, AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN)
+  // EMG-01 review round 1 — only the 409 ALERT_CHANGED is shaped here (the
+  // newer alert's id, type, drill flag, raise time); every other error from
+  // this handler keeps the global envelope. Pinned over real HTTP by
+  // tenant-alert-changed.http.spec.ts.
+  @UseFilters(TenantAlertChangedConflictFilter)
   async clearEmergency(
     @Param('overrideId') overrideId: string,
     @Body(new ZodValidationPipe(ClearEmergencyInputSchema)) body: ClearEmergencyInput,
@@ -1770,7 +1788,10 @@ export class EmergencyController {
     // Null when the caller does not know (no id, a `clear_<uuid>` an older
     // client minted, the legacy literal): that request takes exactly today's
     // path. Group / device scope already matches by identity further down.
-    const expectedAlertId = scopeType === 'tenant' ? namedAlertId(overrideId) : null;
+    // The owner's kill switch (EMERGENCY_ALERT_IDENTITY_DISABLED) makes every
+    // request one that names no alert: today's path, refused never.
+    const identityOff = scopeType === 'tenant' && alertIdentityDisabled();
+    const expectedAlertId = scopeType === 'tenant' && !identityOff ? namedAlertId(overrideId) : null;
     // The same single read as before (now also the alert's identity), plus a
     // read for an "End Drill" that names its drill — before the dispatch, so
     // a refused all-clear pushes nothing to any screen.
@@ -1811,12 +1832,47 @@ export class EmergencyController {
       });
     }
 
+    // EMG-01 review round 1 — schools below the root that hold their OWN
+    // alert (see the tenant branch). Empty unless the request names an id.
+    let keptTenants: KeptTenantAlert[] = [];
+
     if (scopeType === 'tenant') {
       const descendantTenantIds = await collectDescendantTenantIds(
         this.prisma.client.tenant as any,
         scopeId,
       );
-      affectedTenantIds = [scopeId, ...descendantTenantIds];
+      // ── THE DISTRICT PATH (EMG-01 review round 1) ─────────────────────
+      // A district alert writes its one id on every school, so a school
+      // whose row now holds a DIFFERENT, identified, active alert raised it
+      // for itself after the district's (or a sub-district did). An
+      // all-clear that names the district's alert ends the district's alert
+      // — never that school's. The school is left out of everything below:
+      // no ALL_CLEAR push, no epoch drop, no row write (and its descendants'
+      // write carries the same compare-and-set as the root's, for a school
+      // that raises one after this read), no override-row change, no CLEAR
+      // row, no "cleared" email. Its own alert stays listed in
+      // /emergency/active, and it is ended by its own all-clear.
+      //
+      // Read BEFORE the dispatch, override rows first: a school that raises
+      // between the two reads is then seen as kept and its rows untouched;
+      // one that raises after both keeps its row (the write's guard), and
+      // the row plan is compare-and-set on the rows as read.
+      //
+      // A request that names no real id (an older client, `clear_<uuid>`)
+      // skips all of this and clears the whole subtree exactly as before.
+      let preReadRows: any[] | null = null;
+      let clearedDescendantIds = descendantTenantIds;
+      if (expectedAlertId && descendantTenantIds.length > 0) {
+        // A read that fails here never fails the all-clear: the rows are then
+        // read after the dispatch, as before.
+        preReadRows = await this.overrideRowsFor({ in: [scopeId, ...descendantTenantIds] }).catch(() => null);
+        keptTenants = await this.descendantsHoldingAnotherAlert(descendantTenantIds, expectedAlertId);
+        if (keptTenants.length > 0) {
+          const kept = new Set(keptTenants.map((k) => k.tenantId));
+          clearedDescendantIds = descendantTenantIds.filter((id) => !kept.has(id));
+        }
+      }
+      affectedTenantIds = [scopeId, ...clearedDescendantIds];
 
       // Same life-safety fast path as `trigger` — and it matters just as much
       // here. A stalled write on all-clear leaves screens STUCK IN LOCKDOWN
@@ -1872,7 +1928,9 @@ export class EmergencyController {
       // landed after the read above makes the live path's `tenant.update`
       // match no row: Prisma throws P2025 and the WHOLE batch below rolls back
       // (descendants, override rows, audit rows). Empty when the request names
-      // no real id, so that write is exactly the one it always was.
+      // no real id, so that write is exactly the one it always was. The
+      // descendants' write carries the same condition (review round 1): a
+      // school that raised its own alert after the read above keeps it.
       const rootGuard = tenantClearGuard(expectedAlertId);
 
       // Per-screen override rows across the WHOLE subtree that belong to the
@@ -1888,7 +1946,11 @@ export class EmergencyController {
       // all-clear: clearing the building-wide weather alert must not end the
       // nurse's medical alert (gap G5). A screen that was covering one gets it
       // back instead of going dark.
-      const subtreeRows = await this.overrideRowsFor({ in: affectedTenantIds });
+      // A kept school's rows are not read, so not one of them is touched.
+      const affectedSet = new Set(affectedTenantIds);
+      const subtreeRows = preReadRows
+        ? preReadRows.filter((r: any) => affectedSet.has(r.tenantId))
+        : await this.overrideRowsFor({ in: affectedTenantIds });
       // 2026-10-10 — a drill all-clear ends ONLY the drill's own tenant-wide
       // rows; it never touches a live row, nor a pre-identity row (those are
       // live alerts from before drills existed).
@@ -1910,10 +1972,10 @@ export class EmergencyController {
         // every school, unlike the trigger path where each resolves its own
         // playlists. Empty `in` list is a no-op, so the leaf-school path
         // costs nothing.
-        ...(descendantTenantIds.length > 0
+        ...(clearedDescendantIds.length > 0
           ? [
               this.prisma.client.tenant.updateMany({
-                where: tenantClearWhere(descendantTenantIds),
+                where: { ...tenantClearWhere(clearedDescendantIds), ...rootGuard },
                 data: clearedState,
               }),
             ]
@@ -1943,6 +2005,12 @@ export class EmergencyController {
                 restoredScreenIds: tenantRowPlan.restoredScreenIds.filter((sid) =>
                   subtreeRows.some((r: any) => r.screenId === sid && r.tenantId === tid),
                 ),
+                // EMG-01 — the alert this all-clear named (null = the caller
+                // did not know it: the whole subtree cleared, as before), and
+                // the schools left alone because they hold their own alert.
+                expectedAlertId,
+                ...(identityOff ? { alertIdentityDisabled: true } : {}),
+                ...(keptTenants.length > 0 ? { keptTenants } : {}),
               }),
             },
           }),
@@ -1956,33 +2024,44 @@ export class EmergencyController {
         // back. Anything else (and a root that simply does not exist) is the
         // error it always was.
         if (!expectedAlertId || clearingDrill || !isRecordNotFound(e)) throw e;
-        let current: TenantAlertState | null = null;
+        // Every affected tenant as it is now (the batch rolled back, so each
+        // row still holds what it held before this all-clear).
+        let rows: Array<TenantAlertState & { id: string }> = [];
         try {
-          current = (await this.prisma.client.tenant.findUnique({
-            where: { id: scopeId },
+          rows = (await this.prisma.client.tenant.findMany({
+            where: { id: { in: affectedTenantIds } },
             select: {
+              id: true,
               emergencyStatus: true,
               emergencyIsDrill: true,
               emergencyType: true,
               emergencyAlertId: true,
               emergencyTriggeredAt: true,
             } as any,
-          })) as TenantAlertState | null;
+          })) as any[];
         } catch {
-          current = null;
+          rows = [];
         }
-        if (!current) throw e;
+        const current = rows.find((r) => r.id === scopeId) ?? null;
+        // Only a root that now holds a DIFFERENT identified alert is the
+        // "newer alert" refusal. Any other P2025 is the error it always was,
+        // never a 409 that names the same alert.
+        if (!current || !tenantAlertChanged(current, expectedAlertId)) throw e;
         // The ALL_CLEAR push already went out (fast path). The player answers
-        // it by re-reading its manifest, which reads the row this rollback
+        // it by re-reading its manifest, which reads the rows this rollback
         // kept, so the newer alert stays on the glass. Move every affected
         // tenant's revision again so no screen trusts a read taken while the
-        // clear was in flight, and put the root's "an alert is up" flag back.
+        // clear was in flight, and put "an alert is up" back on EVERY affected
+        // tenant whose row still holds one (review round 1: the fast path
+        // dropped it on all of them, not only the root), so their screens
+        // stay in the preempt lane.
         for (const tid of affectedTenantIds) {
           invalidateTenantState(tid);
+          const row = rows.find((r) => r.id === tid);
           bumpTenantEmergencyEpoch(
             { redis: this.redisService },
             tid,
-            tid === scopeId && isTenantAlertActive(current) ? { active: true } : {},
+            isTenantAlertActive(row) ? { active: true } : {},
           );
         }
         if (clearFanout !== null) await clearFanout.catch(() => undefined);
@@ -2168,11 +2247,57 @@ export class EmergencyController {
       isDrill: clearingDrill,
       affectedTenantIds,
       affectedTenantCount: affectedTenantIds.length,
+      // EMG-01 review round 1 — schools below the scope that hold their own,
+      // different alert and were NOT cleared (empty for an id-less request).
+      keptTenantIds: keptTenants.map((k) => k.tenantId),
       message:
-        affectedTenantIds.length > 1
+        (affectedTenantIds.length > 1
           ? `All clear dispatched to ${channel} and ${affectedTenantIds.length - 1} child location(s) for ${overrideId}`
-          : `All clear dispatched to ${channel} for ${overrideId}`,
+          : `All clear dispatched to ${channel} for ${overrideId}`) +
+        (keptTenants.length > 0
+          ? `; ${keptTenants.length} child location(s) kept their own active alert`
+          : ''),
     };
+  }
+
+  /**
+   * EMG-01 review round 1 — the descendants of a tenant all-clear's scope
+   * that hold a DIFFERENT, identified, active tenant-wide alert than the one
+   * the all-clear names (the school raised its own after the district's).
+   * Those keep their alert.
+   *
+   * Failure direction: a read that fails returns nobody, so the subtree is
+   * planned as before — and the descendants' write still carries the
+   * compare-and-set, so a school holding another alert keeps its row (the
+   * alert stays on its glass) even then.
+   */
+  private async descendantsHoldingAnotherAlert(
+    descendantTenantIds: string[],
+    expectedAlertId: string,
+  ): Promise<KeptTenantAlert[]> {
+    try {
+      const rows = (await this.prisma.client.tenant.findMany({
+        where: { id: { in: descendantTenantIds } },
+        select: {
+          id: true,
+          emergencyStatus: true,
+          emergencyIsDrill: true,
+          emergencyType: true,
+          emergencyAlertId: true,
+        } as any,
+      })) as any[];
+      return rows
+        .filter((r) => tenantAlertChanged(r, expectedAlertId))
+        .map((r) => ({
+          tenantId: r.id as string,
+          alertId: r.emergencyAlertId as string,
+          type: (r.emergencyType as string | null) ?? null,
+          isDrill: r.emergencyIsDrill === true,
+        }));
+    } catch (e) {
+      console.warn(`[Emergency] descendant alert identities could not be read; the guarded write still applies: ${e}`);
+      return [];
+    }
   }
 
   // ───────────────────────────────────────────────────────────
@@ -3138,9 +3263,27 @@ export class EmergencyController {
     // caller's own tenant is in alert the child rows are that same alert —
     // one entry. A child that is in alert while the root is NOT was raised
     // for that school alone, and a district admin may end it, so it lists.
+    //
+    // EMG-01 review round 1 — and a child whose row holds a DIFFERENT
+    // identified alert while the root IS in alert raised its own after the
+    // district's (a school's LOCKDOWN under a district WEATHER). The
+    // district's all-clear leaves that school alone, so it lists too, or the
+    // district admin would never see it. Once per alert: a sub-district's
+    // alert is written on its schools as well, so a child listed under a
+    // parent that holds the same id is that parent's entry.
     const root = tenants.get(rootId);
+    const alertIdOf = (t: any): string | null =>
+      typeof t?.emergencyAlertId === 'string' && t.emergencyAlertId ? t.emergencyAlertId : null;
+    const rootAlertId = alertIdOf(root);
+    const ownAlertUnderRoot = (id: string): boolean => {
+      const t = tenants.get(id);
+      const own = alertIdOf(t);
+      if (!isActive(t) || !own || own === rootAlertId) return false;
+      const parent = t?.parentId ? tenants.get(t.parentId) : null;
+      return !(parent && visible.has(parent.id) && isActive(parent) && alertIdOf(parent) === own);
+    };
     const tenantWideIds = isActive(root)
-      ? [rootId]
+      ? [rootId, ...visibleIds.filter((id) => id !== rootId && ownAlertUnderRoot(id))]
       : visibleIds.filter((id) => id !== rootId && isActive(tenants.get(id)));
     for (const tid of tenantWideIds) {
       const t = tenants.get(tid);

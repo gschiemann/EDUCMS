@@ -10,7 +10,11 @@
  *     list and asks for a fresh CLEAR — which then ends the CURRENT alert by
  *     its own id;
  *   • if the list refreshes to a different alert while CLEAR is typed, the
- *     typed CLEAR does not carry over to it.
+ *     typed CLEAR does not carry over to it — and (review round 1) a refresh
+ *     with the box empty says nothing, and a picked alert that is simply gone
+ *     is not called "a newer alert";
+ *   • a 409 that does not carry the newer alert's type still names it, from
+ *     the list it re-reads (review round 1).
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -133,6 +137,56 @@ describe('EmergencyOverlay — the tenant-wide alert’s identity (EMG-01)', () 
     expect(screen.getByTestId('emergency-overlay-terminate')).toBeDisabled();
     expect(screen.getByText(/a newer alert is now active \(Lockdown\)/)).toBeInTheDocument();
     expect(allClearEmergency).not.toHaveBeenCalled();
+  });
+
+  it('a refresh to a different alert with NO CLEAR typed says nothing (review round 1)', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([HOLD]).mockResolvedValue([LOCKDOWN]);
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: ['emergency-active'] });
+    });
+    await waitFor(() => expect(screen.getByTestId('emergency-active-alerts')).toHaveTextContent('Lockdown'));
+    expect(screen.queryByText(/a newer alert is now active/)).toBeNull();
+    expect(screen.queryByText(/no longer listed/)).toBeNull();
+  });
+
+  it('a picked alert that disappears drops the typed CLEAR without calling the remaining alert newer (review round 1)', async () => {
+    const GROUP = {
+      ...tenantAlert('ovr_group', 'MEDICAL'),
+      scopeType: 'group', scopeId: 'g1', targetName: 'Gym', triggeredAt: '2026-11-21T09:00:00.000Z',
+      clearScopeType: 'group', clearScopeId: 'g1',
+    };
+    fetchActiveAlerts.mockResolvedValueOnce([HOLD, GROUP]).mockResolvedValue([HOLD]);
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Gym/));
+    });
+    typeClear();
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: ['emergency-active'] });
+    });
+    await waitFor(() => expect(screen.getByPlaceholderText('Type CLEAR')).toHaveValue(''));
+    expect(screen.getByText(/The alert you picked is no longer listed, so nothing was cleared/)).toBeInTheDocument();
+    expect(screen.queryByText(/a newer alert is now active/)).toBeNull();
+    expect(allClearEmergency).not.toHaveBeenCalled();
+  });
+
+  it('a 409 without the newer alert’s type names it from the list it re-reads (review round 1)', async () => {
+    // Two alerts after the re-read, so nothing is auto-selected: the type can
+    // only come from the re-read list's entry for the same target.
+    const GROUP = {
+      ...tenantAlert('ovr_group', 'MEDICAL'),
+      scopeType: 'group', scopeId: 'g1', targetName: 'Gym', clearScopeType: 'group', clearScopeId: 'g1',
+    };
+    fetchActiveAlerts.mockResolvedValueOnce([HOLD]).mockResolvedValue([LOCKDOWN, GROUP]);
+    allClearEmergency.mockResolvedValueOnce({ success: false, error: 'All clear failed: 409', code: 'ALERT_CHANGED' });
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    typeClear();
+    await terminate();
+    expect(await screen.findByText(/Nothing was cleared: a newer alert is now active \(Lockdown\)/)).toBeInTheDocument();
   });
 
   it('with the alert list down, names the alert GET /tenants reports (not this browser’s remembered id)', async () => {

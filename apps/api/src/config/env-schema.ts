@@ -396,6 +396,10 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
     purpose: 'Turns panic phones off: every panic-phone credential is refused and no phone can be set up; /panic falls back to the remembered session, then sign-in.',
     note: 'Case-insensitive, read per request. SUBTRACTIVE: credentials are KEPT, not revoked, so unsetting it brings every phone back. Turning one phone off still works while set. When the credential check cannot run (database unreachable) the phone is refused with a retryable 503 and keeps its cookie.' },
 
+  { name: 'EMERGENCY_ALERT_IDENTITY_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,
+    purpose: 'Turns off the tenant all-clear identity rule (EMG-01): no 409 ALERT_CHANGED, no compare-and-set on the tenant rows, a district all-clear ends every school again - the all-clear behaves exactly as before 2026-11-21.',
+    note: 'Case-insensitive, read per request. SUBTRACTIVE: the trigger keeps writing Tenant.emergencyAlertId and /emergency/active keeps listing it, so unsetting it restores the rule with nothing lost. Set it only if operators are refused an all-clear they must send; it brings back the defect where a stale all-clear ends a newer alert. With it unset, when the pre-dispatch identity read cannot run the all-clear is not refused there, and the compare-and-set on the write still keeps a newer alert (closed).' },
+
   // ─── Synthetic emergency drill (emergency/drill/; design 2026-10-31) ───────────────────────
   { name: 'EMERGENCY_DRILL_CRON_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,
     purpose: 'Turns the synthetic emergency drill off entirely: no tick, no orphan sweep, no dead-man check, nothing dispatched.',

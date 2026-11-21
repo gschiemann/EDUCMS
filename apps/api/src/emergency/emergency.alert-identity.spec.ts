@@ -501,10 +501,10 @@ describe('5. a trigger that lands after the all-clear read it still wins', () =>
     );
     const realFindUnique = w.client.tenant.findUnique;
     let staleReads = 0;
-    w.client.tenant.findUnique = jest.fn(async (args: any) => {
+    w.client.tenant.findUnique = jest.fn((args: any) => {
       if (args?.select?.emergencyAlertId && staleReads === 0) {
         staleReads++;
-        return { ...holdSnapshot };
+        return Promise.resolve({ ...holdSnapshot });
       }
       return realFindUnique(args);
     });
@@ -545,6 +545,43 @@ describe('5. a trigger that lands after the all-clear read it still wins', () =>
       only(EVERY_SCREEN.filter((id) => !['other-1', 'stray'].includes(id))),
     );
     expect(localTenantEmergencyEpoch(DISTRICT)?.active).toBe(true);
+    // Review round 1 — and on every school whose row still holds the alert,
+    // not only the root: the fast path had dropped "an alert is up" on all.
+    expect(localTenantEmergencyEpoch(SCHOOL)?.active).toBe(true);
+    expect(localTenantEmergencyEpoch(SIBLING)?.active).toBe(true);
+  });
+
+  it('a P2025 while the root still holds the NAMED alert is the error it always was, never a 409 (review round 1)', async () => {
+    const w = makeWorld();
+    const hold: any = await w.emergency.triggerEmergency(
+      live('tenant', SCHOOL, 'hold'),
+      schoolAdmin,
+    );
+    const realUpdate = w.client.tenant.update;
+    w.client.tenant.update = jest.fn((args: any) => {
+      if (args?.where?.OR)
+        return Promise.reject(
+          Object.assign(new Error('Record to update not found.'), {
+            code: 'P2025',
+          }),
+        );
+      return realUpdate(args);
+    });
+    let caught: any = null;
+    try {
+      await w.emergency.clearEmergency(
+        hold.overrideId,
+        clear('tenant', SCHOOL),
+        schoolAdmin,
+      );
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught?.code).toBe('P2025');
+    expect(caught).not.toBeInstanceOf(ConflictException);
+    expect(w.auditLogs.some((a) => a.action === CLEAR_REFUSED_ACTION)).toBe(
+      false,
+    );
   });
 });
 
@@ -579,6 +616,339 @@ describe('6. GET /emergency/active carries the tenant-wide alert’s id and rais
     expect(alerts.find((a: any) => a.scopeType === 'tenant')).toMatchObject({
       alertId: null,
       triggeredAt: null,
+    });
+  });
+});
+
+// ═══ 7. The district path (review round 1) ═════════════════════════════════
+
+/** District WEATHER on every school, then the school raises its own LOCKDOWN. */
+async function districtWeatherThenSchoolLockdown(
+  w: ReturnType<typeof makeWorld>,
+) {
+  const weather: any = await w.emergency.triggerEmergency(
+    live('tenant', DISTRICT, 'weather'),
+    districtAdmin,
+  );
+  const lockdown: any = await w.emergency.triggerEmergency(
+    live('tenant', SCHOOL, 'lockdown'),
+    schoolAdmin,
+  );
+  expect(w.tenants.get(SIBLING)).toMatchObject({
+    emergencyAlertId: weather.overrideId,
+  });
+  expect(w.tenants.get(SCHOOL)).toMatchObject({
+    emergencyType: 'LOCKDOWN',
+    emergencyAlertId: lockdown.overrideId,
+  });
+  return { weather, lockdown };
+}
+
+describe('7. a district all-clear never ends a school’s own newer alert', () => {
+  it('district WEATHER, school LOCKDOWN, district clears WEATHER: the school keeps its LOCKDOWN, and the district sees both', async () => {
+    const w = makeWorld();
+    // Location mode on the school, so its per-screen rows are in play too.
+    w.tenants.get(SCHOOL)!.locationBasedEmergencyEnabled = true;
+    const { weather, lockdown } = await districtWeatherThenSchoolLockdown(w);
+    const schoolRowsBefore = [...w.overrides.values()]
+      .filter((r) => r.tenantId === SCHOOL)
+      .map((r) => ({ ...r }));
+    expect(schoolRowsBefore.length).toBeGreaterThan(0);
+    expect(
+      schoolRowsBefore.every((r) => r.alertId === lockdown.overrideId),
+    ).toBe(true);
+
+    // The district admin's list shows the district alert AND the school's own.
+    const before = (
+      (await w.emergency.activeAlerts(districtAdmin)) as any
+    ).alerts.filter((a: any) => a.scopeType === 'tenant');
+    expect(before.map((a: any) => [a.scopeId, a.type, a.alertId])).toEqual([
+      [DISTRICT, 'WEATHER', weather.overrideId],
+      [SCHOOL, 'LOCKDOWN', lockdown.overrideId],
+    ]);
+
+    const publishedBefore = w.published.length;
+    const auditBefore = w.auditLogs.length;
+    const res: any = await w.emergency.clearEmergency(
+      weather.overrideId,
+      clear('tenant', DISTRICT),
+      districtAdmin,
+    );
+
+    expect(res).toMatchObject({ success: true, keptTenantIds: [SCHOOL] });
+    expect(res.affectedTenantIds).toEqual([DISTRICT, SIBLING]);
+    // The school's row, its per-screen rows and its glass: still the LOCKDOWN.
+    expect(w.tenants.get(SCHOOL)).toMatchObject({
+      emergencyStatus: 'CRITICAL',
+      emergencyType: 'LOCKDOWN',
+      emergencyAlertId: lockdown.overrideId,
+    });
+    expect(
+      [...w.overrides.values()].filter((r) => r.tenantId === SCHOOL),
+    ).toEqual(schoolRowsBefore);
+    for (const id of SCHOOL_IDS)
+      expect((await w.manifest(id)).emergencyType).toBe('LOCKDOWN');
+    expect(localTenantEmergencyEpoch(SCHOOL)?.active).toBe(true);
+    // The district's WEATHER ended everywhere else.
+    for (const tid of [DISTRICT, SIBLING])
+      expect(w.tenants.get(tid)).toMatchObject({
+        emergencyStatus: 'INACTIVE',
+        emergencyAlertId: null,
+      });
+    expect(await emergencyMap(w)).toEqual(only(SCHOOL_IDS));
+    // No ALL_CLEAR went to the school; no CLEAR row on its trail.
+    expect(w.published.slice(publishedBefore)).not.toContain(
+      `tenant:${SCHOOL}`,
+    );
+    const added = w.auditLogs.slice(auditBefore);
+    expect(
+      added
+        .filter((a) => a.action === 'CLEAR_EMERGENCY')
+        .map((a) => a.tenantId)
+        .sort(),
+    ).toEqual([DISTRICT, SIBLING].sort());
+    expect(
+      JSON.parse(added.find((a) => a.tenantId === DISTRICT)!.details),
+    ).toMatchObject({
+      expectedAlertId: weather.overrideId,
+      keptTenants: [
+        {
+          tenantId: SCHOOL,
+          alertId: lockdown.overrideId,
+          type: 'LOCKDOWN',
+          isDrill: false,
+        },
+      ],
+    });
+
+    // The district admin can still end it, by its own id, from the list.
+    const after = (
+      (await w.emergency.activeAlerts(districtAdmin)) as any
+    ).alerts.filter((a: any) => a.scopeType === 'tenant');
+    expect(after.map((a: any) => [a.scopeId, a.alertId])).toEqual([
+      [SCHOOL, lockdown.overrideId],
+    ]);
+    await w.emergency.clearEmergency(
+      lockdown.overrideId,
+      clear('tenant', SCHOOL),
+      districtAdmin,
+    );
+    expect(w.tenants.get(SCHOOL)).toMatchObject({
+      emergencyStatus: 'INACTIVE',
+      emergencyAlertId: null,
+    });
+    expect(await emergencyMap(w)).toEqual(only([]));
+  });
+
+  it('the same district clear WITHOUT a real id (an older client) clears every school, exactly as before', async () => {
+    const w = makeWorld();
+    await districtWeatherThenSchoolLockdown(w);
+    const res: any = await w.emergency.clearEmergency(
+      'clear_3f1b2c4d',
+      clear('tenant', DISTRICT),
+      districtAdmin,
+    );
+    expect(res.keptTenantIds).toEqual([]);
+    expect(res.affectedTenantIds.sort()).toEqual(
+      [DISTRICT, SCHOOL, SIBLING].sort(),
+    );
+    for (const tid of [DISTRICT, SCHOOL, SIBLING])
+      expect(w.tenants.get(tid)).toMatchObject({ emergencyStatus: 'INACTIVE' });
+    expect(await emergencyMap(w)).toEqual(only([]));
+  });
+
+  it('a school that raises its own alert AFTER the district clear read it keeps it (the descendants’ write is guarded)', async () => {
+    const w = makeWorld();
+    const weather: any = await w.emergency.triggerEmergency(
+      live('tenant', DISTRICT, 'weather'),
+      districtAdmin,
+    );
+    const schoolAsRead = { ...w.tenants.get(SCHOOL) };
+    const lockdown: any = await w.emergency.triggerEmergency(
+      live('tenant', SCHOOL, 'lockdown'),
+      schoolAdmin,
+    );
+    // The all-clear's read of the schools sees the school as it was before
+    // its LOCKDOWN committed.
+    const realFindMany = w.client.tenant.findMany;
+    w.client.tenant.findMany = jest.fn(async (args: any) => {
+      const rows = await realFindMany(args);
+      const identityRead =
+        args?.select?.emergencyAlertId && !args?.select?.name;
+      return identityRead
+        ? rows.map((r: any) =>
+            r.id === SCHOOL ? { ...r, ...schoolAsRead } : r,
+          )
+        : rows;
+    });
+
+    await w.emergency.clearEmergency(
+      weather.overrideId,
+      clear('tenant', DISTRICT),
+      districtAdmin,
+    );
+
+    expect(w.tenants.get(SCHOOL)).toMatchObject({
+      emergencyType: 'LOCKDOWN',
+      emergencyAlertId: lockdown.overrideId,
+    });
+    for (const id of SCHOOL_IDS)
+      expect((await w.manifest(id)).emergencyType).toBe('LOCKDOWN');
+    expect(w.tenants.get(SIBLING)).toMatchObject({
+      emergencyStatus: 'INACTIVE',
+    });
+  });
+
+  it('an End Drill that races a newer district drill does not end the newer drill in any school', async () => {
+    const w = makeWorld();
+    const first: any = await w.emergency.triggerEmergency(
+      drill('tenant', DISTRICT, 'hold'),
+      districtAdmin,
+    );
+    const asRead = new Map(
+      [DISTRICT, SCHOOL, SIBLING].map((tid) => [
+        tid,
+        { ...w.tenants.get(tid) },
+      ]),
+    );
+    const second: any = await w.emergency.triggerEmergency(
+      drill('tenant', DISTRICT, 'lockdown'),
+      districtAdmin,
+    );
+    // Every read the End Drill makes sees the first drill (the second one
+    // commits after them).
+    const realFindUnique = w.client.tenant.findUnique;
+    w.client.tenant.findUnique = jest.fn((args: any) =>
+      args?.select?.emergencyAlertId
+        ? Promise.resolve({ ...asRead.get(args.where.id) })
+        : realFindUnique(args),
+    );
+    const realFindMany = w.client.tenant.findMany;
+    w.client.tenant.findMany = jest.fn(async (args: any) => {
+      const rows = await realFindMany(args);
+      const identityRead =
+        args?.select?.emergencyAlertId && !args?.select?.name;
+      return identityRead
+        ? rows.map((r: any) => ({ ...r, ...(asRead.get(r.id) ?? {}) }))
+        : rows;
+    });
+
+    await w.emergency.clearEmergency(
+      first.overrideId,
+      { ...clear('tenant', DISTRICT), isDrill: true },
+      districtAdmin,
+    );
+
+    for (const tid of [DISTRICT, SCHOOL, SIBLING]) {
+      expect(w.tenants.get(tid)).toMatchObject({
+        emergencyType: 'LOCKDOWN',
+        emergencyIsDrill: true,
+        emergencyAlertId: second.overrideId,
+      });
+    }
+  });
+
+  it('a sub-tree alert lists once, at the tenant that holds it (no entry for a school that shares its parent’s id)', async () => {
+    const w = makeWorld();
+    const weather: any = await w.emergency.triggerEmergency(
+      live('tenant', DISTRICT, 'weather'),
+      districtAdmin,
+    );
+    // A middle tier: SCHOOL's alert also written on a child of SCHOOL.
+    w.tenants.set('annex', {
+      ...w.tenants.get(SIBLING)!,
+      id: 'annex',
+      name: 'annex name',
+      parentId: SCHOOL,
+    });
+    const lockdown: any = await w.emergency.triggerEmergency(
+      live('tenant', SCHOOL, 'lockdown'),
+      schoolAdmin,
+    );
+    expect(w.tenants.get('annex')).toMatchObject({
+      emergencyAlertId: lockdown.overrideId,
+    });
+    const listed = (
+      (await w.emergency.activeAlerts(districtAdmin)) as any
+    ).alerts.filter((a: any) => a.scopeType === 'tenant');
+    expect(listed.map((a: any) => [a.scopeId, a.alertId])).toEqual([
+      [DISTRICT, weather.overrideId],
+      [SCHOOL, lockdown.overrideId],
+    ]);
+  });
+});
+
+// ═══ 8. The owner's kill switch (review round 1) ═════════════════════════════
+
+describe('8. EMERGENCY_ALERT_IDENTITY_DISABLED turns the rule off: the all-clear behaves exactly as before EMG-01', () => {
+  const withSwitch = async (value: string, fn: () => Promise<void>) => {
+    const prev = process.env.EMERGENCY_ALERT_IDENTITY_DISABLED;
+    process.env.EMERGENCY_ALERT_IDENTITY_DISABLED = value;
+    try {
+      await fn();
+    } finally {
+      if (prev === undefined)
+        delete process.env.EMERGENCY_ALERT_IDENTITY_DISABLED;
+      else process.env.EMERGENCY_ALERT_IDENTITY_DISABLED = prev;
+    }
+  };
+
+  it('set: a stale id is not refused, the root write is exactly { id }, the tenant clears', async () => {
+    await withSwitch('true', async () => {
+      const w = makeWorld();
+      const { hold } = await holdThenLockdown(w);
+      const res: any = await w.emergency.clearEmergency(
+        hold.overrideId,
+        clear('tenant', SCHOOL),
+        schoolAdmin,
+      );
+      expect(res.success).toBe(true);
+      const rootWrite = (w.client.tenant.update as jest.Mock).mock.calls.find(
+        (c: any[]) => c[0]?.data?.emergencyStatus === 'INACTIVE',
+      );
+      expect(rootWrite?.[0].where).toEqual({ id: SCHOOL });
+      expect(w.tenants.get(SCHOOL)).toMatchObject({
+        emergencyStatus: 'INACTIVE',
+      });
+      expect(w.auditLogs.some((a) => a.action === CLEAR_REFUSED_ACTION)).toBe(
+        false,
+      );
+      const row = w.auditLogs.find((a) => a.action === 'CLEAR_EMERGENCY');
+      expect(JSON.parse(row!.details)).toMatchObject({
+        expectedAlertId: null,
+        alertIdentityDisabled: true,
+      });
+    });
+  });
+
+  it('set: a district clear ends a school’s own alert too, as before', async () => {
+    await withSwitch('1', async () => {
+      const w = makeWorld();
+      const { weather } = await districtWeatherThenSchoolLockdown(w);
+      const res: any = await w.emergency.clearEmergency(
+        weather.overrideId,
+        clear('tenant', DISTRICT),
+        districtAdmin,
+      );
+      expect(res.keptTenantIds).toEqual([]);
+      for (const tid of [DISTRICT, SCHOOL, SIBLING])
+        expect(w.tenants.get(tid)).toMatchObject({
+          emergencyStatus: 'INACTIVE',
+        });
+    });
+  });
+
+  it('any other value leaves the rule on', async () => {
+    await withSwitch('off', async () => {
+      const w = makeWorld();
+      const { hold } = await holdThenLockdown(w);
+      await expectAlertChanged(
+        w.emergency.clearEmergency(
+          hold.overrideId,
+          clear('tenant', SCHOOL),
+          schoolAdmin,
+        ),
+      );
     });
   });
 });

@@ -367,8 +367,15 @@ export default function MobilePanicPage() {
       // named, and the server cleared NOTHING. Re-read the list so the sheet
       // shows the alert that is live now; ending it takes its own hold.
       if (alert.scopeType === 'tenant') tenantOverrideIdRef.current = undefined;
-      try { if (credential) setActiveAlerts(await readActive(credential)); } catch { /* next poll */ }
-      return { ok: false, error: t('emergency.panic.alertChanged', { type: alertTypeName(result.currentAlertType ?? null) }) };
+      let fresh: ActiveAlert[] | null = null;
+      try { if (credential) { fresh = await readActive(credential); setActiveAlerts(fresh); } } catch { /* next poll */ }
+      // The 409 names the newer alert's type; if it did not, the list just
+      // re-read does (the same target's entry).
+      const newerType =
+        result.currentAlertType ??
+        fresh?.find((a) => a.scopeType === alert.scopeType && a.scopeId === alert.scopeId)?.type ??
+        null;
+      return { ok: false, error: t('emergency.panic.alertChanged', { type: alertTypeName(newerType) }) };
     }
     if (!result?.success) {
       const raw = result?.error || '';

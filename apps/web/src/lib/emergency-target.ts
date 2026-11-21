@@ -287,8 +287,11 @@ export function typeIdOf(apiType: string | null | undefined): string | null {
 
 /**
  * Is `alert` the one a trigger just created? Scoped alerts match by id; the
- * tenant-wide alert (no id on the Tenant row) by being the tenant-wide entry
- * for the same tenant.
+ * tenant-wide alert by being the tenant-wide entry for the same tenant. Since
+ * EMG-01 (2026-11-21) that entry carries the alert's id too, but it is null
+ * for an alert raised before then, and matching by scope keeps showing the
+ * sender the alert now on that tenant's screens — the safe direction here
+ * (this only decides what the sender sees, never what is cleared).
  */
 export function isSameAlert(
   alert: ActiveAlert,

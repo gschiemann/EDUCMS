@@ -186,9 +186,14 @@ export async function allClearEmergency(payload: {
     try {
       const body = await res.json();
       if (body && typeof body.code === 'string') code = body.code;
+      // The API's method-scoped filter sends the newer alert both nested
+      // (`currentAlert.type`) and flat (`currentAlertType`); read either.
       if (body && body.currentAlert && typeof body.currentAlert === 'object') {
         const ty = (body.currentAlert as { type?: unknown }).type;
         currentAlertType = typeof ty === 'string' ? ty : null;
+      }
+      if (!currentAlertType && body && typeof body.currentAlertType === 'string' && body.currentAlertType) {
+        currentAlertType = body.currentAlertType;
       }
     } catch {
       /* no JSON body */

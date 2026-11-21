@@ -110,4 +110,39 @@ describe('allClearEmergency', () => {
     });
     expect(sent().url).toMatch(/\/emergency\/ovr_hold\/all-clear$/);
   });
+
+  // EMG-01 review round 1 — the body exactly as the API's method-scoped
+  // filter puts it on the wire (tenant-alert-changed.filter.ts); and a body
+  // that carries only the flat field still yields the type.
+  it('reads the newer alert’s type from the real wire body, nested or flat', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        error: true,
+        code: 'ALERT_CHANGED',
+        message: 'A newer LOCKDOWN alert is active.',
+        requestedAlertId: 'ovr_hold',
+        currentAlert: { alertId: 'ovr_lockdown', scopeType: 'tenant', scopeId: 't1', type: 'LOCKDOWN', severity: 'CRITICAL', isDrill: false, triggeredAt: '2026-11-21T10:00:00.000Z' },
+        currentAlertId: 'ovr_lockdown',
+        currentAlertType: 'LOCKDOWN',
+        currentAlertSeverity: 'CRITICAL',
+        currentAlertIsDrill: false,
+        currentAlertTriggeredAt: '2026-11-21T10:00:00.000Z',
+      }),
+    });
+    await expect(allClearEmergency({ schoolId: 't1', token: 'tok', overrideId: 'ovr_hold' })).resolves.toMatchObject({
+      code: 'ALERT_CHANGED',
+      currentAlertType: 'LOCKDOWN',
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: true, code: 'ALERT_CHANGED', message: 'x', currentAlertType: 'EVACUATE' }),
+    });
+    await expect(allClearEmergency({ schoolId: 't1', token: 'tok', overrideId: 'ovr_hold' })).resolves.toMatchObject({
+      code: 'ALERT_CHANGED',
+      currentAlertType: 'EVACUATE',
+    });
+  });
 });

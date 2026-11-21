@@ -30,5 +30,8 @@
 
 SET lock_timeout = '5s';
 
-ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "emergency_alert_id" TEXT;
-ALTER TABLE "tenants" ADD COLUMN IF NOT EXISTS "emergency_triggered_at" TIMESTAMP(3);
+-- One ALTER for both columns, so the ACCESS EXCLUSIVE lock on this hot table
+-- is taken once, not twice (the 20261024120000_screen_time_zones precedent).
+ALTER TABLE "tenants"
+  ADD COLUMN IF NOT EXISTS "emergency_alert_id" TEXT,
+  ADD COLUMN IF NOT EXISTS "emergency_triggered_at" TIMESTAMP(3);

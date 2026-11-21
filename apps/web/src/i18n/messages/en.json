@@ -116,6 +116,7 @@
       "loadFailed": "Couldn’t load the list of alerts. Retrying…",
       "clearFailed": "All-clear was NOT sent — the alert is still on screens. {error}",
       "alertChanged": "Nothing was cleared: a newer alert is now active ({type}). Review it above, then type CLEAR again to end it.",
+      "selectionChanged": "The alert you picked is no longer listed, so nothing was cleared. Check the list above, then type CLEAR again.",
       "noAuthority": "Only someone with emergency authority can send the all-clear.",
       "sendAnother": "Send another alert"
     },
