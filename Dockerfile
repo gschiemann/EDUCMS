@@ -247,7 +247,7 @@ WORKDIR /app
 # shared library Chromium actually loads.
 #
 # THESE PACKAGES ARE ONLY AS FRESH AS THE LAST TIME THIS LAYER WAS BUILT
-# (2026-11-17). They are not pinned - Alpine serves one version per branch -
+# (2026-11-21). They are not pinned - Alpine serves one version per branch -
 # so each is whatever the mirror had when this layer was built. A builder
 # that keeps layers between builds reuses this one for as long as the
 # instruction and the base image are unchanged, so a Chromium or OpenSSL
@@ -260,7 +260,16 @@ WORKDIR /app
 # again. Move it when Alpine ships a security update this image needs; the
 # build log prints "Installing chromium (<version>)". It is a refresh, not a
 # pin. apps/renderer/Dockerfile carries the same line; move both together.
-ARG OS_PACKAGES_REFRESHED=2026-11-17
+#
+# 2026-11-21: moved for Chromium. Alpine 3.24 went from 156.0.8078.79-r0 to
+# 158.0.8127.36-r0 between 2026-11-20T01:33Z and 2026-11-21T01:31Z, which
+# closes CVE-2026-125350 (exploited in the wild; fixed in 157.0.8103.50). It is
+# a two-major jump, not a patch, and the 158 package pulls 52 packages the 156
+# one did not (gtk4.0, gstreamer and its plugins, mesa-gl, libcurl, tiff,
+# openexr among them). The same refresh takes openssl, libssl3 and libcrypto3
+# from 3.5.9-r0 to 3.5.9-r1. The full list is in
+# docs/handoffs/2026-11-21-chromium-158.md.
+ARG OS_PACKAGES_REFRESHED=2026-11-21
 RUN echo "os packages refreshed on ${OS_PACKAGES_REFRESHED}" && apk add --no-cache \
     openssl \
     chromium \

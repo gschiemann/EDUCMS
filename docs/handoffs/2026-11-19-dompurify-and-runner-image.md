@@ -49,6 +49,8 @@ What the next model should do: either keep editing override bumps by hand in thi
 
 ## Chromium in the two images: still waiting on Alpine
 
+**Closed 2026-11-21:** Alpine 3.24 shipped 158.0.8127.36-r0 and the refresh date moved. See `docs/handoffs/2026-11-21-chromium-158.md`.
+
 - CVE-2026-125350 (use after free in XML, exploited in the wild, on the CISA list with a 2026-11-24 date) is fixed in 157.0.8103.50 and, on the extended stable line, in 156.0.8078.96.
 - A fresh build of the API image at 2026-11-20T01:33Z (the "Docker build + boot smoke test" job of Deploy Reliability run 44384016627, attempt 3) still installed `chromium 156.0.8078.79-r0` from Alpine 3.24. Alpine edge had 157.0.8103.50-r0 when it was read on 2026-11-19.
 - **Correction to the probe:** "fixed" is 157.0.8103.50 or newer, **or** a 156 build at 156.0.8078.96 or newer. The earlier check-ins looked only for 157 and would have missed a 156 backport.
