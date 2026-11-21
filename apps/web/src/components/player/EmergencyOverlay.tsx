@@ -22,7 +22,8 @@ import { ShieldAlert, Volume2 } from 'lucide-react';
 import { useEmergencyFaceStage } from './useEmergencyFaceStage';
 import { emergencyPaintIdentity } from '@/app/player/emergencyPaintProof';
 import { isBannerEmergencyMessage } from '@/app/player/emergencySurface';
-import { sanitizeBannerOptions, type BannerOptions } from '@cms/api-types';
+import { compareEmergencyMessages, emergencyMessageFromPollRow } from '@/app/player/pushedMessages';
+import type { BannerOptions } from '@cms/api-types';
 import { BroadcastBannerBar, BANNER_SEVERITY_STYLES } from './BroadcastBannerBar';
 import { updateBroadcastBannerInset } from '@/app/player/emergencyHold';
 import type { BroadcastLayout } from '@/app/player/broadcastLayout';
@@ -225,6 +226,13 @@ interface Props {
    * WARN broadcast overlays the content instead of taking it down.
    */
   onPolledActiveChange?: (active: boolean, takeover: boolean) => void;
+  /**
+   * EMG-04 (2026-11-21) — the message this overlay's OWN poll is showing (or
+   * null). The page keeps it so that, when the first pushed message takes the
+   * overlay over (this poll stops while `message` is set), the polled one
+   * stays in the running and a lower-severity push cannot hide it.
+   */
+  onPolledMessageChange?: (message: EmergencyMessageView | null) => void;
   onBannerLayoutChange?: (layout: BroadcastLayout | null) => void;
   /**
    * 2026-11-02 — the app refused banner posture for this screen (its live
@@ -266,7 +274,7 @@ const severityStyles = {
   },
 } as const;
 
-export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint, onPolledActiveChange, onBannerLayoutChange, fullPresentation = false }: Props) {
+export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint, onPolledActiveChange, onPolledMessageChange, onBannerLayoutChange, fullPresentation = false }: Props) {
   // F2b hint rate-limiter — survives effect re-runs, deliberately not state.
   const lastTenantHintAtRef = useRef(0);
   // E-P1-05 — consecutive-empty counter for the polled overlay (see below).
@@ -275,6 +283,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   const polledActive = !!polled;
   const polledTakeover = polledActive && !isBannerEmergencyMessage(polled);
   useEffect(() => { onPolledActiveChange?.(polledActive, polledTakeover); }, [polledActive, polledTakeover, onPolledActiveChange]);
+  useEffect(() => { onPolledMessageChange?.(polled); }, [polled, onPolledMessageChange]);
   // LED canvas (960×1080 etc.) so the takeover sizes to the visible panel, not
   // the 1920 frame-buffer viewport. See useLedCanvas above (Greg's "cut off by
   // half / thinks it's 1920×1080" P0). Pass the active message id so the canvas
@@ -305,7 +314,18 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   }, [bannerVisible, displayed?.textBlob, displayed?.banner?.mode, displayed?.banner?.speed, canvas.h, canvas.w, faceStage?.height, faceStage?.width, onBannerLayoutChange]);
 
   useEffect(() => {
-    if (message || !apiUrl) return;
+    if (message) {
+      // EMG-04 (2026-11-21): when a pushed message takes this overlay over,
+      // the page has already taken what this poll was showing into its held
+      // set (`onPolledMessageChange`), where it is ranked, cleared by id and
+      // reconciled. Drop the local copy: kept, it came back on the glass the
+      // moment the pushed set emptied, even when it had been cleared since.
+      emptyPollStreakRef.current = 0;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a one-shot reset when the prop takes over, not a render loop
+      setPolled(null);
+      return;
+    }
+    if (!apiUrl) return;
     // A paired kiosk needs EITHER a device token (device-authed path)
     // or a tenantId (user-session path). Without either we can't poll.
     if (!deviceToken && !tenantId) return;
@@ -350,20 +370,11 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
           lastTenantHintAtRef.current = Date.now();
           onTenantEmergencyHint();
         }
-        const active: EmergencyMessageView[] = (json.active || []).map((r: any) => ({
-          id: r.id,
-          type: r.type,
-          severity: r.severity,
-          textBlob: r.textBlob,
-          mediaUrls: Array.isArray(r.mediaUrls) ? r.mediaUrls : [],
-          audioUrl: r.audioUrl,
-          expiresAt: r.expiresAt,
-          createdAt: r.createdAt,
-          ...(sanitizeBannerOptions(r.banner) ? { banner: sanitizeBannerOptions(r.banner)! } : {}),
-        }));
+        // One row mapper and one order for the poll AND the page's pushed
+        // set (`pushedMessages.ts`, EMG-04), so the two can never disagree.
+        const active: EmergencyMessageView[] = (json.active || []).map(emergencyMessageFromPollRow);
         // Highest severity first, then newest.
-        const order = { CRITICAL: 0, WARN: 1, INFO: 2 } as const;
-        active.sort((a, b) => (order[a.severity] - order[b.severity]) || b.createdAt.localeCompare(a.createdAt));
+        active.sort(compareEmergencyMessages);
         // Deepest-audit E-P1-05 (2026-08-30): ONE empty poll must not drop
         // a displayed alert — the manifest path already requires repeated
         // confirmation before clearing, and a single blip (replica race, a
