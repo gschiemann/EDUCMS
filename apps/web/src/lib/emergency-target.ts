@@ -70,7 +70,10 @@ export interface EmergencyTargets {
 
 /** One live alert as GET /emergency/active reports it. */
 export interface ActiveAlert {
-  /** The trigger's overrideId; null for the tenant-wide alert and pre-2026-10-05 rows. */
+  /**
+   * The trigger's overrideId. The tenant-wide alert carries it since EMG-01
+   * (2026-11-21); null for one raised before that, and for pre-2026-10-05 rows.
+   */
   alertId: string | null;
   scopeType: EmergencyScopeType;
   scopeId: string;

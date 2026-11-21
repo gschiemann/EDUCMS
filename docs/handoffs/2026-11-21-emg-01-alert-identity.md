@@ -1,6 +1,6 @@
 # The tenant-wide alert carries an id; a stale all-clear cannot end a newer alert (EMG-01, 2026-11-21)
 
-**Status.** Branch `claude/fix-emg-01`, two commits: the fix, then review round 1. Not pushed, no pull request, **not merged**. This is life-safety CHANGE class. Before anyone relies on it, it needs a different vendor's review, the owner's written go, and the on-glass drill at the end of this file.
+**Status.** Branch `claude/fix-emg-01`, three commits: the fix, review round 1, review round 2. Not pushed, no pull request, **not merged**. This is life-safety CHANGE class. Before anyone relies on it, it needs a different vendor's review, the owner's written go, and the on-glass drill at the end of this file.
 
 Model: Claude Opus 5.5 (`claude-opus-5-5`), Claude Code cloud session, dispatched by a workflow script as the author. The independent review ran in a separate session.
 
@@ -34,6 +34,11 @@ The district path had the same flaw. A district all-clear also ended a school's 
   - need a fresh confirmation.
 
   If the 409 carries no type, they name it from the list they re-read.
+- **Review round 2.**
+  - `GET /emergency/active` lists one tenant-wide alert once when the caller's root is calm, too. A school's own alert is written on its child locations as well; before, each location listed it again under the same id, so both web surfaces keyed the entries alike and a click on a location could select and clear the school. A child whose visible, active parent holds the same identified alert is now that parent's entry; a child with no id lists on its own, as before. Both surfaces also key tenant-wide entries by `tenant:<scopeId>:<alertId>`, so even an older server's list cannot share a key.
+  - Release latency: the subtree walk runs beside the root read (one round trip less on every tenant all-clear), and the district pre-read (override rows, then the schools' identities) has a 1.5 s budget (`districtPreReadBudgetMs`). Past it, the all-clear goes ahead as if the reads had failed: nobody is kept, and the guarded descendants' write still keeps a school's own alert on its row and its glass.
+  - After a 409, the overlay and `/panic` aim the next freshly confirmed clear at the alert the 409 named (its id now travels in `currentAlert`), and show that alert in place of the replaced one when the list cannot be re-read. A list or tenant status that cannot be refreshed no longer means a 409 on every retry.
+  - A district all-clear that left locations in their own alert returns `keptTenantIds`; the overlay says "N locations keep their own alerts…" in a toast (en/es/zh), which stays visible after the dashboard lock comes down.
 
 ## The reproduction against a real database
 
@@ -116,6 +121,9 @@ const alert = (type, id, isDrill = false) => ({ emergencyStatus: 'CRITICAL', eme
 - **An old cached overlay bundle (from before EMG-01) whose alert list cannot load** sends the browser's stored `activeEmergencyOverrideId`. If another alert replaced that one, every retry gets a 409 until the list loads (the bundle then sends the listed id) or the tab reloads. Meanwhile it shows "All clear failed: 409" and keeps the lock up, so the alert stays visible. The current bundle sends the id from `GET /tenants` instead. To clear it: reload the tab, or end the alert from `/panic` or another device.
 - **A district alert raised before deploy (district id NULL) with a school's own alert raised after.** The district list shows both. A district all-clear that names no real id (`clear_<uuid>`) also ends the school's alert, which is today's behaviour for a stored NULL. One that names a real id from the browser's store leaves the school alone. This only happens during the deploy transition.
 - **Precedence between a district alert and a school's own alert (EMG-02).** A district trigger still overwrites a school's own alert. A school's own all-clear can still end the district's alert for that school. Neither is changed here.
+- **Rolling back to a build from before EMG-01, then forward again, leaves old ids on tenants that raised an alert meanwhile** (the old build neither writes nor nulls the columns). List-driven clients send the listed id and clear normally; a client that cannot read the list gets a 409 on every try. Remedy before rolling forward: `EMERGENCY_ALERT_IDENTITY_DISABLED=1` until those alerts are cleared, or the owner nulls both columns just before the roll-forward deploy. See `docs/BACKUP_AND_ROLLBACK.md`, section A.
+- **Pre-existing, not introduced here (its own finding).** A tenant all-clear that names an alert that has already ended (tenant INACTIVE) is not refused, and still sweeps per-screen rows with a null `alertId`. Those rows come from the GPIO panic button (`gpio.service.ts` `triggerScreenEmergency`) and from screen-emergency triggers. So a stale CLEAR can still end a newer GPIO LOCKDOWN that has its own device-scope entry in the list. The sweep is `planAllClear`'s predicate `e.scopeType === 'tenant' || !e.alertId`. It is the same on master.
+- **Two tenant-wide entries look alike in a district admin's list.** Each reads "<type> — all screens (N)", without the location's name (`activeAlertLabel`). This is unchanged since targeting. With a school's own alert now listed beside the district's, naming the location would help the operator pick the right one; it is a copy change for the owner.
 - **`CLEAR_EMERGENCY_REFUSED` is not in the customer Activity feed.** The allowlist in `packages/api-types/src/customer-activity.ts` excludes every `*_REFUSED` guard row by design. SUPER_ADMIN "All events" shows it. Adding it is a proposal for the owner, with en/es/zh labels.
 
 ## On-glass drill (bench screens or a test tenant only; never a live trigger in production)
@@ -134,7 +142,9 @@ const alert = (type, id, isDrill = false) => ({ emergencyStatus: 'CRITICAL', eme
    - One school raises its own Lockdown drill. The district admin's overlay lists both.
    - The district ends the Weather. The school's screens stay on Lockdown; every other school releases.
    - The district admin, or the school, then ends the Lockdown from the list.
+   - Round 2: give that school a child location first. With the district calm, the district admin's list shows the school's Lockdown once (not once per location). After the district ends its Weather, a toast says one location keeps its own alert, and it stays visible after the dashboard lock comes down.
 6. **Old bundle, list down (if an old cached bundle is available).** Block `/emergency/active` for the old tab and repeat step 2. Expect "All clear failed: 409" on every retry while the Lockdown stays on the glass. Then unblock the list or reload the tab, and the clear works.
+   - Round 2, the current bundle: repeat step 2, but block `/emergency/active` and `GET /tenants` for A right after the 409. The list shows the Lockdown in place of the Hold, and A's next CLEAR ends it at the first try. Repeat on `/panic`.
 7. **Kill switch.** Set `EMERGENCY_ALERT_IDENTITY_DISABLED=1` and restart. Step 2's stale CLEAR now ends the Lockdown, as before EMG-01. Unset it and restart.
 8. **Paint and WebKit.**
    - Throughout, every screen shows `PLAYER_EMERGENCY_PAINTED` with no `NO_PAINT_PROOF`, and releases after each successful clear.

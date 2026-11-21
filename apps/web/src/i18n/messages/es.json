@@ -117,6 +117,7 @@
       "clearFailed": "El fin de alerta NO se envió: la alerta sigue en las pantallas. {error}",
       "alertChanged": "No se finalizó nada: ahora hay una alerta más reciente activa ({type}). Revísela arriba y vuelva a escribir CLEAR para finalizarla.",
       "selectionChanged": "La alerta que eligió ya no aparece en la lista, así que no se finalizó nada. Revise la lista de arriba y vuelva a escribir CLEAR.",
+      "keptOwnAlert": "Se envió el fin de alerta. {count, plural, one {# ubicación mantiene su propia alerta, que este fin de alerta no finalizó y que sigue en pantalla. Para finalizarla, abra Activar emergencia, donde aparece.} other {# ubicaciones mantienen sus propias alertas, que este fin de alerta no finalizó y que siguen en pantalla. Para finalizarlas, abra Activar emergencia, donde aparece cada una.}}",
       "noAuthority": "Solo alguien con autoridad de emergencia puede enviar el fin de alerta.",
       "sendAnother": "Enviar otra alerta"
     },

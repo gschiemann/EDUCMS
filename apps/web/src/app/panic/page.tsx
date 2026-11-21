@@ -221,7 +221,16 @@ export default function MobilePanicPage() {
 
   const allScreens = allScreensTarget(verifiedUser?.tenantId ?? '', targets?.allScreensCount ?? null);
   const target: EmergencyTarget = chosenTarget ?? allScreens;
-  const alertKey = (a: ActiveAlert) => a.alertId ?? `${a.scopeType}:${a.scopeId}`;
+  // EMG-01 review round 2 — a tenant-wide entry is keyed by its tenant AND its
+  // id, so two entries never share a key even if a server lists one alert on
+  // two tenants (the sheet's list key and its selection).
+  const alertKey = (a: ActiveAlert) =>
+    a.scopeType === 'tenant' ? `tenant:${a.scopeId}:${a.alertId ?? ''}` : a.alertId ?? `${a.scopeType}:${a.scopeId}`;
+  // Review round 2 — the alert a 409 ALERT_CHANGED said is live now, and the
+  // id it replaced. If the list cannot be re-read, the sheet would otherwise
+  // keep offering the replaced alert and every hold would get another 409. A
+  // fresh hold on that entry ends the alert the message named instead.
+  const supersededRef = useRef<{ tenantId: string; replacedId: string; alertId: string; isDrill: boolean } | null>(null);
   const alertTypeName = (apiType: string | null) => {
     const id = typeIdOf(apiType);
     return id ? typeName(id) : (apiType || t('emergency.active'));
@@ -339,20 +348,27 @@ export default function MobilePanicPage() {
     // A panic phone can raise, never release: ending an alert needs a full sign-in.
     if (credential?.kind === 'device') return { ok: false, error: t('emergency.panic.endNeedsSignIn') };
     if (!verifiedToken || !verifiedUser?.tenantId) return { ok: false, error: t('emergency.panic.errNoToken') };
+    const named =
+      alert.alertId ??
+      (alert.scopeType === 'tenant' && alert.scopeId === verifiedUser.tenantId ? tenantOverrideIdRef.current : undefined);
+    const sup = supersededRef.current;
+    const aimed =
+      sup && alert.scopeType === 'tenant' && alert.scopeId === sup.tenantId && named === sup.replacedId ? sup : null;
     const clearWith = (token: string, tenantId: string) =>
       allClearEmergency({
         // The tenant-wide entry's scopeId IS the tenant to clear.
         schoolId: alert.scopeType === 'tenant' ? alert.scopeId : tenantId,
         token,
-        overrideId:
-          alert.alertId ??
-          (alert.scopeType === 'tenant' && alert.scopeId === tenantId ? tenantOverrideIdRef.current : undefined),
+        overrideId: aimed
+          ? aimed.alertId
+          : alert.alertId ??
+            (alert.scopeType === 'tenant' && alert.scopeId === tenantId ? tenantOverrideIdRef.current : undefined),
         // Its own scope — or, if that target was deleted mid-alert, the scope
         // the server says still reaches it.
         ...allClearScopeOf(alert),
         // Ending a DRILL may end drill state only — never a live alert that
         // replaced it between this list's reads.
-        ...(alert.isDrill === true ? { isDrill: true } : {}),
+        ...((aimed ? aimed.isDrill : alert.isDrill === true) ? { isDrill: true } : {}),
       });
     let result = await clearWith(verifiedToken, verifiedUser.tenantId);
     // 2026-11-14 — a 401 is refused before the server does anything, so one
@@ -367,8 +383,31 @@ export default function MobilePanicPage() {
       // named, and the server cleared NOTHING. Re-read the list so the sheet
       // shows the alert that is live now; ending it takes its own hold.
       if (alert.scopeType === 'tenant') tenantOverrideIdRef.current = undefined;
+      const current = result.currentAlert ?? null;
+      // Keyed on what this entry names (before any aim), so a third alert
+      // replacing the one aimed at moves the aim on, never back.
+      const replacedId = named;
+      supersededRef.current =
+        current && replacedId && replacedId !== current.alertId && alert.scopeType === 'tenant'
+          ? { tenantId: alert.scopeId, replacedId, alertId: current.alertId, isDrill: current.isDrill === true }
+          : null;
       let fresh: ActiveAlert[] | null = null;
       try { if (credential) { fresh = await readActive(credential); setActiveAlerts(fresh); } } catch { /* next poll */ }
+      // The re-read failed: show the alert the 409 named in place of the one
+      // it replaced, so the sheet matches the message (the next poll that
+      // succeeds replaces it).
+      const supNow = supersededRef.current;
+      if (!fresh && supNow && current) {
+        setActiveAlerts((prev) =>
+          prev
+            ? prev.map((a) =>
+                a.scopeType === 'tenant' && a.scopeId === supNow.tenantId && a.alertId === supNow.replacedId
+                  ? { ...a, alertId: current.alertId, type: current.type ?? a.type, isDrill: current.isDrill === true }
+                  : a,
+              )
+            : prev,
+        );
+      }
       // The 409 names the newer alert's type; if it did not, the list just
       // re-read does (the same target's entry).
       const newerType =
@@ -384,6 +423,7 @@ export default function MobilePanicPage() {
       return { ok: false, error: raw || t('emergency.panic.errGeneric') };
     }
     if (alert.scopeType === 'tenant') tenantOverrideIdRef.current = undefined;
+    supersededRef.current = null;
     // Re-read now so the list (and the lock it describes) updates at once.
     try { if (credential) setActiveAlerts(await readActive(credential)); } catch { /* next poll */ }
     return { ok: true };

@@ -953,6 +953,206 @@ describe('8. EMERGENCY_ALERT_IDENTITY_DISABLED turns the rule off: the all-clear
   });
 });
 
+// ═══ 9. Review round 2 ═══════════════════════════════════════════════════════
+
+/** SCHOOL gets a child location, so a school's own alert is written on two rows. */
+function addAnnexUnderSchool(w: ReturnType<typeof makeWorld>) {
+  w.tenants.set('annex', {
+    ...w.tenants.get(SIBLING)!,
+    id: 'annex',
+    name: 'annex name',
+    parentId: SCHOOL,
+  });
+}
+
+describe('9. review round 2', () => {
+  it('a calm district lists a school’s own alert ONCE, not once per location it was written on', async () => {
+    // The reviewer's probe: before this, the list was
+    // [["school", X], ["annex", X]] — two entries under one alertId, so the
+    // dashboard and /panic keyed them the same and a click on the annex
+    // selected (and cleared) the school.
+    const w = makeWorld();
+    addAnnexUnderSchool(w);
+    const lockdown: any = await w.emergency.triggerEmergency(
+      live('tenant', SCHOOL, 'lockdown'),
+      schoolAdmin,
+    );
+    expect(w.tenants.get('annex')).toMatchObject({
+      emergencyAlertId: lockdown.overrideId,
+    });
+    expect(w.tenants.get(DISTRICT)).toMatchObject({
+      emergencyStatus: 'INACTIVE',
+    });
+    const listed = (
+      (await w.emergency.activeAlerts(districtAdmin)) as any
+    ).alerts.filter((a: any) => a.scopeType === 'tenant');
+    expect(listed.map((a: any) => [a.scopeId, a.alertId])).toEqual([
+      [SCHOOL, lockdown.overrideId],
+    ]);
+    // Every listed id is listed once.
+    const ids = listed.map((a: any) => a.alertId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('a calm district still lists each child’s own, DIFFERENT alert (the annex raised its own)', async () => {
+    const w = makeWorld();
+    addAnnexUnderSchool(w);
+    const schoolAlert: any = await w.emergency.triggerEmergency(
+      live('tenant', SCHOOL, 'hold'),
+      schoolAdmin,
+    );
+    // The annex then raises its own alert (written by hand: no fixture admin
+    // belongs to it). It holds a different id from its parent.
+    Object.assign(w.tenants.get('annex')!, {
+      emergencyStatus: 'CRITICAL',
+      emergencyType: 'MEDICAL',
+      emergencyAlertId: 'ovr_annex_medical',
+    });
+    const listed = (
+      (await w.emergency.activeAlerts(districtAdmin)) as any
+    ).alerts.filter((a: any) => a.scopeType === 'tenant');
+    expect(listed.map((a: any) => [a.scopeId, a.alertId])).toEqual([
+      [SCHOOL, schoolAlert.overrideId],
+      ['annex', 'ovr_annex_medical'],
+    ]);
+  });
+
+  it('children with NO id (alerts raised before alert identity) still list one by one, exactly as before', async () => {
+    const w = makeWorld();
+    addAnnexUnderSchool(w);
+    await w.emergency.triggerEmergency(
+      live('tenant', SCHOOL, 'lockdown'),
+      schoolAdmin,
+    );
+    for (const id of [SCHOOL, 'annex'])
+      Object.assign(w.tenants.get(id)!, {
+        emergencyAlertId: null,
+        emergencyTriggeredAt: null,
+      });
+    const listed = (
+      (await w.emergency.activeAlerts(districtAdmin)) as any
+    ).alerts.filter((a: any) => a.scopeType === 'tenant');
+    expect(listed.map((a: any) => [a.scopeId, a.alertId])).toEqual([
+      [SCHOOL, null],
+      ['annex', null],
+    ]);
+  });
+
+  it('the district pre-read is bounded: past the budget the all-clear goes ahead, and the school keeps its own alert by the guarded write', async () => {
+    const w = makeWorld();
+    w.tenants.get(SCHOOL)!.locationBasedEmergencyEnabled = true;
+    const { weather, lockdown } = await districtWeatherThenSchoolLockdown(w);
+    (w.emergency as any).districtPreReadBudgetMs = 25;
+    // The schools' identity read stalls (a pooler stall); nothing else does.
+    const realFindMany = w.client.tenant.findMany;
+    w.client.tenant.findMany = jest.fn((args: any) => {
+      const identityRead =
+        args?.select?.emergencyAlertId && !args?.select?.name;
+      return identityRead
+        ? new Promise<never>(() => undefined)
+        : realFindMany(args);
+    });
+    const warn = jest
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined);
+    try {
+      const started = Date.now();
+      const res: any = await w.emergency.clearEmergency(
+        weather.overrideId,
+        clear('tenant', DISTRICT),
+        districtAdmin,
+      );
+      // It did not wait for the stalled read.
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(res.success).toBe(true);
+      // Nobody could be confirmed as kept, so the subtree is planned as before…
+      expect(res.keptTenantIds).toEqual([]);
+      // …but the school's row holds a different alert, so the guarded write
+      // leaves it, and every one of its screens stays in LOCKDOWN.
+      expect(w.tenants.get(SCHOOL)).toMatchObject({
+        emergencyStatus: 'CRITICAL',
+        emergencyType: 'LOCKDOWN',
+        emergencyAlertId: lockdown.overrideId,
+      });
+      for (const id of SCHOOL_IDS)
+        expect((await w.manifest(id)).emergencyType).toBe('LOCKDOWN');
+      for (const tid of [DISTRICT, SIBLING])
+        expect(w.tenants.get(tid)).toMatchObject({
+          emergencyStatus: 'INACTIVE',
+        });
+      expect(
+        warn.mock.calls.some((c) =>
+          String(c[0]).includes('district all-clear pre-read skipped'),
+        ),
+      ).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('the subtree walk runs beside the root read, not after it (one round trip less before the dispatch)', async () => {
+    const w = makeWorld();
+    const hold: any = await w.emergency.triggerEmergency(
+      live('tenant', SCHOOL, 'hold'),
+      schoolAdmin,
+    );
+    const order: string[] = [];
+    const realFindUnique = w.client.tenant.findUnique;
+    w.client.tenant.findUnique = jest.fn(async (args: any) => {
+      if (!args?.select?.emergencyAlertId) return realFindUnique(args);
+      order.push('root-read:start');
+      await new Promise((r) => setTimeout(r, 10));
+      order.push('root-read:end');
+      return realFindUnique(args);
+    });
+    const realFindMany = w.client.tenant.findMany;
+    w.client.tenant.findMany = jest.fn((args: any) => {
+      if (args?.where?.parentId) order.push('walk');
+      return realFindMany(args);
+    });
+    await w.emergency.clearEmergency(
+      hold.overrideId,
+      clear('tenant', SCHOOL),
+      schoolAdmin,
+    );
+    expect(order.indexOf('walk')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('walk')).toBeLessThan(order.indexOf('root-read:end'));
+    expect(w.tenants.get(SCHOOL)).toMatchObject({
+      emergencyStatus: 'INACTIVE',
+    });
+  });
+
+  it('a refused all-clear with a failing subtree walk is still the 409, and a walk failure on an accepted one still fails it', async () => {
+    const w = makeWorld();
+    const { hold, lockdown } = await holdThenLockdown(w);
+    const realFindMany = w.client.tenant.findMany;
+    w.client.tenant.findMany = jest.fn((args: any) =>
+      args?.where?.parentId
+        ? Promise.reject(new Error('walk failed'))
+        : realFindMany(args),
+    );
+    await expectAlertChanged(
+      w.emergency.clearEmergency(
+        hold.overrideId,
+        clear('tenant', SCHOOL),
+        schoolAdmin,
+      ),
+    );
+    await expect(
+      w.emergency.clearEmergency(
+        lockdown.overrideId,
+        clear('tenant', SCHOOL),
+        schoolAdmin,
+      ),
+    ).rejects.toThrow('walk failed');
+    // Nothing was cleared by either request.
+    expect(w.tenants.get(SCHOOL)).toMatchObject({
+      emergencyType: 'LOCKDOWN',
+      emergencyAlertId: lockdown.overrideId,
+    });
+  });
+});
+
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 /**

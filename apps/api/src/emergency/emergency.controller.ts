@@ -1,4 +1,20 @@
-import { Controller, Post, Get, Body, Param, Query, Req, Res, UseGuards, UseFilters, ForbiddenException, BadRequestException, NotFoundException, ConflictException, Optional } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+  UseFilters,
+  ForbiddenException,
+  BadRequestException,
+  NotFoundException,
+  ConflictException,
+  Optional,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { RedisService } from '../realtime/redis.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -168,7 +184,11 @@ import {
   type TenantAlertState,
 } from './tenant-alert-identity';
 // EMG-01 review round 1 — the 409's facts survive the global filter.
-import { TenantAlertChangedConflict, TenantAlertChangedConflictFilter } from './tenant-alert-changed.filter';
+import {
+  TenantAlertChangedConflict,
+  TenantAlertChangedConflictFilter,
+} from './tenant-alert-changed.filter';
+import { withTimeout } from '../health/with-timeout';
 
 /** A school a tenant all-clear left alone because it holds its own alert (EMG-01 review round 1). */
 interface KeptTenantAlert {
@@ -181,6 +201,15 @@ interface KeptTenantAlert {
 @Controller('api/v1/emergency')
 @UseGuards(JwtAuthGuard, RbacGuard)
 export class EmergencyController {
+  /**
+   * EMG-01 review round 2 — the time a district all-clear that names its
+   * alert may spend, before its dispatch, reading which schools hold their
+   * own alert. The repository's measured 74-333 ms per query puts the two
+   * reads well inside it; past it the all-clear goes ahead without them (see
+   * clearEmergency). A field, not a variable: tests shorten it.
+   */
+  protected districtPreReadBudgetMs = 1500;
+
   constructor(
     private readonly redisService: RedisService,
     private readonly prisma: PrismaService,
@@ -446,7 +475,12 @@ export class EmergencyController {
       );
       const drillTenants = (await this.prisma.client.tenant.findMany({
         where: { id: { in: organisationIds }, emergencyIsDrill: true } as any,
-        select: { id: true, emergencyStatus: true, emergencyIsDrill: true, emergencyAlertId: true } as any,
+        select: {
+          id: true,
+          emergencyStatus: true,
+          emergencyIsDrill: true,
+          emergencyAlertId: true,
+        } as any,
       })) as any[];
       // Re-checked on the row (not only in the where-clause): only a tenant
       // that is IN a drill right now is ended here, never a live one.
@@ -1685,7 +1719,11 @@ export class EmergencyController {
     stage: 'before-dispatch' | 'at-commit';
     req: any;
   }): Promise<never> {
-    const body = alertChangedBody(args.scopeId, args.current, args.expectedAlertId);
+    const body = alertChangedBody(
+      args.scopeId,
+      args.current,
+      args.expectedAlertId,
+    );
     const user = args.req?.user;
     try {
       await this.prisma.client.auditLog.create({
@@ -1723,7 +1761,9 @@ export class EmergencyController {
         s.setExtra('requestedAlertId', args.expectedAlertId);
         Sentry.captureException(e);
       });
-      console.warn(`[Emergency] audit row for a refused all-clear could not be written: ${e}`);
+      console.warn(
+        `[Emergency] audit row for a refused all-clear could not be written: ${e}`,
+      );
     }
     // A dedicated type so the method-scoped filter below puts `currentAlert`
     // on the wire (the global filter keeps only `{ error, code, message }`).
@@ -1791,7 +1831,20 @@ export class EmergencyController {
     // The owner's kill switch (EMERGENCY_ALERT_IDENTITY_DISABLED) makes every
     // request one that names no alert: today's path, refused never.
     const identityOff = scopeType === 'tenant' && alertIdentityDisabled();
-    const expectedAlertId = scopeType === 'tenant' && !identityOff ? namedAlertId(overrideId) : null;
+    const expectedAlertId =
+      scopeType === 'tenant' && !identityOff ? namedAlertId(overrideId) : null;
+    // EMG-01 review round 2 — the subtree walk does not depend on the root
+    // read, so it runs beside it instead of after it: a tenant all-clear
+    // reaches its dispatch one round trip sooner than before EMG-01, which
+    // pays for the district pre-read below. A walk that fails still fails the
+    // request exactly where it always did (awaited below); the no-op catch
+    // only keeps a refused request, which never awaits it, from leaving an
+    // unhandled rejection behind.
+    const descendantsRead: Promise<string[]> | null =
+      scopeType === 'tenant'
+        ? collectDescendantTenantIds(this.prisma.client.tenant as any, scopeId)
+        : null;
+    descendantsRead?.catch(() => undefined);
     // The same single read as before (now also the alert's identity), plus a
     // read for an "End Drill" that names its drill — before the dispatch, so
     // a refused all-clear pushes nothing to any screen.
@@ -1809,7 +1862,9 @@ export class EmergencyController {
           } as any,
         })) as TenantAlertState | null;
         if (!drillIntent) {
-          clearingDrill = isTenantAlertActive(rootState) && rootState?.emergencyIsDrill === true;
+          clearingDrill =
+            isTenantAlertActive(rootState) &&
+            rootState?.emergencyIsDrill === true;
         }
       } catch {
         // A read that fails reads as "live" (the wider clear) and as "the
@@ -1821,7 +1876,11 @@ export class EmergencyController {
     }
     // A newer alert replaced the one this all-clear names: refuse with 409
     // before anything is dispatched or written, and audit the refusal.
-    if (scopeType === 'tenant' && expectedAlertId && tenantAlertChanged(rootState, expectedAlertId)) {
+    if (
+      scopeType === 'tenant' &&
+      expectedAlertId &&
+      tenantAlertChanged(rootState, expectedAlertId)
+    ) {
       await this.refuseStaleTenantClear({
         scopeId,
         expectedAlertId,
@@ -1837,10 +1896,7 @@ export class EmergencyController {
     let keptTenants: KeptTenantAlert[] = [];
 
     if (scopeType === 'tenant') {
-      const descendantTenantIds = await collectDescendantTenantIds(
-        this.prisma.client.tenant as any,
-        scopeId,
-      );
+      const descendantTenantIds = (await descendantsRead) ?? [];
       // ── THE DISTRICT PATH (EMG-01 review round 1) ─────────────────────
       // A district alert writes its one id on every school, so a school
       // whose row now holds a DIFFERENT, identified, active alert raised it
@@ -1860,16 +1916,43 @@ export class EmergencyController {
       //
       // A request that names no real id (an older client, `clear_<uuid>`)
       // skips all of this and clears the whole subtree exactly as before.
+      //
+      // Review round 2 — BOUNDED. The two reads hold the release back, so
+      // together they get `districtPreReadBudgetMs`. Past it (a pooler stall)
+      // the all-clear goes ahead as if both had failed: nobody is kept, the
+      // rows are read after the dispatch as before, and the descendants'
+      // guarded write still keeps a school's own alert on its row, which is
+      // what its manifest shows. A late answer is ignored.
       let preReadRows: any[] | null = null;
       let clearedDescendantIds = descendantTenantIds;
       if (expectedAlertId && descendantTenantIds.length > 0) {
-        // A read that fails here never fails the all-clear: the rows are then
-        // read after the dispatch, as before.
-        preReadRows = await this.overrideRowsFor({ in: [scopeId, ...descendantTenantIds] }).catch(() => null);
-        keptTenants = await this.descendantsHoldingAnotherAlert(descendantTenantIds, expectedAlertId);
+        const preRead = await withTimeout(
+          (async () => {
+            // A read that fails here never fails the all-clear: the rows are
+            // then read after the dispatch, as before.
+            const rows = await this.overrideRowsFor({
+              in: [scopeId, ...descendantTenantIds],
+            }).catch(() => null);
+            const kept = await this.descendantsHoldingAnotherAlert(
+              descendantTenantIds,
+              expectedAlertId,
+            );
+            return { rows, kept };
+          })(),
+          this.districtPreReadBudgetMs,
+        ).catch((e: unknown) => {
+          console.warn(
+            `[Emergency] district all-clear pre-read skipped; the guarded write still applies: ${String(e)}`,
+          );
+          return null;
+        });
+        preReadRows = preRead?.rows ?? null;
+        keptTenants = preRead?.kept ?? [];
         if (keptTenants.length > 0) {
           const kept = new Set(keptTenants.map((k) => k.tenantId));
-          clearedDescendantIds = descendantTenantIds.filter((id) => !kept.has(id));
+          clearedDescendantIds = descendantTenantIds.filter(
+            (id) => !kept.has(id),
+          );
         }
       }
       affectedTenantIds = [scopeId, ...clearedDescendantIds];
@@ -1949,7 +2032,9 @@ export class EmergencyController {
       // A kept school's rows are not read, so not one of them is touched.
       const affectedSet = new Set(affectedTenantIds);
       const subtreeRows = preReadRows
-        ? preReadRows.filter((r: any) => affectedSet.has(r.tenantId))
+        ? preReadRows.filter((r: { tenantId: string }) =>
+            affectedSet.has(r.tenantId),
+          )
         : await this.overrideRowsFor({ in: affectedTenantIds });
       // 2026-10-10 — a drill all-clear ends ONLY the drill's own tenant-wide
       // rows; it never touches a live row, nor a pre-identity row (those are
@@ -1963,7 +2048,10 @@ export class EmergencyController {
 
       const tenantClearOps = [
         clearingDrill
-          ? this.prisma.client.tenant.updateMany({ where: { ...tenantClearWhere(scopeId), ...rootGuard }, data: clearedState })
+          ? this.prisma.client.tenant.updateMany({
+              where: { ...tenantClearWhere(scopeId), ...rootGuard },
+              data: clearedState,
+            })
           : this.prisma.client.tenant.update({
               where: { id: scopeId, ...rootGuard } as any,
               data: clearedState,
@@ -1975,7 +2063,10 @@ export class EmergencyController {
         ...(clearedDescendantIds.length > 0
           ? [
               this.prisma.client.tenant.updateMany({
-                where: { ...tenantClearWhere(clearedDescendantIds), ...rootGuard },
+                where: {
+                  ...tenantClearWhere(clearedDescendantIds),
+                  ...rootGuard,
+                },
                 data: clearedState,
               }),
             ]
@@ -2287,7 +2378,9 @@ export class EmergencyController {
         } as any,
       })) as any[];
       return rows
-        .filter((r) => tenantAlertChanged(r, expectedAlertId))
+        .filter((r) =>
+          tenantAlertChanged(r as TenantAlertState, expectedAlertId),
+        )
         .map((r) => ({
           tenantId: r.id as string,
           alertId: r.emergencyAlertId as string,
@@ -2295,7 +2388,9 @@ export class EmergencyController {
           isDrill: r.emergencyIsDrill === true,
         }));
     } catch (e) {
-      console.warn(`[Emergency] descendant alert identities could not be read; the guarded write still applies: ${e}`);
+      console.warn(
+        `[Emergency] descendant alert identities could not be read; the guarded write still applies: ${e}`,
+      );
       return [];
     }
   }
@@ -3271,20 +3366,46 @@ export class EmergencyController {
     // district admin would never see it. Once per alert: a sub-district's
     // alert is written on its schools as well, so a child listed under a
     // parent that holds the same id is that parent's entry.
+    //
+    // EMG-01 review round 2 — the same "once per alert" rule holds when the
+    // caller's root is calm. A school that raised its own alert writes its id
+    // on its child locations too, so listing every active child listed that
+    // one alert once per location under ONE alertId: duplicate React keys in
+    // the life-safety list, and a click on the location selecting the school.
+    // A child whose visible, active parent holds the same identified alert is
+    // that parent's entry. A child with no id (an alert raised before alert
+    // identity) still lists on its own, exactly as before.
     const root = tenants.get(rootId);
     const alertIdOf = (t: any): string | null =>
-      typeof t?.emergencyAlertId === 'string' && t.emergencyAlertId ? t.emergencyAlertId : null;
+      typeof t?.emergencyAlertId === 'string' && t.emergencyAlertId
+        ? t.emergencyAlertId
+        : null;
     const rootAlertId = alertIdOf(root);
+    /** True when `id`'s identified alert is its listed parent's alert, written down the tree. */
+    const coveredByParent = (id: string): boolean => {
+      const own = alertIdOf(tenants.get(id));
+      if (!own) return false;
+      const parentId = (tenants.get(id) as { parentId?: unknown } | undefined)
+        ?.parentId;
+      if (typeof parentId !== 'string' || !visible.has(parentId)) return false;
+      const parent = tenants.get(parentId);
+      return isActive(parent) && alertIdOf(parent) === own;
+    };
     const ownAlertUnderRoot = (id: string): boolean => {
       const t = tenants.get(id);
       const own = alertIdOf(t);
       if (!isActive(t) || !own || own === rootAlertId) return false;
-      const parent = t?.parentId ? tenants.get(t.parentId) : null;
-      return !(parent && visible.has(parent.id) && isActive(parent) && alertIdOf(parent) === own);
+      return !coveredByParent(id);
     };
     const tenantWideIds = isActive(root)
-      ? [rootId, ...visibleIds.filter((id) => id !== rootId && ownAlertUnderRoot(id))]
-      : visibleIds.filter((id) => id !== rootId && isActive(tenants.get(id)));
+      ? [
+          rootId,
+          ...visibleIds.filter((id) => id !== rootId && ownAlertUnderRoot(id)),
+        ]
+      : visibleIds.filter(
+          (id) =>
+            id !== rootId && isActive(tenants.get(id)) && !coveredByParent(id),
+        );
     for (const tid of tenantWideIds) {
       const t = tenants.get(tid);
       const raisedAt = t?.emergencyTriggeredAt;
@@ -3294,7 +3415,10 @@ export class EmergencyController {
         // the server refuses one that names an alert the tenant no longer
         // holds. NULL = an alert raised before alert identity: its all-clear
         // behaves exactly as before.
-        alertId: typeof t?.emergencyAlertId === 'string' && t.emergencyAlertId ? t.emergencyAlertId : null,
+        alertId:
+          typeof t?.emergencyAlertId === 'string' && t.emergencyAlertId
+            ? t.emergencyAlertId
+            : null,
         scopeType: 'tenant',
         scopeId: tid,
         targetName: t?.name ?? null,
@@ -3306,7 +3430,12 @@ export class EmergencyController {
         isDrill: t?.emergencyIsDrill === true,
         screenCount: subtreeScreenCount(tid),
         showingCount: null,
-        triggeredAt: raisedAt instanceof Date ? raisedAt.toISOString() : typeof raisedAt === 'string' ? raisedAt : null,
+        triggeredAt:
+          raisedAt instanceof Date
+            ? raisedAt.toISOString()
+            : typeof raisedAt === 'string'
+              ? raisedAt
+              : null,
       });
     }
 

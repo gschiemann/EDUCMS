@@ -14,7 +14,11 @@
  *     with the box empty says nothing, and a picked alert that is simply gone
  *     is not called "a newer alert";
  *   • a 409 that does not carry the newer alert's type still names it, from
- *     the list it re-reads (review round 1).
+ *     the list it re-reads (review round 1);
+ *   • review round 2: a 409 whose list re-read FAILS does not loop — the next
+ *     fresh CLEAR ends the alert the 409 named; two tenant entries that share
+ *     an id never share a key; a district clear that left locations in their
+ *     own alert says so in a toast that outlives the overlay.
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -34,6 +38,16 @@ jest.mock('@/hooks/use-api', () => ({
   useTenantStatus: () => ({ data: mockTenant }),
 }));
 jest.mock('@sentry/nextjs', () => ({ captureException: jest.fn() }));
+const toastWarning = jest.fn();
+jest.mock('sonner', () => ({
+  toast: Object.assign(jest.fn(), {
+    warning: (...a: unknown[]) => toastWarning(...a),
+    error: jest.fn(),
+    success: jest.fn(),
+    info: jest.fn(),
+  }),
+  Toaster: () => null,
+}));
 
 import { EmergencyOverlay } from '@/components/layout/EmergencyOverlay';
 import { useUIStore } from '@/store/ui-store';
@@ -67,6 +81,7 @@ const terminate = async () => {
 beforeEach(() => {
   allClearEmergency.mockReset();
   fetchActiveAlerts.mockReset();
+  toastWarning.mockReset();
   mockTenant = { emergencyStatus: 'CRITICAL', emergencyIsDrill: false };
   useUIStore.setState({
     token: 'tok',
@@ -208,5 +223,108 @@ describe('EmergencyOverlay — the tenant-wide alert’s identity (EMG-01)', () 
     typeClear();
     await terminate();
     expect(allClearEmergency).toHaveBeenCalledWith(expect.objectContaining({ overrideId: 'ovr_hold', scopeType: 'tenant' }));
+  });
+});
+
+const LOCKDOWN_409 = {
+  success: false,
+  error: 'All clear failed: 409',
+  code: 'ALERT_CHANGED',
+  currentAlertType: 'LOCKDOWN',
+  currentAlert: { alertId: 'ovr_lockdown', scopeId: 't1', type: 'LOCKDOWN', isDrill: false },
+};
+
+describe('EmergencyOverlay — review round 2', () => {
+  it('a 409 whose list re-read FAILS does not loop: the list shows the alert the 409 named, and the next CLEAR ends it by its id', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([HOLD]).mockRejectedValue(new Error('/emergency/active failed: 503'));
+    allClearEmergency.mockResolvedValueOnce(LOCKDOWN_409).mockResolvedValue({ success: true });
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    typeClear();
+    await terminate();
+    expect(allClearEmergency).toHaveBeenNthCalledWith(1, expect.objectContaining({ overrideId: 'ovr_hold' }));
+    expect(await screen.findByText(/Nothing was cleared: a newer alert is now active \(Lockdown\)/)).toBeInTheDocument();
+    // The re-read failed, yet the list no longer offers the replaced Hold.
+    await waitFor(() => expect(screen.getByTestId('emergency-active-alerts')).toHaveTextContent('Lockdown'));
+    expect(screen.getByTestId('emergency-active-alerts')).not.toHaveTextContent('Hold');
+
+    typeClear();
+    await terminate();
+    expect(allClearEmergency).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ overrideId: 'ovr_lockdown', scopeType: 'tenant', scopeId: 't1' }),
+    );
+    expect(allClearEmergency.mock.calls[1][0]).not.toHaveProperty('isDrill');
+  });
+
+  it('with the alert list down and a stale tenant status, the CLEAR after a 409 names the alert the 409 named', async () => {
+    fetchActiveAlerts.mockRejectedValue(new Error('/emergency/active failed: 503'));
+    // GET /tenants still reports the Hold (its re-read also fails or lags).
+    mockTenant = { emergencyStatus: 'CRITICAL', emergencyIsDrill: false, emergencyAlertId: 'ovr_hold' };
+    allClearEmergency.mockResolvedValueOnce(LOCKDOWN_409).mockResolvedValue({ success: true });
+    await renderOverlay();
+    await screen.findByText(/Couldn’t load the list of alerts/);
+    typeClear();
+    await terminate();
+    expect(allClearEmergency).toHaveBeenNthCalledWith(1, expect.objectContaining({ overrideId: 'ovr_hold', schoolId: 't1' }));
+    expect(await screen.findByText(/Nothing was cleared: a newer alert is now active \(Lockdown\)/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Type CLEAR')).toHaveValue('');
+
+    typeClear();
+    await terminate();
+    expect(allClearEmergency).toHaveBeenNthCalledWith(2, expect.objectContaining({ overrideId: 'ovr_lockdown', schoolId: 't1' }));
+  });
+
+  it('two tenant entries that share an id (an older server) are two rows, and picking the second ends the second', async () => {
+    const ANNEX = { ...LOCKDOWN, scopeId: 'annex', tenantId: 'annex', targetName: 'Annex', tenantName: 'Annex' };
+    fetchActiveAlerts.mockResolvedValueOnce([LOCKDOWN, ANNEX]).mockResolvedValue([]);
+    allClearEmergency.mockResolvedValue({ success: true });
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await renderOverlay();
+      const list = await screen.findByTestId('emergency-active-alerts');
+      expect(list.querySelectorAll('li')).toHaveLength(2);
+      // React never saw a duplicate key.
+      expect(
+        consoleError.mock.calls.some((c) => String(c[0]).includes('same key')),
+      ).toBe(false);
+      // Tenant-wide entries are labelled by type and screen count, so pick
+      // the second row by position.
+      const rows = list.querySelectorAll('li button');
+      await act(async () => {
+        fireEvent.click(rows[1]);
+      });
+      // Only the picked row reads as selected.
+      expect(rows[1]).toHaveAttribute('aria-pressed', 'true');
+      expect(rows[0]).toHaveAttribute('aria-pressed', 'false');
+      typeClear();
+      await terminate();
+      expect(allClearEmergency).toHaveBeenCalledWith(
+        expect.objectContaining({ schoolId: 'annex', scopeId: 'annex', overrideId: 'ovr_lockdown' }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it('a district clear that left locations in their own alert says so, in a toast that outlives the overlay', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([LOCKDOWN]).mockResolvedValue([]);
+    allClearEmergency.mockResolvedValue({ success: true, keptTenantIds: ['s1', 's2'] });
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    typeClear();
+    await terminate();
+    expect(toastWarning).toHaveBeenCalledTimes(1);
+    expect(String(toastWarning.mock.calls[0][0])).toMatch(/2 locations keep their own alerts/);
+  });
+
+  it('a clear that kept nobody shows no toast', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([LOCKDOWN]).mockResolvedValue([]);
+    allClearEmergency.mockResolvedValue({ success: true });
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    typeClear();
+    await terminate();
+    expect(toastWarning).not.toHaveBeenCalled();
   });
 });

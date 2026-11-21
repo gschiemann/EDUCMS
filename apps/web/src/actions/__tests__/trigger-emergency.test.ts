@@ -107,6 +107,9 @@ describe('allClearEmergency', () => {
       error: 'All clear failed: 409',
       code: 'ALERT_CHANGED',
       currentAlertType: 'LOCKDOWN',
+      // Review round 2 — the alert that is live now, so the next fresh CLEAR
+      // can name it even when the list cannot be re-read.
+      currentAlert: { alertId: 'ovr_lockdown', scopeId: 't1', type: 'LOCKDOWN', isDrill: false },
     });
     expect(sent().url).toMatch(/\/emergency\/ovr_hold\/all-clear$/);
   });
@@ -144,5 +147,48 @@ describe('allClearEmergency', () => {
       code: 'ALERT_CHANGED',
       currentAlertType: 'EVACUATE',
     });
+  });
+
+  // EMG-01 review round 2.
+  it('passes the live alert’s id through from the flat wire fields too, and only on ALERT_CHANGED', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: true, code: 'ALERT_CHANGED', currentAlertId: 'ovr_evac', currentAlertType: 'EVACUATE', currentAlertIsDrill: true }),
+    });
+    await expect(allClearEmergency({ schoolId: 't1', token: 'tok', overrideId: 'ovr_hold' })).resolves.toMatchObject({
+      currentAlert: { alertId: 'ovr_evac', scopeId: null, type: 'EVACUATE', isDrill: true },
+    });
+    // Another 409 (a drill refused over a live alert, say) carries no aim.
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: true, code: 'LIVE_ALERT_ACTIVE', currentAlertId: 'ovr_x' }),
+    });
+    const other = await allClearEmergency({ schoolId: 't1', token: 'tok', overrideId: 'ovr_hold' });
+    expect(other).not.toHaveProperty('currentAlert');
+    // An ALERT_CHANGED with no id (an older API) carries no aim either.
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: true, code: 'ALERT_CHANGED', currentAlertType: 'LOCKDOWN' }),
+    });
+    expect(await allClearEmergency({ schoolId: 't1', token: 'tok', overrideId: 'ovr_hold' })).not.toHaveProperty('currentAlert');
+  });
+
+  it('a district all-clear reports the locations it left in their own alert; any other success body is plain success', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({ success: true, affectedTenantIds: ['d1', 's2'], keptTenantIds: ['s1'] }),
+    });
+    await expect(allClearEmergency({ schoolId: 'd1', token: 'tok', overrideId: 'ovr_w' })).resolves.toEqual({
+      success: true,
+      keptTenantIds: ['s1'],
+    });
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ success: true, keptTenantIds: [] }) });
+    await expect(allClearEmergency({ schoolId: 'd1', token: 'tok', overrideId: 'ovr_w' })).resolves.toEqual({ success: true });
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 201, json: async () => { throw new Error('no body'); } });
+    await expect(allClearEmergency({ schoolId: 'd1', token: 'tok', overrideId: 'ovr_w' })).resolves.toEqual({ success: true });
   });
 });

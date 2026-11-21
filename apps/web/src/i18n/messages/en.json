@@ -117,6 +117,7 @@
       "clearFailed": "All-clear was NOT sent — the alert is still on screens. {error}",
       "alertChanged": "Nothing was cleared: a newer alert is now active ({type}). Review it above, then type CLEAR again to end it.",
       "selectionChanged": "The alert you picked is no longer listed, so nothing was cleared. Check the list above, then type CLEAR again.",
+      "keptOwnAlert": "The all-clear was sent. {count, plural, one {# location keeps its own alert, which this all-clear did not end and which is still on screen. To end it, open Emergency Trigger, where it is listed.} other {# locations keep their own alerts, which this all-clear did not end and which are still on screen. To end one, open Emergency Trigger, where each is listed.}}",
       "noAuthority": "Only someone with emergency authority can send the all-clear.",
       "sendAnother": "Send another alert"
     },

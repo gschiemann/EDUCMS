@@ -455,4 +455,58 @@ describe('6 — ending an alert that was replaced meanwhile', () => {
       allClearEmergency.mockReset();
     }
   });
+
+  // Review round 2 — the re-read after the 409 FAILS. The sheet must not keep
+  // offering the replaced alert (every hold would get another 409): it shows
+  // the alert the 409 named, and the next hold ends that one by its id.
+  it('a 409 whose list re-read fails does not loop: the next hold ends the alert the 409 named', async () => {
+    const defaultActive = fetchActiveAlerts.getMockImplementation();
+    let listDown = false;
+    (fetchActiveAlerts as jest.Mock).mockImplementation(async () => {
+      if (listDown) throw new Error('/emergency/active failed: 503');
+      return [tenantAlert('ovr_hold', 'HOLD')];
+    });
+    allClearEmergency
+      .mockImplementationOnce(async () => {
+        listDown = true;
+        return {
+          success: false,
+          error: 'All clear failed: 409',
+          code: 'ALERT_CHANGED',
+          currentAlertType: 'LOCKDOWN',
+          currentAlert: { alertId: 'ovr_lockdown', scopeId: 't1', type: 'LOCKDOWN', isDrill: false },
+        };
+      })
+      .mockImplementation(async () => ({ success: true }));
+    try {
+      act(() => {
+        useUIStore.setState({ token: 'tab.jwt', user: TEACHER as never });
+      });
+      render(<MobilePanicPage />);
+      await flush();
+      fireEvent.click(screen.getByTestId('panic-active-alerts'));
+      const holdToEnd = async () => {
+        fireEvent.keyDown(screen.getByTestId('panic-hold-to-end'), { key: ' ' });
+        await act(async () => {
+          jest.advanceTimersByTime(3000);
+        });
+        await flush(10);
+      };
+      await holdToEnd();
+      expect(allClearEmergency.mock.calls[0][0]).toMatchObject({ overrideId: 'ovr_hold', scopeType: 'tenant', scopeId: 't1' });
+      const sheet = screen.getByTestId('panic-alerts-sheet');
+      expect(sheet).toHaveTextContent('A newer alert is now active (Lockdown), so nothing was cleared.');
+      // The re-read failed, but the sheet now offers the Lockdown, not the Hold.
+      expect(sheet).toHaveTextContent(/Lockdown/);
+      expect(screen.getByTestId('panic-active-alerts')).toHaveTextContent(/Lockdown/);
+
+      await holdToEnd();
+      expect(allClearEmergency).toHaveBeenCalledTimes(2);
+      expect(allClearEmergency.mock.calls[1][0]).toMatchObject({ overrideId: 'ovr_lockdown', scopeType: 'tenant', scopeId: 't1' });
+      expect(allClearEmergency.mock.calls[1][0]).not.toHaveProperty('isDrill');
+    } finally {
+      if (defaultActive) fetchActiveAlerts.mockImplementation(defaultActive);
+      allClearEmergency.mockReset();
+    }
+  });
 });

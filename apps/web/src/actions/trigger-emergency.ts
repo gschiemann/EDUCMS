@@ -126,6 +126,20 @@ export interface AllClearEmergencyResult {
   code?: string;
   /** With `ALERT_CHANGED`: the incident type of the alert that is active now ("LOCKDOWN"). */
   currentAlertType?: string | null;
+  /**
+   * With `ALERT_CHANGED` (review round 2): the alert that is active now, as
+   * the server described it — its id, the tenant it is on and whether it is
+   * a drill. The surfaces use it to aim the operator's NEXT, freshly
+   * confirmed all-clear at that alert, so a list that cannot be re-read does
+   * not resend the replaced id forever.
+   */
+  currentAlert?: { alertId: string; scopeId: string | null; type: string | null; isDrill: boolean } | null;
+  /**
+   * On success (review round 2): the child locations a district all-clear
+   * left alone because each holds its own, different alert. They are still
+   * in alert on their screens.
+   */
+  keptTenantIds?: string[];
 }
 
 export async function allClearEmergency(payload: {
@@ -183,17 +197,31 @@ export async function allClearEmergency(payload: {
     // its "All clear failed: <status>" head exactly as before.
     let code: string | undefined;
     let currentAlertType: string | null | undefined;
+    let currentAlert: AllClearEmergencyResult['currentAlert'];
+    const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
     try {
       const body = await res.json();
       if (body && typeof body.code === 'string') code = body.code;
       // The API's method-scoped filter sends the newer alert both nested
       // (`currentAlert.type`) and flat (`currentAlertType`); read either.
-      if (body && body.currentAlert && typeof body.currentAlert === 'object') {
-        const ty = (body.currentAlert as { type?: unknown }).type;
-        currentAlertType = typeof ty === 'string' ? ty : null;
+      const nested =
+        body && body.currentAlert && typeof body.currentAlert === 'object'
+          ? (body.currentAlert as { alertId?: unknown; scopeId?: unknown; type?: unknown; isDrill?: unknown })
+          : null;
+      if (nested) currentAlertType = str(nested.type);
+      if (!currentAlertType && body && str(body.currentAlertType)) {
+        currentAlertType = str(body.currentAlertType);
       }
-      if (!currentAlertType && body && typeof body.currentAlertType === 'string' && body.currentAlertType) {
-        currentAlertType = body.currentAlertType;
+      // Review round 2 — the newer alert's own id, nested or flat. Only a 409
+      // ALERT_CHANGED carries it; without an id there is nothing to aim at.
+      const alertId = str(nested?.alertId) ?? str(body?.currentAlertId);
+      if (code === 'ALERT_CHANGED' && alertId) {
+        currentAlert = {
+          alertId,
+          scopeId: str(nested?.scopeId),
+          type: currentAlertType ?? null,
+          isDrill: nested ? nested.isDrill === true : body?.currentAlertIsDrill === true,
+        };
       }
     } catch {
       /* no JSON body */
@@ -203,9 +231,22 @@ export async function allClearEmergency(payload: {
       error: `All clear failed: ${res.status}`,
       ...(code ? { code } : {}),
       ...(currentAlertType !== undefined ? { currentAlertType } : {}),
+      ...(currentAlert ? { currentAlert } : {}),
     };
   }
 
   // See above — same dead `revalidatePath` removed (audit P2 #4).
-  return { success: true };
+  // Review round 2 — a district all-clear reports the child locations it
+  // left alone (each holds its own, different alert), so the dashboard can
+  // say so before its lock comes down. Any other body is plain success.
+  let keptTenantIds: string[] = [];
+  try {
+    const body = await res.json();
+    if (body && Array.isArray(body.keptTenantIds)) {
+      keptTenantIds = body.keptTenantIds.filter((v: unknown): v is string => typeof v === 'string' && v.length > 0);
+    }
+  } catch {
+    /* no JSON body */
+  }
+  return keptTenantIds.length > 0 ? { success: true, keptTenantIds } : { success: true };
 }

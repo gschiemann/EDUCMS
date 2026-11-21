@@ -75,6 +75,16 @@ export interface TenantAlertState {
   emergencyTriggeredAt?: Date | string | null;
 }
 
+/**
+ * Active = anything but `'INACTIVE'` (review round 2, on the nit to use
+ * `isEmergencyStatusActive`): deliberately the same test as the controller's
+ * own `isActive` and as `tenantClearGuard`'s `{ emergencyStatus: 'INACTIVE' }`.
+ * The shared predicate also reads `NORMAL` / `NONE` / `CLEARED` / `''` as calm.
+ * Nothing writes those, but if a row ever held one with another alert's id,
+ * this read would call it calm while the commit's guard does not, and the
+ * request would end in P2025 rethrown as a 500 after the dispatch instead of
+ * a 409 before it. The pre-read and the guard must agree, so they share this.
+ */
 export function isTenantAlertActive(
   t: TenantAlertState | null | undefined,
 ): boolean {
