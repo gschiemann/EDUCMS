@@ -39,8 +39,8 @@
  *              or an install-step ERROR from an older player).
  *   EXPIRED    no check of this screen was handed the update within 24 h of
  *              the push (offline, outside its update window, held by a staged
- *              rollout, …), so the operator's intent is stale — no surprise
- *              install days later.
+ *              rollout, held while an alert was on its glass, …), so the
+ *              operator's intent is stale — no surprise install days later.
  *
  * WHY A CHECK THAT ARRIVES MID-DOWNLOAD IS OFFERED AGAIN. The Player enqueues
  * its one-shot check with WorkManager `ExistingWorkPolicy.REPLACE`
@@ -301,9 +301,12 @@ export function holdSentence(
         return `Nobody selected Install for ${target} within 30 minutes of Android's Install dialog, so the screen ` +
           'abandoned the request and nothing will install later. Send the update again to ask again.';
       }
+      // FLT-04 (2026-11-21): an alert on the screen's glass also withholds
+      // every install offer (ota-emergency-hold.ts), so a district alert or an
+      // uncleared drill longer than 24 h ends a push here too.
       return 'The update was not handed to this screen within 24 hours of the push (it may have been offline, ' +
-        'outside its update window, or held by a staged rollout), so the push was stopped and nothing will ' +
-        'install later. Send the update again if it is still needed.';
+        'outside its update window, held by a staged rollout, or held while an alert was on its screen), so ' +
+        'the push was stopped and nothing will install later. Send the update again if it is still needed.';
   }
 }
 
