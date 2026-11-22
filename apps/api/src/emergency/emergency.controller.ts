@@ -179,8 +179,10 @@ import {
   isRecordNotFound,
   isTenantAlertActive,
   namedAlertId,
+  onePerKeptAlert,
   tenantAlertChanged,
   tenantClearGuard,
+  type KeptTenantAlert,
   type TenantAlertState,
 } from './tenant-alert-identity';
 // EMG-01 review round 1 — the 409's facts survive the global filter.
@@ -190,12 +192,21 @@ import {
 } from './tenant-alert-changed.filter';
 import { withTimeout } from '../health/with-timeout';
 
-/** A school a tenant all-clear left alone because it holds its own alert (EMG-01 review round 1). */
-interface KeptTenantAlert {
-  tenantId: string;
-  alertId: string;
-  type: string | null;
-  isDrill: boolean;
+/** A kept location as read, with its parent (review round 3: one entry per alert). */
+type KeptTenantRow = KeptTenantAlert & { parentId: string | null };
+
+/** The fields of the caller `keptAlertsListedFor` reads (review round 3). */
+interface CallerOfKeptList {
+  role?: string;
+  tenantId?: string;
+  schoolId?: string;
+  districtId?: string;
+}
+
+/** A tenant row's parent id, or null. */
+function parentIdOf(row: unknown): string | null {
+  const v = (row as { parentId?: unknown } | null)?.parentId;
+  return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
 @Controller('api/v1/emergency')
@@ -1893,7 +1904,9 @@ export class EmergencyController {
 
     // EMG-01 review round 1 — schools below the root that hold their OWN
     // alert (see the tenant branch). Empty unless the request names an id.
-    let keptTenants: KeptTenantAlert[] = [];
+    // Every kept location, one per row (the audit trail and the exclusion
+    // from the writes); the response reports them one per ALERT (round 3).
+    let keptTenants: KeptTenantRow[] = [];
 
     if (scopeType === 'tenant') {
       const descendantTenantIds = (await descendantsRead) ?? [];
@@ -2056,6 +2069,27 @@ export class EmergencyController {
               where: { id: scopeId, ...rootGuard } as any,
               data: clearedState,
             }),
+        // EMG-01 review round 3 — the DRILL root's compare-and-set. The drill
+        // write above is an updateMany, which matches no row (and throws
+        // nothing) when a newer alert replaced the named drill between the
+        // read and this commit — so the batch used to commit its CLEAR rows
+        // and report success while ending nothing. This statement writes
+        // nothing (`data: {}` is a guarded read of the row) and matches every
+        // state the drill write may leave or skip — the named alert, no id,
+        // INACTIVE — so an End Drill on an already-calm tenant, or on one a
+        // live alert with the same or no id replaced, behaves exactly as
+        // before. Only a root that now holds a DIFFERENT identified alert
+        // makes it throw P2025, which rolls the whole batch back and takes
+        // the same 409 path as the live write below. Proved against Postgres
+        // with Prisma 5.22 (review round 3 notes). No id named = not added.
+        ...(clearingDrill && expectedAlertId
+          ? [
+              this.prisma.client.tenant.update({
+                where: { id: scopeId, ...rootGuard } as { id: string },
+                data: {},
+              }),
+            ]
+          : []),
         // Descendants clear in ONE statement — the data is identical for
         // every school, unlike the trigger path where each resolves its own
         // playlists. Empty `in` list is a no-op, so the leaf-school path
@@ -2101,7 +2135,17 @@ export class EmergencyController {
                 // the schools left alone because they hold their own alert.
                 expectedAlertId,
                 ...(identityOff ? { alertIdentityDisabled: true } : {}),
-                ...(keptTenants.length > 0 ? { keptTenants } : {}),
+                // Every kept location, one per row, as read.
+                ...(keptTenants.length > 0
+                  ? {
+                      keptTenants: keptTenants.map((k) => ({
+                        tenantId: k.tenantId,
+                        alertId: k.alertId,
+                        type: k.type,
+                        isDrill: k.isDrill,
+                      })),
+                    }
+                  : {}),
               }),
             },
           }),
@@ -2113,8 +2157,9 @@ export class EmergencyController {
         // EMG-01 — the root compare-and-set matched no row: a newer alert was
         // raised between the read above and this commit, and the batch rolled
         // back. Anything else (and a root that simply does not exist) is the
-        // error it always was.
-        if (!expectedAlertId || clearingDrill || !isRecordNotFound(e)) throw e;
+        // error it always was. Review round 3 — the drill path too (its guard
+        // statement above), so an End Drill that loses that race is the 409.
+        if (!expectedAlertId || !isRecordNotFound(e)) throw e;
         // Every affected tenant as it is now (the batch rolled back, so each
         // row still holds what it held before this all-clear).
         let rows: Array<TenantAlertState & { id: string }> = [];
@@ -2333,22 +2378,72 @@ export class EmergencyController {
       tenantIds: scopeType === 'tenant' ? affectedTenantIds : [ownedTenantId],
     });
 
+    // EMG-01 review round 3 — the kept alerts, ONE PER ALERT (a school's own
+    // alert is also on its child locations), the way GET /emergency/active
+    // lists them; and whether that list shows them to THIS caller.
+    const keptAlerts = onePerKeptAlert(keptTenants);
+    const keptListedForCaller =
+      keptAlerts.length > 0
+        ? await this.keptAlertsListedFor(
+            (req as { user?: CallerOfKeptList } | undefined)?.user,
+            scopeId,
+          )
+        : false;
+
     return {
       success: true,
       isDrill: clearingDrill,
       affectedTenantIds,
       affectedTenantCount: affectedTenantIds.length,
-      // EMG-01 review round 1 — schools below the scope that hold their own,
-      // different alert and were NOT cleared (empty for an id-less request).
-      keptTenantIds: keptTenants.map((k) => k.tenantId),
+      // EMG-01 review round 1 — locations below the scope that hold their
+      // own, different alert and were NOT cleared (empty for an id-less
+      // request). Review round 3: one entry per kept alert, at the topmost
+      // location holding it — the entry GET /emergency/active lists.
+      keptTenantIds: keptAlerts.map((k) => k.tenantId),
+      // Review round 3 — true only when the caller's own GET
+      // /emergency/active lists those alerts (a district or super admin
+      // whose own tenant is the scope or above it). False otherwise: a
+      // school admin's list shows only their own tenant.
+      keptListedForCaller,
       message:
         (affectedTenantIds.length > 1
           ? `All clear dispatched to ${channel} and ${affectedTenantIds.length - 1} child location(s) for ${overrideId}`
           : `All clear dispatched to ${channel} for ${overrideId}`) +
-        (keptTenants.length > 0
-          ? `; ${keptTenants.length} child location(s) kept their own active alert`
+        (keptAlerts.length > 0
+          ? `; ${keptAlerts.length} child location(s) kept their own active alert`
           : ''),
     };
+  }
+
+  /**
+   * EMG-01 review round 3 — does this caller's GET /emergency/active list
+   * the alerts a tenant all-clear on `scopeId` kept? It lists the caller's
+   * own tenant and, for a district or super admin only, every tenant below
+   * it (`mayTargetDescendants`). A district admin's scope is their tenant or
+   * below it (`resolveScopeTenant` proved that); a super admin may act on any
+   * tenant, so theirs is checked. Fails towards "not listed": the words that
+   * then reach the operator claim less.
+   */
+  private async keptAlertsListedFor(
+    user: CallerOfKeptList | undefined,
+    scopeId: string,
+  ): Promise<boolean> {
+    if (!this.mayTargetDescendants(user)) return false;
+    const callerTenantId = this.callerTenantIdOf(user);
+    if (!callerTenantId) return false;
+    if (scopeId === callerTenantId) return true;
+    if (user?.role === AppRole.DISTRICT_ADMIN) return true;
+    try {
+      return await isDescendantTenant(
+        this.prisma.client.tenant as unknown as Parameters<
+          typeof isDescendantTenant
+        >[0],
+        scopeId,
+        callerTenantId,
+      );
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -2365,12 +2460,14 @@ export class EmergencyController {
   private async descendantsHoldingAnotherAlert(
     descendantTenantIds: string[],
     expectedAlertId: string,
-  ): Promise<KeptTenantAlert[]> {
+  ): Promise<KeptTenantRow[]> {
     try {
       const rows = (await this.prisma.client.tenant.findMany({
         where: { id: { in: descendantTenantIds } },
         select: {
           id: true,
+          // Review round 3 — so the response can report one entry per alert.
+          parentId: true,
           emergencyStatus: true,
           emergencyIsDrill: true,
           emergencyType: true,
@@ -2383,6 +2480,7 @@ export class EmergencyController {
         )
         .map((r) => ({
           tenantId: r.id as string,
+          parentId: parentIdOf(r),
           alertId: r.emergencyAlertId as string,
           type: (r.emergencyType as string | null) ?? null,
           isDrill: r.emergencyIsDrill === true,

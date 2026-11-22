@@ -309,13 +309,65 @@ describe('EmergencyOverlay — review round 2', () => {
 
   it('a district clear that left locations in their own alert says so, in a toast that outlives the overlay', async () => {
     fetchActiveAlerts.mockResolvedValueOnce([LOCKDOWN]).mockResolvedValue([]);
-    allClearEmergency.mockResolvedValue({ success: true, keptTenantIds: ['s1', 's2'] });
+    allClearEmergency.mockResolvedValue({ success: true, keptTenantIds: ['s1', 's2'], keptListedForCaller: true });
     await renderOverlay();
     await screen.findByTestId('emergency-active-alerts');
     typeClear();
     await terminate();
     expect(toastWarning).toHaveBeenCalledTimes(1);
     expect(String(toastWarning.mock.calls[0][0])).toMatch(/2 locations keep their own alerts/);
+    expect(String(toastWarning.mock.calls[0][0])).toMatch(/open Emergency Trigger, where each is listed/);
+  });
+
+  // Review round 3 — the count is of ALERTS (the server sends one entry per
+  // kept alert), and "where it is listed" is said only to an operator whose
+  // own list shows it.
+  it('one kept alert reads "1 location", and says where it is listed when the server says this list shows it', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([LOCKDOWN]).mockResolvedValue([]);
+    allClearEmergency.mockResolvedValue({ success: true, keptTenantIds: ['school', 'school'], keptListedForCaller: true });
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    typeClear();
+    await terminate();
+    const text = String(toastWarning.mock.calls[0][0]);
+    expect(text).toMatch(/1 location keeps its own alert/);
+    expect(text).toMatch(/open Emergency Trigger, where it is listed/);
+  });
+
+  it('a school admin whose list does not show the kept alert is told who can end it, never that it is listed', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([LOCKDOWN]).mockResolvedValue([]);
+    allClearEmergency.mockResolvedValue({ success: true, keptTenantIds: ['annex'], keptListedForCaller: false });
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    typeClear();
+    await terminate();
+    expect(toastWarning).toHaveBeenCalledTimes(1);
+    const text = String(toastWarning.mock.calls[0][0]);
+    expect(text).toMatch(/1 location keeps its own alert/);
+    expect(text).toMatch(/It is not in your alert list: that location’s own operators or a district administrator must end it\./);
+    expect(text).not.toMatch(/where it is listed/);
+  });
+
+  it('a reply without the flag (an older server) gets the wording that claims less', async () => {
+    fetchActiveAlerts.mockResolvedValueOnce([LOCKDOWN]).mockResolvedValue([]);
+    allClearEmergency.mockResolvedValue({ success: true, keptTenantIds: ['s1', 's2'] });
+    await renderOverlay();
+    await screen.findByTestId('emergency-active-alerts');
+    typeClear();
+    await terminate();
+    const text = String(toastWarning.mock.calls[0][0]);
+    expect(text).toMatch(/2 locations keep their own alerts/);
+    expect(text).toMatch(/They are not in your alert list/);
+  });
+
+  it('two tenant-wide alerts in the list are each named by their location; one alone reads as before', async () => {
+    const SCHOOL_OWN = { ...LOCKDOWN, alertId: 'ovr_school_lockdown', scopeId: 'school', tenantId: 'school', targetName: 'Washington Elementary', tenantName: 'Washington Elementary', screenCount: 6 };
+    fetchActiveAlerts.mockResolvedValue([{ ...LOCKDOWN, targetName: 'Lincoln District' }, SCHOOL_OWN]);
+    await renderOverlay();
+    const list = await screen.findByTestId('emergency-active-alerts');
+    expect(list).toHaveTextContent('Lockdown — Lincoln District, 24 screens');
+    expect(list).toHaveTextContent('Lockdown — Washington Elementary, 6 screens');
+    expect(list).not.toHaveTextContent('all 24 screens');
   });
 
   it('a clear that kept nobody shows no toast', async () => {

@@ -49,6 +49,7 @@ import {
   allScreensTarget,
   isAllScreens,
   isSameAlert,
+  listsSeveralTenantAlerts,
   targetChipLabel,
   targetSummary,
   typeIdOf,
@@ -235,7 +236,10 @@ export default function MobilePanicPage() {
     const id = typeIdOf(apiType);
     return id ? typeName(id) : (apiType || t('emergency.active'));
   };
-  const alertLabel = (a: ActiveAlert) => activeAlertLabel(t, alertTypeName(a.type), a);
+  // EMG-01 review round 3 — with two tenant-wide alerts listed (the
+  // district's and a school's own), each is named by its location.
+  const nameLocation = listsSeveralTenantAlerts(activeAlerts ?? []);
+  const alertLabel = (a: ActiveAlert) => activeAlertLabel(t, alertTypeName(a.type), a, { nameLocation });
 
   // A11y audit (2026-05-25): update the live region so a screen reader
   // follows the trigger lifecycle.
@@ -348,21 +352,26 @@ export default function MobilePanicPage() {
     // A panic phone can raise, never release: ending an alert needs a full sign-in.
     if (credential?.kind === 'device') return { ok: false, error: t('emergency.panic.endNeedsSignIn') };
     if (!verifiedToken || !verifiedUser?.tenantId) return { ok: false, error: t('emergency.panic.errNoToken') };
-    const named =
-      alert.alertId ??
-      (alert.scopeType === 'tenant' && alert.scopeId === verifiedUser.tenantId ? tenantOverrideIdRef.current : undefined);
     const sup = supersededRef.current;
-    const aimed =
-      sup && alert.scopeType === 'tenant' && alert.scopeId === sup.tenantId && named === sup.replacedId ? sup : null;
-    const clearWith = (token: string, tenantId: string) =>
-      allClearEmergency({
+    // The id this entry names for a session of tenant `tenantId`, before any
+    // aim. Review round 3 — computed from the SAME tenant the request is sent
+    // under: after a 401 the resend may run under a restored session of
+    // another tenant, and the aim and the 409 bookkeeping below must follow
+    // the id that request actually named, never the first session's.
+    const namedFor = (tenantId: string) =>
+      alert.alertId ??
+      (alert.scopeType === 'tenant' && alert.scopeId === tenantId ? tenantOverrideIdRef.current : undefined);
+    /** What the request whose answer is in `result` named, before any aim. */
+    let named: string | undefined;
+    const clearWith = (token: string, tenantId: string) => {
+      named = namedFor(tenantId);
+      const aimed =
+        sup && alert.scopeType === 'tenant' && alert.scopeId === sup.tenantId && named === sup.replacedId ? sup : null;
+      return allClearEmergency({
         // The tenant-wide entry's scopeId IS the tenant to clear.
         schoolId: alert.scopeType === 'tenant' ? alert.scopeId : tenantId,
         token,
-        overrideId: aimed
-          ? aimed.alertId
-          : alert.alertId ??
-            (alert.scopeType === 'tenant' && alert.scopeId === tenantId ? tenantOverrideIdRef.current : undefined),
+        overrideId: aimed ? aimed.alertId : named,
         // Its own scope — or, if that target was deleted mid-alert, the scope
         // the server says still reaches it.
         ...allClearScopeOf(alert),
@@ -370,6 +379,7 @@ export default function MobilePanicPage() {
         // replaced it between this list's reads.
         ...((aimed ? aimed.isDrill : alert.isDrill === true) ? { isDrill: true } : {}),
       });
+    };
     let result = await clearWith(verifiedToken, verifiedUser.tenantId);
     // 2026-11-14 — a 401 is refused before the server does anything, so one
     // remembered-session restore and one resend can never clear twice.

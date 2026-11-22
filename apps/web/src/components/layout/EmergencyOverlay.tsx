@@ -11,7 +11,14 @@ import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useTenantStatus } from '@/hooks/use-api';
 import { canSendAllClear, hasPanicAuthority } from '@/lib/emergency-capability';
 import { fetchActiveAlerts } from '@/lib/emergency-api';
-import { activeAlertLabel, allAlertsAreDrills, allClearScopeOf, typeIdOf, type ActiveAlert } from '@/lib/emergency-target';
+import {
+  activeAlertLabel,
+  allAlertsAreDrills,
+  allClearScopeOf,
+  listsSeveralTenantAlerts,
+  typeIdOf,
+  type ActiveAlert,
+} from '@/lib/emergency-target';
 import { EmergencyTriggerModal } from '@/components/emergency/EmergencyTriggerModal';
 
 /**
@@ -116,7 +123,10 @@ export function EmergencyOverlay() {
     const id = typeIdOf(apiType);
     return id ? t(`emergency.types.${id}.name`) : (apiType || t('emergency.active'));
   };
-  const labelOf = (a: ActiveAlert) => activeAlertLabel(t, typeName(a.type), a);
+  // Review round 3 — with two tenant-wide alerts listed (the district's and a
+  // school's own), each is named by its location, or they read the same.
+  const nameLocation = listsSeveralTenantAlerts(alerts);
+  const labelOf = (a: ActiveAlert) => activeAlertLabel(t, typeName(a.type), a, { nameLocation });
 
   // ── THE ALERT CHANGED (EMG-01, 2026-11-21) ───────────────────────────
   // The tenant-wide alert now carries an id, and the server refuses (409
@@ -319,9 +329,22 @@ export function EmergencyOverlay() {
         // their own alert says so. The dashboard lock follows the district's
         // own row and can come down a moment from now, taking this overlay
         // with it, so the note is a toast that outlives it.
-        const keptCount = result.keptTenantIds?.length ?? 0;
-        if (keptCount > 0) {
-          toast.warning(t('emergency.overlay.keptOwnAlert', { count: keptCount }), { duration: 20_000 });
+        // Review round 3 — it counts ALERTS (the server sends one entry per
+        // kept alert, the entry the alert list shows), and it says "open
+        // Emergency Trigger, where it is listed" only when the server says
+        // this operator's list shows it. A school admin's list shows only
+        // their own tenant, so they are told who can end it instead.
+        const keptAlertCount = new Set(result.keptTenantIds ?? []).size;
+        if (keptAlertCount > 0) {
+          toast.warning(
+            t(
+              result.keptListedForCaller === true
+                ? 'emergency.overlay.keptOwnAlert'
+                : 'emergency.overlay.keptOwnAlertNotListed',
+              { count: keptAlertCount },
+            ),
+            { duration: 20_000 },
+          );
         }
         void queryClient.invalidateQueries({ queryKey: ['tenant-status'] });
         if (!mayClear || !token) {

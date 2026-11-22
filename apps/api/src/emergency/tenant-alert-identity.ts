@@ -126,6 +126,32 @@ export function tenantClearGuard(
   };
 }
 
+/** A location a tenant all-clear left alone because it holds its own alert (EMG-01 review round 1). */
+export interface KeptTenantAlert {
+  tenantId: string;
+  alertId: string;
+  type: string | null;
+  isDrill: boolean;
+}
+
+/**
+ * EMG-01 review round 3 — the kept locations, ONE PER ALERT. A school's own
+ * alert is written on its child locations too, so the kept list holds that
+ * one alert once per location. A kept location whose parent is also kept and
+ * holds the same id is that parent's entry: the rule `GET /emergency/active`
+ * lists by (`coveredByParent`), so the number of alerts the operator is told
+ * were kept is the number of entries that list shows. Order is kept.
+ */
+export function onePerKeptAlert<
+  T extends KeptTenantAlert & { parentId?: string | null },
+>(kept: readonly T[]): T[] {
+  const byTenant = new Map(kept.map((k) => [k.tenantId, k]));
+  return kept.filter((k) => {
+    const parent = k.parentId ? byTenant.get(k.parentId) : undefined;
+    return !(parent && parent.alertId === k.alertId);
+  });
+}
+
 /** The current tenant-wide alert, as the 409 body and the audit row describe it. */
 export function describeTenantAlert(
   scopeId: string,

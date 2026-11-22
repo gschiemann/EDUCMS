@@ -18,6 +18,7 @@ import {
   groupTarget,
   isAllScreens,
   isSameAlert,
+  listsSeveralTenantAlerts,
   screenTarget,
   targetChipLabel,
   targetSummary,
@@ -135,6 +136,27 @@ describe('the confirmation states target and count in plain words', () => {
     expect(activeAlertLabel(t, 'Lockdown', all)).toBe('Lockdown — all 24 screens');
     expect(activeAlertLabel(t, 'Lockdown', gym)).toBe('Lockdown — Gym group, 6 screens');
     expect(activeAlertLabel(t, 'Medical', lobby)).toBe('Medical — Lobby, 1 screen');
+  });
+
+  // EMG-01 review round 3 — a district admin's list can hold the district's
+  // tenant-wide alert and a school's own; each is then named by its location.
+  it('names a tenant-wide alert by its location only when asked (two are listed)', () => {
+    const base = { tenantId: 't1', tenantName: null, severity: 'CRITICAL', showingCount: null, triggeredAt: null } as const;
+    const district: ActiveAlert = { ...base, alertId: 'w', scopeType: 'tenant', scopeId: 'd1', targetName: 'Lincoln District', type: 'WEATHER', screenCount: 24 };
+    const school: ActiveAlert = { ...base, alertId: 'l', scopeType: 'tenant', scopeId: 's1', targetName: 'Washington Elementary', type: 'LOCKDOWN', screenCount: 6 };
+    const unnamed: ActiveAlert = { ...school, targetName: null };
+    const gym: ActiveAlert = { ...base, alertId: 'g', scopeType: 'group', scopeId: 'g-gym', targetName: 'Gym', type: 'LOCKDOWN', screenCount: 6 };
+    expect(activeAlertLabel(t, 'Lockdown', school, { nameLocation: true })).toBe('Lockdown — Washington Elementary, 6 screens');
+    expect(activeAlertLabel(t, 'Lockdown', school, { nameLocation: false })).toBe('Lockdown — all 6 screens');
+    // No name to give: the label it always had.
+    expect(activeAlertLabel(t, 'Lockdown', unnamed, { nameLocation: true })).toBe('Lockdown — all 6 screens');
+    // Group / one-screen labels never change.
+    expect(activeAlertLabel(t, 'Lockdown', gym, { nameLocation: true })).toBe('Lockdown — Gym group, 6 screens');
+
+    expect(listsSeveralTenantAlerts([district, school])).toBe(true);
+    expect(listsSeveralTenantAlerts([district, gym])).toBe(false);
+    expect(listsSeveralTenantAlerts([district])).toBe(false);
+    expect(listsSeveralTenantAlerts([])).toBe(false);
   });
 });
 

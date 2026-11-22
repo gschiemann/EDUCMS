@@ -185,10 +185,93 @@ describe('allClearEmergency', () => {
     await expect(allClearEmergency({ schoolId: 'd1', token: 'tok', overrideId: 'ovr_w' })).resolves.toEqual({
       success: true,
       keptTenantIds: ['s1'],
+      // Review round 3 — a body without the flag reads as "not listed".
+      keptListedForCaller: false,
     });
     fetchMock.mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ success: true, keptTenantIds: [] }) });
     await expect(allClearEmergency({ schoolId: 'd1', token: 'tok', overrideId: 'ovr_w' })).resolves.toEqual({ success: true });
     fetchMock.mockResolvedValueOnce({ ok: true, status: 201, json: async () => { throw new Error('no body'); } });
     await expect(allClearEmergency({ schoolId: 'd1', token: 'tok', overrideId: 'ovr_w' })).resolves.toEqual({ success: true });
+  });
+
+  // EMG-01 review round 3 — one entry per kept alert, and whether the
+  // caller's own alert list shows them.
+  it('passes keptListedForCaller through, and counts each kept location once', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({ success: true, keptTenantIds: ['s1', 's1', 's2'], keptListedForCaller: true }),
+    });
+    await expect(allClearEmergency({ schoolId: 'd1', token: 'tok', overrideId: 'ovr_w' })).resolves.toEqual({
+      success: true,
+      keptTenantIds: ['s1', 's2'],
+      keptListedForCaller: true,
+    });
+    // Anything but `true` is "not listed" — the copy that claims less.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({ success: true, keptTenantIds: ['annex'], keptListedForCaller: 'yes' }),
+    });
+    await expect(allClearEmergency({ schoolId: 's1', token: 'tok', overrideId: 'ovr_h' })).resolves.toMatchObject({
+      keptListedForCaller: false,
+    });
+  });
+});
+
+// EMG-01 review round 3 — `fetchWithTimeout` bounds a request until its
+// headers arrive, then clears its timer. A BODY that stalls after that must
+// never hold the operator: the status is the verdict, and a body that does
+// not arrive within 3 s reads as "no body".
+describe('a response body that stalls is bounded (review round 3)', () => {
+  const stalledBody = (status: number) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => new Promise<never>(() => undefined),
+  });
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  /** Settle `p` while advancing fake time by `ms`; returns what it resolved with, or 'pending'. */
+  const settleWithin = async <T,>(p: Promise<T>, ms: number): Promise<T | 'pending'> => {
+    let out: T | 'pending' = 'pending';
+    void p.then((v) => {
+      out = v;
+    });
+    await jest.advanceTimersByTimeAsync(ms);
+    return out;
+  };
+
+  it('an all-clear whose 2xx body stalls is a success, never left pending', async () => {
+    fetchMock.mockResolvedValueOnce(stalledBody(201));
+    const p = allClearEmergency({ schoolId: 't1', token: 'tok', overrideId: 'ovr_1' });
+    // Not settled a moment before the budget…
+    expect(await settleWithin(p, 2_900)).toBe('pending');
+    // …and settled, as plain success, once it has passed.
+    expect(await settleWithin(p, 200)).toEqual({ success: true });
+  });
+
+  it('a refused all-clear whose body stalls is still the refusal, with its status', async () => {
+    fetchMock.mockResolvedValueOnce(stalledBody(409));
+    const p = allClearEmergency({ schoolId: 't1', token: 'tok', overrideId: 'ovr_1' });
+    expect(await settleWithin(p, 3_100)).toEqual({ success: false, error: 'All clear failed: 409' });
+  });
+
+  it('a trigger whose 2xx body stalls is a success without an overrideId (its all-clear then clears as before alert identity)', async () => {
+    fetchMock.mockResolvedValueOnce(stalledBody(201));
+    const p = broadcastEmergency({ schoolId: 't1', type: 'lockdown', triggeredBy: 'u1', token: 'tok' });
+    expect(await settleWithin(p, 3_100)).toEqual({ success: true, overrideId: undefined });
+  });
+
+  it('a refused trigger whose body stalls is still the refusal, with its status', async () => {
+    fetchMock.mockResolvedValueOnce(stalledBody(503));
+    const p = broadcastEmergency({ schoolId: 't1', type: 'lockdown', triggeredBy: 'u1', token: 'tok' });
+    expect(await settleWithin(p, 3_100)).toEqual({ success: false, error: 'Emergency broadcast failed: 503' });
+  });
+
+  it('a body that arrives in time is read as before', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ success: true, overrideId: 'ovr_7' }) });
+    const p = broadcastEmergency({ schoolId: 't1', type: 'lockdown', triggeredBy: 'u1', token: 'tok' });
+    expect(await settleWithin(p, 0)).toEqual({ success: true, overrideId: 'ovr_7' });
   });
 });

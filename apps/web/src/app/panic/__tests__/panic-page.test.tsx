@@ -509,4 +509,42 @@ describe('6 — ending an alert that was replaced meanwhile', () => {
       allClearEmergency.mockReset();
     }
   });
+
+  // Review round 3 — the id an entry names, and the aim after a 409, are
+  // computed from the SAME tenant the request is sent under. After a 401 the
+  // resend may run under a restored session of another tenant; the fallback
+  // id this page remembers belongs to the tenant it was sent from, so the
+  // resend must not carry it, and the bookkeeping follows what was sent.
+  // (This pins the rule; before round 3 the request already followed it and
+  // only the 409 bookkeeping read the first session's tenant.)
+  it('a resend after a 401 names what the restored session’s tenant names, never the first session’s fallback id', async () => {
+    act(() => {
+      useUIStore.setState({ token: 'tab.jwt', user: TEACHER as never });
+    });
+    broadcastEmergency.mockResolvedValue({ success: true, overrideId: 'ovr_mine' });
+    onRefresh = () => refreshed('other.jwt', { ...TEACHER, id: 'u-other', email: 'other@lincoln.test', tenantId: 't2' });
+    allClearEmergency
+      .mockResolvedValueOnce({ success: false, error: 'All clear failed: 401' })
+      .mockResolvedValue({ success: true });
+    render(<MobilePanicPage />);
+    await flush();
+    // This page sends the All-screens alert (it remembers its id), and the
+    // server lists it without one (an alert from before alert identity).
+    await hold(lockdown());
+    await flush(10);
+    fireEvent.click(screen.getByTestId('panic-back-to-panel'));
+    await flush(10);
+    fireEvent.click(screen.getByTestId('panic-active-alerts'));
+    fireEvent.keyDown(screen.getByTestId('panic-hold-to-end'), { key: ' ' });
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    await flush(10);
+
+    expect(allClearEmergency).toHaveBeenCalledTimes(2);
+    expect(allClearEmergency.mock.calls[0][0]).toMatchObject({ token: 'tab.jwt', scopeId: 't1', overrideId: 'ovr_mine' });
+    expect(allClearEmergency.mock.calls[1][0]).toMatchObject({ token: 'other.jwt', scopeId: 't1' });
+    expect(allClearEmergency.mock.calls[1][0].overrideId).toBeUndefined();
+  });
 });
+

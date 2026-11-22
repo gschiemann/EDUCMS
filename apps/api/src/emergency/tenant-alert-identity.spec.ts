@@ -9,6 +9,7 @@ import {
   alertIdentityDisabled,
   isRecordNotFound,
   namedAlertId,
+  onePerKeptAlert,
   tenantAlertChanged,
   tenantClearGuard,
 } from './tenant-alert-identity';
@@ -130,4 +131,47 @@ describe('alertIdentityDisabled — the owner’s kill switch (review round 1)',
       ).toBe(false);
     },
   );
+});
+
+describe('onePerKeptAlert — the kept locations, one entry per alert (review round 3)', () => {
+  const k = (tenantId: string, parentId: string | null, alertId: string) => ({
+    tenantId,
+    parentId,
+    alertId,
+    type: 'LOCKDOWN',
+    isDrill: false,
+  });
+  it('a school and the child location its alert was written on are one entry: the school', () => {
+    expect(
+      onePerKeptAlert([
+        k('school', 'district', 'L'),
+        k('annex', 'school', 'L'),
+      ]).map((x) => x.tenantId),
+    ).toEqual(['school']);
+  });
+  it('a child holding its OWN, different alert is its own entry', () => {
+    expect(
+      onePerKeptAlert([
+        k('school', 'district', 'L'),
+        k('annex', 'school', 'M'),
+      ]).map((x) => x.tenantId),
+    ).toEqual(['school', 'annex']);
+  });
+  it('a child whose parent was not kept is its own entry (the list shows it on its own)', () => {
+    expect(
+      onePerKeptAlert([k('annex', 'school', 'L')]).map((x) => x.tenantId),
+    ).toEqual(['annex']);
+  });
+  it('a three-level chain sharing one id is one entry, at the top', () => {
+    expect(
+      onePerKeptAlert([
+        k('sub', 'district', 'X'),
+        k('school', 'sub', 'X'),
+        k('annex', 'school', 'X'),
+      ]).map((x) => x.tenantId),
+    ).toEqual(['sub']);
+  });
+  it('empty in, empty out', () => {
+    expect(onePerKeptAlert([])).toEqual([]);
+  });
 });

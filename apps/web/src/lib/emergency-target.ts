@@ -258,11 +258,25 @@ export function targetChipLabel(t: Translate, target: EmergencyTarget): string {
 /**
  * An active alert, listed: "Lockdown — Gym group, 6 screens" /
  * "Lockdown — all 24 screens".
+ *
+ * EMG-01 review round 3 — `nameLocation`: a district admin's list can hold
+ * more than one tenant-wide alert (the district's, and a school's own that
+ * the district's all-clear leaves alone). Two "Lockdown — all screens"
+ * entries cannot be told apart, so the caller asks for the location's name
+ * then: "Lockdown — Lincoln High, 24 screens" (the same words a group entry
+ * uses). With a single tenant-wide entry the label is exactly as before.
  */
-export function activeAlertLabel(t: Translate, typeName: string, alert: ActiveAlert): string {
+export function activeAlertLabel(
+  t: Translate,
+  typeName: string,
+  alert: ActiveAlert,
+  opts: { nameLocation?: boolean } = {},
+): string {
   const label =
     alert.scopeType === 'tenant'
-      ? t('emergency.target.activeAll', { type: typeName, count: alert.screenCount })
+      ? opts.nameLocation && alert.targetName
+        ? t('emergency.target.activeOne', { type: typeName, name: alert.targetName, count: alert.screenCount })
+        : t('emergency.target.activeAll', { type: typeName, count: alert.screenCount })
       : t('emergency.target.activeOne', {
           type: typeName,
           name:
@@ -275,6 +289,16 @@ export function activeAlertLabel(t: Translate, typeName: string, alert: ActiveAl
         });
   // A drill is named as one everywhere it is listed: "Drill: Lockdown — …".
   return alert.isDrill === true ? t('emergency.drill.alertPrefix', { label }) : label;
+}
+
+/**
+ * EMG-01 review round 3 — true when a list holds more than one tenant-wide
+ * alert, so each must be labelled with its location (`activeAlertLabel`).
+ */
+export function listsSeveralTenantAlerts(alerts: readonly ActiveAlert[]): boolean {
+  let n = 0;
+  for (const a of alerts) if (a.scopeType === 'tenant' && ++n > 1) return true;
+  return false;
 }
 
 /** True when every live alert is a drill (the dashboard overlay turns indigo, not red). */
