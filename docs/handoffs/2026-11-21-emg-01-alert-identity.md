@@ -2,7 +2,7 @@
 
 **Status.** Branch `claude/fix-emg-01`, four commits: the fix, review rounds 1 and 2, and the review-round-3 revision. Not pushed, no pull request, **not merged**. This is life-safety CHANGE class. Before anyone relies on it, it needs a different vendor's review, the owner's written go, and the on-glass drill at the end of this file.
 
-Model: Claude Opus 5.5 (`claude-opus-5-5`), Claude Code cloud session, dispatched by a workflow script as the author. The independent review ran in a separate session.
+Model: Claude Opus 5.5, Claude Code cloud session, dispatched by a workflow script as the author. The independent review ran in a separate session.
 
 ## Situation
 

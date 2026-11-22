@@ -6,7 +6,7 @@
 - CI green on the nine required checks, including `webkit · Emergency path`, which nobody could run locally;
 - an owner-approved on-glass drill on bench screens after deploy.
 
-**Who wrote it.** Claude Opus 5.5 (`claude-opus-5-5`) wrote the code. Reviews ran on Claude Opus 5.5 and on Fable 5.2 (`claude-fable-5-2`). The harness was Claude Code on the web, with workflow-orchestrated agents. Each fix had its own author and an independent reviewer, then one more reviewer read the combined branch.
+**Who wrote it.** Claude Opus 5.5 wrote the code. Reviews ran on Claude Opus 5.5 and on Fable 5.2. The harness was Claude Code on the web, with workflow-orchestrated agents. Each fix had its own author and an independent reviewer, then one more reviewer read the combined branch.
 
 The owner approved fixes 1-5 from the 2026-11-21 launch audit in writing. There are five audit items in four change sets:
 
