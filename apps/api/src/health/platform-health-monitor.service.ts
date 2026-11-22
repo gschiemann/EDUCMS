@@ -10,9 +10,10 @@
  * — DB reachability, Redis pub/sub, and the WebSocket signer (the life-safety
  * chain) — and classifies:
  *   ok        — everything healthy
- *   degraded  — Redis is configured but unreachable (realtime is riding the
- *               HTTP-polling fallback; emergency alerts still deliver, but
- *               slower — investigate)
+ *   degraded  — Redis is configured but unreachable, or instant push to
+ *               screens is down (EMG-03: the API reconnects by itself and
+ *               meanwhile delivers to its own screens; every screen still
+ *               polls — emergency alerts still deliver — investigate)
  *   critical  — DB unreachable or WS signer broken (manifest reads, auth, and
  *               the emergency trigger chain are impacted NOW)
  *
@@ -64,6 +65,14 @@ interface ProbeResult {
    */
   dbFailKind?: 'slow' | 'unreachable';
   dbProbeMs?: number;
+  /**
+   * EMG-03 — present only while Redis is configured and instant push to
+   * screens is down (a PING answering proves the publisher, not the
+   * subscription). `pushReason` is the plain sentence from
+   * `RedisService.pushChannelState()`.
+   */
+  push?: 'down';
+  pushReason?: string;
 }
 
 const TICK_MS = 5 * 60_000;
@@ -167,7 +176,20 @@ export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestr
         redis = 'fail';
       }
     } else {
-      redis = 'fail'; // configured but not connected / gave up retrying
+      redis = 'fail'; // configured but not connected (reconnecting by itself since EMG-03)
+    }
+
+    // Push channel (EMG-03) — the subscriber side a PING cannot see.
+    let pushReason: string | undefined;
+    if (configured) {
+      try {
+        const push = this.redis.pushChannelState?.();
+        if (push && push.configured && !push.live) {
+          pushReason = push.reason ?? 'Instant push to screens is down.';
+        }
+      } catch {
+        /* the probe never throws */
+      }
     }
 
     // WS signer — the emergency broadcast chain.
@@ -180,13 +202,22 @@ export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestr
     }
 
     const status: MonitorStatus =
-      db === 'fail' || wsSigner === 'fail' ? 'critical' : redis === 'fail' ? 'degraded' : 'ok';
+      db === 'fail' || wsSigner === 'fail'
+        ? 'critical'
+        : redis === 'fail' || pushReason !== undefined
+          ? 'degraded'
+          : 'ok';
     return {
       status,
       db,
       redis,
       wsSigner,
-      ...(dbProbe.ok ? {} : { dbFailKind: dbProbe.kind, dbProbeMs: dbProbe.ms }),
+      ...(dbProbe.ok
+        ? {}
+        : { dbFailKind: dbProbe.kind, dbProbeMs: dbProbe.ms }),
+      ...(pushReason !== undefined
+        ? { push: 'down' as const, pushReason }
+        : {}),
     };
   }
 
@@ -217,18 +248,29 @@ export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestr
         const subject =
           result.status === 'critical'
             ? `[VenueOS] PLATFORM CRITICAL — ${result.db === 'fail' ? dbFailLabel : 'emergency signing chain broken'}`
-            : '[VenueOS] Platform DEGRADED — Redis unreachable, realtime on polling fallback';
+            : result.redis === 'fail'
+              ? '[VenueOS] Platform DEGRADED — Redis unreachable, realtime on polling fallback'
+              : '[VenueOS] Platform DEGRADED — instant push to screens is down, realtime on polling fallback';
         const body = [
           result.status === 'critical'
             ? 'The API is up but a load-bearing dependency is failing. Dashboards, manifests, and the emergency trigger chain may be impacted RIGHT NOW.'
-            : 'Redis is configured but unreachable. Realtime is riding the HTTP-polling fallback — emergency alerts still deliver (screens poll their manifest), but push delivery and multi-screen sync are degraded.',
+            : result.redis === 'fail'
+              ? 'Redis is configured but unreachable. Realtime is riding the HTTP-polling fallback — emergency alerts still deliver (screens poll their manifest), but push delivery and multi-screen sync are degraded.'
+              : 'Redis answers, but instant push to screens is down. Realtime is riding the HTTP-polling fallback — emergency alerts still deliver (screens poll their manifest), but push delivery and multi-screen sync are degraded.',
+          ...(result.pushReason
+            ? [
+                '',
+                `Push channel: ${result.pushReason}`,
+                'No API restart is needed: the API reconnects to Redis on its own and says so in this inbox when it is back. If this lasts more than a few minutes, check the Redis service on Railway.',
+              ]
+            : []),
           '',
-          `Checks: db=${result.db}${result.db === 'fail' ? ` (${result.dbFailKind ?? 'unknown'}, probe ${result.dbProbeMs ?? '?'}ms)` : ''}  redis=${result.redis}  ws_signer=${result.wsSigner}`,
+          `Checks: db=${result.db}${result.db === 'fail' ? ` (${result.dbFailKind ?? 'unknown'}, probe ${result.dbProbeMs ?? '?'}ms)` : ''}  redis=${result.redis}${result.push ? `  push=${result.push}` : ''}  ws_signer=${result.wsSigner}`,
           '',
           'Likely causes (CLAUDE.md-documented):',
           '  - db SLOW: Supabase pooler stall or connection-pool queueing — screens keep working (HTTP-poll backstop); watch, do not panic',
           '  - db unreachable: connection refused/DNS/auth — check Supabase status + DATABASE_URL (session mode, port 5432, connection_limit=10&pool_timeout=20)',
-          '  - redis fail: Railway Redis addon restart/outage — API keeps working on the polling fallback',
+          '  - redis fail / push down: Railway Redis addon restart/outage — API keeps working on the polling fallback and reconnects by itself',
           '  - ws_signer fail: DEVICE_SECRET_KEY / signer misconfiguration — treat as emergency-path outage',
           '',
           'Live checks: GET /api/v1/health, /health/ready, /health/emergency-path',
@@ -246,7 +288,7 @@ export class PlatformHealthMonitorService implements OnModuleInit, OnModuleDestr
           }
         }
         this.logger.warn(
-          `[platform-health] ${result.status.toUpperCase()} — db=${result.db} redis=${result.redis} ws_signer=${result.wsSigner} (alert dispatched)`,
+          `[platform-health] ${result.status.toUpperCase()} — db=${result.db} redis=${result.redis}${result.push ? ` push=${result.push}` : ''} ws_signer=${result.wsSigner} (alert dispatched)`,
         );
       } else if (recovered) {
         await this.mailer.sendAlert(

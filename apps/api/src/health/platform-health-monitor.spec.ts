@@ -199,3 +199,65 @@ describe('tick() state machine', () => {
     expect(sendAlert.mock.calls[0][1]).toContain('polling fallback');
   });
 });
+
+describe('push channel (EMG-03)', () => {
+  const REASON =
+    'Instant push to screens is down: the API lost its Redis connection for receiving pushes, 40 s ago. ' +
+    'The API reconnects by itself; meanwhile it delivers alerts to the screens connected to it, and every screen still polls for alerts.';
+
+  function withPush(push: {
+    configured: boolean;
+    live: boolean;
+    reason: string | null;
+  }) {
+    const built = makeMonitor({
+      dbOk: true,
+      redisConfigured: true,
+      redisPublisher: {
+        status: 'ready',
+        ping: jest.fn().mockResolvedValue('PONG'),
+      },
+    });
+    (
+      built.svc as unknown as { redis: Record<string, unknown> }
+    ).redis.pushChannelState = jest.fn(() => push);
+    return built;
+  }
+
+  it('PING answers but instant push is down → degraded, with the plain reason (a PING alone said ok)', async () => {
+    const { svc } = withPush({ configured: true, live: false, reason: REASON });
+    const res = await svc.probe();
+    expect(res.redis).toBe('ok');
+    expect(res.status).toBe('degraded');
+    expect(res.push).toBe('down');
+    expect(res.pushReason).toBe(REASON);
+  });
+
+  it('push live → ok, and the result carries no push fields', async () => {
+    const { svc } = withPush({ configured: true, live: true, reason: null });
+    const res = await svc.probe();
+    expect(res).toEqual({
+      status: 'ok',
+      db: 'ok',
+      redis: 'ok',
+      wsSigner: 'ok',
+    });
+  });
+
+  it('the email says why, and that no restart is needed (the API reconnects by itself)', async () => {
+    const { svc, sendAlert } = withPush({
+      configured: true,
+      live: false,
+      reason: REASON,
+    });
+    await svc.tick();
+    expect(sendAlert).toHaveBeenCalledTimes(1);
+    const [subject, body, kind] = sendAlert.mock.calls[0];
+    expect(kind).toBe('PLATFORM_HEALTH_ALERT');
+    expect(subject).toContain('DEGRADED');
+    expect(subject).toContain('instant push to screens is down');
+    expect(body).toContain(REASON);
+    expect(body).toContain('No API restart is needed');
+    expect(body).toContain('push=down');
+  });
+});
