@@ -115,6 +115,10 @@
       "selected": "Seleccionada",
       "loadFailed": "No se pudo cargar la lista de alertas. Reintentando…",
       "clearFailed": "El fin de alerta NO se envió: la alerta sigue en las pantallas. {error}",
+      "alertChanged": "No se finalizó nada: ahora hay una alerta más reciente activa ({type}). Revísela arriba y vuelva a escribir CLEAR para finalizarla.",
+      "selectionChanged": "La alerta que eligió ya no aparece en la lista, así que no se finalizó nada. Revise la lista de arriba y vuelva a escribir CLEAR.",
+      "keptOwnAlert": "Se envió el fin de alerta. {count, plural, one {# ubicación mantiene su propia alerta, que este fin de alerta no finalizó y que sigue en pantalla. Para finalizarla, abra Activar emergencia, donde aparece.} other {# ubicaciones mantienen sus propias alertas, que este fin de alerta no finalizó y que siguen en pantalla. Para finalizarlas, abra Activar emergencia, donde aparece cada una.}}",
+      "keptOwnAlertNotListed": "Se envió el fin de alerta. {count, plural, one {# ubicación mantiene su propia alerta, que este fin de alerta no finalizó y que sigue en pantalla. No aparece en su lista de alertas: deben finalizarla los operadores de esa ubicación o un administrador del distrito.} other {# ubicaciones mantienen sus propias alertas, que este fin de alerta no finalizó y que siguen en pantalla. No aparecen en su lista de alertas: deben finalizarlas los operadores de esas ubicaciones o un administrador del distrito.}}",
       "noAuthority": "Solo alguien con autoridad de emergencia puede enviar el fin de alerta.",
       "sendAnother": "Enviar otra alerta"
     },
@@ -173,7 +177,8 @@
       "turnOffTitle": "¿Desactivar las emergencias en este teléfono?",
       "turnOffMessage": "Este teléfono necesitará iniciar sesión antes de volver a enviar una alerta.",
       "turnOffConfirm": "Desactivar",
-      "endNeedsSignIn": "Para finalizar una alerta hay que iniciar sesión por completo en este teléfono."
+      "endNeedsSignIn": "Para finalizar una alerta hay que iniciar sesión por completo en este teléfono.",
+      "alertChanged": "Ahora hay una alerta más reciente activa ({type}), así que no se finalizó nada. Revísela y vuelva a mantener pulsado para finalizarla."
     },
     "broadcast": {
       "title": "Transmisión",

@@ -450,7 +450,9 @@ describe('GET /emergency/active — every live alert, each with its target', () 
 
     await w.emergency.clearEmergency(gym.overrideId, clear('group', GYM), schoolAdmin);
     const after = ((await w.emergency.activeAlerts(schoolAdmin)) as any).alerts;
-    expect(after.map((a: any) => a.alertId ?? a.scopeType)).toEqual(['tenant', lobby.overrideId]);
+    // EMG-01 (2026-11-21): the tenant-wide entry now carries its own id too.
+    expect(after.map((a: any) => a.alertId ?? a.scopeType)).toEqual([whole.overrideId, lobby.overrideId]);
+    expect(after[0]).toMatchObject({ scopeType: 'tenant', scopeId: SCHOOL });
 
     await w.emergency.clearEmergency(whole.overrideId, clear('tenant', SCHOOL), schoolAdmin);
     await w.emergency.clearEmergency(lobby.overrideId, clear('device', 'lobby'), schoolAdmin);

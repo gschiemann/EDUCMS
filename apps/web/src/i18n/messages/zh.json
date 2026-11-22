@@ -115,6 +115,10 @@
       "selected": "已选择",
       "loadFailed": "无法加载警报列表，正在重试…",
       "clearFailed": "解除警报未发送——警报仍显示在屏幕上。{error}",
+      "alertChanged": "未解除任何警报：现在有一个更新的警报处于活动状态（{type}）。请先在上方查看，然后再次输入 CLEAR 以结束该警报。",
+      "selectionChanged": "您选择的警报已不在列表中，因此未解除任何警报。请查看上方列表，然后再次输入 CLEAR。",
+      "keptOwnAlert": "已发送解除警报。{count, plural, other {# 个地点仍保留各自的警报，本次解除未结束这些警报，它们仍显示在屏幕上。如需结束，请打开“紧急触发”页面，警报会在那里逐一列出。}}",
+      "keptOwnAlertNotListed": "已发送解除警报。{count, plural, other {# 个地点仍保留各自的警报，本次解除未结束这些警报，它们仍显示在屏幕上。这些警报不在您的警报列表中，需由该地点自己的操作人员或学区管理员结束。}}",
       "noAuthority": "只有拥有紧急权限的人员才能发送解除警报。",
       "sendAnother": "发送另一条警报"
     },
@@ -173,7 +177,8 @@
       "turnOffTitle": "要关闭此手机上的紧急功能吗？",
       "turnOffMessage": "此手机需要登录后才能再次发送警报。",
       "turnOffConfirm": "关闭",
-      "endNeedsSignIn": "要结束警报，需要在此手机上完整登录。"
+      "endNeedsSignIn": "要结束警报，需要在此手机上完整登录。",
+      "alertChanged": "现在有一个更新的警报处于活动状态（{type}），因此未解除任何警报。请先查看，然后再次长按以结束该警报。"
     },
     "broadcast": {
       "title": "广播",

@@ -115,6 +115,10 @@
       "selected": "Selected",
       "loadFailed": "Couldn’t load the list of alerts. Retrying…",
       "clearFailed": "All-clear was NOT sent — the alert is still on screens. {error}",
+      "alertChanged": "Nothing was cleared: a newer alert is now active ({type}). Review it above, then type CLEAR again to end it.",
+      "selectionChanged": "The alert you picked is no longer listed, so nothing was cleared. Check the list above, then type CLEAR again.",
+      "keptOwnAlert": "The all-clear was sent. {count, plural, one {# location keeps its own alert, which this all-clear did not end and which is still on screen. To end it, open Emergency Trigger, where it is listed.} other {# locations keep their own alerts, which this all-clear did not end and which are still on screen. To end one, open Emergency Trigger, where each is listed.}}",
+      "keptOwnAlertNotListed": "The all-clear was sent. {count, plural, one {# location keeps its own alert, which this all-clear did not end and which is still on screen. It is not in your alert list: that location’s own operators or a district administrator must end it.} other {# locations keep their own alerts, which this all-clear did not end and which are still on screen. They are not in your alert list: those locations’ own operators or a district administrator must end them.}}",
       "noAuthority": "Only someone with emergency authority can send the all-clear.",
       "sendAnother": "Send another alert"
     },
@@ -173,7 +177,8 @@
       "turnOffTitle": "Turn off emergencies on this phone?",
       "turnOffMessage": "This phone will need a sign-in before it can send an alert again.",
       "turnOffConfirm": "Turn off",
-      "endNeedsSignIn": "Ending an alert needs a full sign-in on this phone."
+      "endNeedsSignIn": "Ending an alert needs a full sign-in on this phone.",
+      "alertChanged": "A newer alert is now active ({type}), so nothing was cleared. Review it, then hold again to end it."
     },
     "broadcast": {
       "title": "Broadcast",

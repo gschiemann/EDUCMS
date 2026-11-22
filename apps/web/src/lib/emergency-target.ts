@@ -70,7 +70,10 @@ export interface EmergencyTargets {
 
 /** One live alert as GET /emergency/active reports it. */
 export interface ActiveAlert {
-  /** The trigger's overrideId; null for the tenant-wide alert and pre-2026-10-05 rows. */
+  /**
+   * The trigger's overrideId. The tenant-wide alert carries it since EMG-01
+   * (2026-11-21); null for one raised before that, and for pre-2026-10-05 rows.
+   */
   alertId: string | null;
   scopeType: EmergencyScopeType;
   scopeId: string;
@@ -255,11 +258,25 @@ export function targetChipLabel(t: Translate, target: EmergencyTarget): string {
 /**
  * An active alert, listed: "Lockdown — Gym group, 6 screens" /
  * "Lockdown — all 24 screens".
+ *
+ * EMG-01 review round 3 — `nameLocation`: a district admin's list can hold
+ * more than one tenant-wide alert (the district's, and a school's own that
+ * the district's all-clear leaves alone). Two "Lockdown — all screens"
+ * entries cannot be told apart, so the caller asks for the location's name
+ * then: "Lockdown — Lincoln High, 24 screens" (the same words a group entry
+ * uses). With a single tenant-wide entry the label is exactly as before.
  */
-export function activeAlertLabel(t: Translate, typeName: string, alert: ActiveAlert): string {
+export function activeAlertLabel(
+  t: Translate,
+  typeName: string,
+  alert: ActiveAlert,
+  opts: { nameLocation?: boolean } = {},
+): string {
   const label =
     alert.scopeType === 'tenant'
-      ? t('emergency.target.activeAll', { type: typeName, count: alert.screenCount })
+      ? opts.nameLocation && alert.targetName
+        ? t('emergency.target.activeOne', { type: typeName, name: alert.targetName, count: alert.screenCount })
+        : t('emergency.target.activeAll', { type: typeName, count: alert.screenCount })
       : t('emergency.target.activeOne', {
           type: typeName,
           name:
@@ -272,6 +289,16 @@ export function activeAlertLabel(t: Translate, typeName: string, alert: ActiveAl
         });
   // A drill is named as one everywhere it is listed: "Drill: Lockdown — …".
   return alert.isDrill === true ? t('emergency.drill.alertPrefix', { label }) : label;
+}
+
+/**
+ * EMG-01 review round 3 — true when a list holds more than one tenant-wide
+ * alert, so each must be labelled with its location (`activeAlertLabel`).
+ */
+export function listsSeveralTenantAlerts(alerts: readonly ActiveAlert[]): boolean {
+  let n = 0;
+  for (const a of alerts) if (a.scopeType === 'tenant' && ++n > 1) return true;
+  return false;
 }
 
 /** True when every live alert is a drill (the dashboard overlay turns indigo, not red). */
@@ -287,8 +314,11 @@ export function typeIdOf(apiType: string | null | undefined): string | null {
 
 /**
  * Is `alert` the one a trigger just created? Scoped alerts match by id; the
- * tenant-wide alert (no id on the Tenant row) by being the tenant-wide entry
- * for the same tenant.
+ * tenant-wide alert by being the tenant-wide entry for the same tenant. Since
+ * EMG-01 (2026-11-21) that entry carries the alert's id too, but it is null
+ * for an alert raised before then, and matching by scope keeps showing the
+ * sender the alert now on that tenant's screens — the safe direction here
+ * (this only decides what the sender sees, never what is cleared).
  */
 export function isSameAlert(
   alert: ActiveAlert,

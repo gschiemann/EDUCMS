@@ -50,7 +50,7 @@ Measured on the real prod DB from one machine (wire RTT 74ms): raw `pg` on a reu
 
 | Model | Purpose | Key Fields |
 |---|---|---|
-| **Tenant** | District or school (hierarchy-enabled) | `id`, `parentId` (for district→school), `name`, `slug`, `emergencyStatus`, `emergencyPlaylistId` / `emergencyPortraitPlaylistId` (the active alert), `emergencyIsDrill`, and 24 per-incident playlist ids: `panic{Evacuate,Lockdown,Weather,Hold,Secure,Medical}PlaylistId` and `drill{…}PlaylistId`, each with a `…PortraitPlaylistId` twin |
+| **Tenant** | District or school (hierarchy-enabled) | `id`, `parentId` (for district→school), `name`, `slug`, `emergencyStatus`, `emergencyPlaylistId` / `emergencyPortraitPlaylistId` (the active alert), `emergencyIsDrill`, `emergencyAlertId` / `emergencyTriggeredAt` (the active alert's identity and raise time, EMG-01), and 24 per-incident playlist ids: `panic{Evacuate,Lockdown,Weather,Hold,Secure,Medical}PlaylistId` and `drill{…}PlaylistId`, each with a `…PortraitPlaylistId` twin |
 | **User** | Team member with RBAC role | `id`, `tenantId`, `email`, `passwordHash`, `role` (a `String` column holding an `AppRole` value — the schema defines no enums), `canTriggerPanic` (capability flag) |
 | **Screen** | Physical or virtual display | `id`, `tenantId`, `screenGroupId`, `name`, `deviceFingerprint`, `pairingCode`, `status`, `lastPingAt`, `resolution`, `osInfo`, `browserInfo` |
 | **ScreenGroup** | Organize screens (hallway, lobby, etc.) | `id`, `tenantId`, `name`, `description` |
