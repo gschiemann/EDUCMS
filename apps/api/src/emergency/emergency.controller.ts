@@ -3181,10 +3181,15 @@ export class EmergencyController {
     ]);
 
     // Pushed SOS/TEXT_BROADCAST/MEDIA_ALERT overlays are cleared on the player
-    // by the ALL_CLEAR_MESSAGE type (setPushedEmergencyMessage(null)); the bare
-    // ALL_CLEAR type only triggers a manifest re-fetch (the secure path for
-    // OVERRIDE lockdowns) and never drops a pushed message — so signing
-    // ALL_CLEAR here left the overlay stuck on screen with no way to clear it.
+    // by the ALL_CLEAR_MESSAGE type, which removes ONLY the message id it
+    // names from the screen's held set (apps/web/src/app/player/pushedMessages.ts,
+    // EMG-04): any other held message stays, and the most severe one left is
+    // shown. So `messageId` below must be the id that copy was pushed with; a
+    // clear with no id, or an id the screen does not hold, changes nothing on
+    // the glass. The bare ALL_CLEAR type only triggers a manifest re-fetch (the
+    // secure path for OVERRIDE lockdowns) and never drops a pushed message — so
+    // signing ALL_CLEAR here left the overlay stuck on screen with no way to
+    // clear it.
     //
     // One publish per COPY, on the channel that copy was pushed on: a
     // tenant-scoped copy rode `tenant:<its own tenantId>` (the gateway matches

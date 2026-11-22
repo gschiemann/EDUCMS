@@ -752,6 +752,14 @@ export class EmergencyReadinessService {
    *
    * Redis in fallback is WARN, not MISSING: the HTTP-polling backstop still
    * delivers a lockdown, just slower — the copy says exactly that.
+   *
+   * EMG-03: a publisher PONG proves only that the publisher answers. Screens
+   * get instant pushes only while the push channel is live (publisher ready,
+   * subscriber listening, publishes confirmed), so a PONG with the channel
+   * down grades as fallback — the same `checks.push` fact
+   * /api/v1/health/emergency-path reports. This can only lower the grade,
+   * never raise it; a push-state read that throws is fallback too (the copy
+   * never claims more than the evidence shows).
    */
   private async probeDelivery(): Promise<ReadinessItem> {
     let dbOk = false;
@@ -766,6 +774,12 @@ export class EmergencyReadinessService {
         const pong = await withTimeout(pub.ping(), 500);
         redisState = pong === 'PONG' ? 'ok' : 'fail';
       } catch { redisState = 'fail'; }
+    }
+    if (redisState === 'ok' && typeof this.redis.pushChannelState === 'function') {
+      try {
+        const push = this.redis.pushChannelState();
+        if (!push.live) redisState = 'fallback';
+      } catch { redisState = 'fallback'; }
     }
     let signerOk = false;
     try {
