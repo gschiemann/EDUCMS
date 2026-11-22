@@ -40,14 +40,22 @@ describe('§7 E1 — the hold ordering is untouched', () => {
     expect(before(sse, 'signalDisplayEmergencyHold(true, true)', 'preemptReconcile()')).toBe(true);
   });
   it('SOS / TEXT_BROADCAST / MEDIA_ALERT: hold, then the pushed-message state (both transports)', () => {
+    // EMG-04 (2026-11-21): both transports hand the message to ONE commit
+    // point, which raises the hold for the message the glass will SHOW
+    // (an INFO arriving under a CRITICAL must not ask for banner posture)
+    // and only then commits the held set.
     const sse = block('const onEmergencyMessage = (type:', 1100);
     const ws = block("if (msg.type === 'SOS' || msg.type === 'TEXT_BROADCAST' || msg.type === 'MEDIA_ALERT') {", 1100);
-    for (const transport of [sse, ws]) {
-      expect(before(transport, 'signalDisplayEmergencyHold(true, true,', 'setPushedEmergencyMessage(')).toBe(true);
-      // Only an ordinary banner can preserve playback; a tenant override
-      // or pending signed takeover still raises the full playback hold.
-      expect(transport).toContain('isBannerEmergencyMessage(message) && !activeEmergencyRef.current && !pendingOverrideConfirmRef.current');
-    }
+    for (const transport of [sse, ws]) expect(transport).toContain('acceptPushedMessage(pushedEmergencyFromPayload(');
+    const accept = block('const acceptPushedMessage = useCallback(', 700);
+    expect(accept).toContain("commitPushedMessages(addPushedMessage(state, message, clock), 'push')");
+    const commit = block('const commitPushedMessages = useCallback(', 900);
+    expect(before(commit, 'signalDisplayEmergencyHold(true, true,', 'setPushedMessages(')).toBe(true);
+    expect(before(commit, 'signalDisplayEmergencyHold(true, true,', 'pushedEmergencyMessageRef.current = shown')).toBe(true);
+    // Only an ordinary banner can preserve playback; a tenant override
+    // or pending signed takeover still raises the full playback hold.
+    expect(commit).toContain('isBannerEmergencyMessage(shown) && !activeEmergencyRef.current && !pendingOverrideConfirmRef.current');
+    expect(commit).toContain("why === 'push'");
   });
   it('applyManifest decides the alert before native-first marks the page decided', () => {
     const apply = block('const applyManifest = (manifest: any, fromCache = false) => {', 9000);
