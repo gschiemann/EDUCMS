@@ -173,12 +173,18 @@ for (const [w, h] of [[1920, 1080], [3840, 2160]] as const) {
       const track = banner(page).locator('[data-banner-text="scroll"] [data-banner-track]');
       await expect(banner(page).locator(`[data-banner-speed="${speed}"]`)).toBeVisible();
       const v = await track.evaluate(async (el) => {
-        const x = () => (el as HTMLElement).getBoundingClientRect().left;
+        // Position and time are read from the SAME clock: the animation's own
+        // currentTime follows the document timeline that the painted position
+        // is computed from. performance.now() runs ahead of the last frame, so
+        // on a loaded runner rendering 4K a wall-clock window under-read the
+        // speed (60 px/s against 64 once in review; 73-74 against 80 every run).
+        const anim = (el as HTMLElement).getAnimations()[0];
+        const sample = () => ({ x: (el as HTMLElement).getBoundingClientRect().left, t: Number(anim.currentTime) });
         await new Promise((r) => setTimeout(r, 300)); // past the first frame
-        const t0 = performance.now(); const x0 = x();
+        const a = sample();
         await new Promise((r) => setTimeout(r, 2000));
-        const t1 = performance.now(); const x1 = x();
-        return { pxPerSecond: (x0 - x1) / ((t1 - t0) / 1000), copies: el.children.length };
+        const b = sample();
+        return { pxPerSecond: (a.x - b.x) / ((b.t - a.t) / 1000), copies: el.children.length };
       });
       const expected = (w * stagesPerMin) / 60;
       measured[`speed-${speed}`] = { measuredPxPerSecond: Math.round(v.pxPerSecond), expected, copies: v.copies };
