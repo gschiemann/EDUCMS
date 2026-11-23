@@ -351,7 +351,13 @@ export default function SettingsBrandingPage() {
     setApplyMessage(null);
     try {
       const res = await applyBrand.mutateAsync({ mode: 'fill-blanks' });
-      setApplyMessage(t('settings.cc.brand.applyDone', { count: res.count, zones: res.zonesPatched }));
+      const done = t('settings.cc.brand.applyDone', { count: res.count, zones: res.zonesPatched ?? 0 });
+      // Say where the name, tagline and logo went, so a rebrand visibly reached them.
+      const id = res.identityZonesPatched;
+      const identity = id && id.name + id.tagline + id.logo > 0
+        ? ` ${t('settings.cc.brand.applyIdentityDone', { name: id.name, tagline: id.tagline, logo: id.logo })}`
+        : '';
+      setApplyMessage(`${done}${identity}`);
     } catch (e) {
       setApplyMessage(t('settings.cc.brand.applyFailed', { message: (e as Error)?.message || '' }));
     }
