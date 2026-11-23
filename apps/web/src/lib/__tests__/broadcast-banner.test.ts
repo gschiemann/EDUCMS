@@ -37,6 +37,12 @@ describe('colour choices', () => {
     expect(bannerForSend('#15803d', 'scroll', 'fast')).toEqual({ color: '#15803d', mode: 'scroll', speed: 'fast' });
     expect(bannerForSend(null, 'static', 'normal')).toEqual({ mode: 'static', speed: 'normal' });
   });
+  it('sends the text size only when it is not medium (the canonical form the API stores)', () => {
+    expect(bannerForSend(null, 'scroll', 'slow', 'large')).toEqual({ mode: 'scroll', speed: 'slow', size: 'large' });
+    expect(bannerForSend('#15803d', 'static', 'normal', 'small')).toEqual({ color: '#15803d', mode: 'static', speed: 'normal', size: 'small' });
+    expect(bannerForSend(null, 'static', 'normal', 'medium')).toEqual({ mode: 'static', speed: 'normal' });
+    expect('size' in bannerForSend(null, 'static', 'normal', 'medium')).toBe(false);
+  });
 });
 
 describe('auto-clear durations', () => {

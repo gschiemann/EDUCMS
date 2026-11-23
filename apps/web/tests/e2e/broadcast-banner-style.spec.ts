@@ -110,3 +110,112 @@ test('a screen that missed the push renders the same banner from the poll', asyn
   await expect(banner(page)).toHaveCSS('background-color', 'rgb(21, 128, 61)');
   await expect(banner(page).locator('[data-banner-text="scroll"][data-banner-speed="slow"]')).toBeVisible();
 });
+
+/**
+ * Text size and the real marquee speed (2026-11-23), at the two stage sizes
+ * the fleet runs: 1920x1080 and 3840x2160. Measures, on the glass, the font
+ * per size, the bar height a 2-line static message reaches at each size, the
+ * height the longest message the API accepts (2,000 characters) reaches, and
+ * the speed the track actually moves at for a SHORT message (the case that
+ * used to run 2-3x the chosen speed).
+ */
+for (const [w, h] of [[1920, 1080], [3840, 2160]] as const) {
+  test(`text size, bar height and real scroll speed on a ${w}x${h} stage`, async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: w, height: h });
+    const tag = `broadcast-banner-size-${w}`;
+    const manifest = playerManifest(playerIds(tag).screenId, 'website');
+    await bootMockPlayer(page, { tag, kind: 'images', manifest, extraRoutes: async p => {
+      await p.route('**/api/v1/proxy/web*', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body>content</body></html>' }));
+      await p.route('**/api/v1/emergency/messages*', r => ok(r, { active: [] }));
+    } });
+    const measured: Record<string, unknown> = { stage: `${w}x${h}` };
+    const two = 'Buses are running fifteen minutes late today because of the snow, so please allow extra time this morning and use the south entrance.';
+    const max = `${'Please remember that the north parking lot is closed for resurfacing until Friday. '.repeat(24)}`.slice(0, 2000);
+    const expectFont = { small: Math.round(w * 0.017), medium: Math.round(w * 0.022), large: Math.round(w * 0.03) };
+    let n = 0;
+    const held: string[] = [];
+    const show = async (options: unknown, text: string) => {
+      // Clear what is held first (EMG-04 shows the most severe, then newest).
+      for (const id of held.splice(0)) await push(page, 'ALL_CLEAR_MESSAGE', { messageId: id, clearedBy: 'u1' });
+      const id = `size-${w}-${++n}`;
+      held.push(id);
+      await push(page, 'TEXT_BROADCAST', { messageId: id, severity: 'INFO', text, banner: options });
+      await expect(banner(page)).toBeVisible();
+      await expect(banner(page).locator('[data-banner-text]')).toContainText(text.slice(0, 30));
+    };
+    const stageWidth = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--led-w')) || window.innerWidth);
+    expect(stageWidth).toBe(w);
+
+    for (const size of ['small', 'medium', 'large'] as const) {
+      // A message that fills about 2 lines: the tallest a normal static banner gets.
+      await show({ mode: 'static', size }, two);
+      const s = banner(page).locator('[data-banner-text="static"]');
+      await expect(s).toHaveAttribute('data-banner-size', size);
+      const r = await banner(page).evaluate((el) => {
+        const t = el.querySelector('[data-banner-text="static"]') as HTMLElement;
+        const fs = parseFloat(getComputedStyle(t).fontSize);
+        return { bar: (el as HTMLElement).offsetHeight, font: fs, lines: Math.round(t.scrollHeight / (fs * 1.25)) };
+      });
+      expect(r.lines).toBeLessThanOrEqual(2);
+      expect(r.font).toBeLessThanOrEqual(expectFont[size]);
+      expect(r.bar).toBeLessThanOrEqual(h * 0.2); // a 2-line banner never takes more than a fifth of the screen
+      measured[`static-2line-${size}`] = r;
+
+      // The longest message the API accepts: shrinks to its floor, then the overlay's 40% cap holds.
+      await show({ mode: 'static', size }, max);
+      const m = await banner(page).evaluate((el) => (el as HTMLElement).offsetHeight);
+      expect(m).toBeLessThanOrEqual(Math.round(h * 0.4) + 1);
+      measured[`static-2000ch-${size}`] = m;
+
+      // Scrolling: one line at the full size.
+      await show({ mode: 'scroll', speed: 'slow', size }, 'Early dismissal at 1 pm');
+      const sc = banner(page).locator('[data-banner-text="scroll"]');
+      await expect(sc).toHaveCSS('font-size', `${expectFont[size]}px`);
+      measured[`scroll-${size}`] = { bar: await banner(page).evaluate((el) => (el as HTMLElement).offsetHeight), font: expectFont[size] };
+    }
+
+    // The real speed of a SHORT message (3 copies fill the bar) at every speed.
+    for (const [speed, stagesPerMin] of [['slow', 1.25], ['normal', 2], ['fast', 3]] as const) {
+      await show({ mode: 'scroll', speed }, 'Early dismissal at 1 pm');
+      const track = banner(page).locator('[data-banner-text="scroll"] [data-banner-track]');
+      await expect(banner(page).locator(`[data-banner-speed="${speed}"]`)).toBeVisible();
+      const v = await track.evaluate(async (el) => {
+        const x = () => (el as HTMLElement).getBoundingClientRect().left;
+        await new Promise((r) => setTimeout(r, 300)); // past the first frame
+        const t0 = performance.now(); const x0 = x();
+        await new Promise((r) => setTimeout(r, 2000));
+        const t1 = performance.now(); const x1 = x();
+        return { pxPerSecond: (x0 - x1) / ((t1 - t0) / 1000), copies: el.children.length };
+      });
+      const expected = (w * stagesPerMin) / 60;
+      measured[`speed-${speed}`] = { measuredPxPerSecond: Math.round(v.pxPerSecond), expected, copies: v.copies };
+      expect(v.copies).toBeGreaterThanOrEqual(4); // a short message: 2+ copies per loop, the case that used to run 2-3x
+      expect(v.pxPerSecond).toBeGreaterThan(expected * 0.8);
+      expect(v.pxPerSecond).toBeLessThan(expected * 1.2);
+    }
+    console.log(`BANNER-MEASURE ${JSON.stringify(measured)}`);
+    for (const id of held) await push(page, 'ALL_CLEAR_MESSAGE', { messageId: id, clearedBy: 'u1' });
+    await expect(banner(page)).toHaveCount(0);
+  });
+}
+
+test('the poll carries the text size to a screen that missed the push', async ({ page }) => {
+  test.setTimeout(120000);
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const tag = 'broadcast-banner-size-poll';
+  const manifest = playerManifest(playerIds(tag).screenId, 'website');
+  const message = {
+    id: 'poll-size-1', type: 'TEXT_BROADCAST', severity: 'WARN', textBlob: 'Gym closed this afternoon.', mediaUrls: [], audioUrl: null,
+    expiresAt: null, createdAt: new Date().toISOString(),
+    banner: { mode: 'scroll', speed: 'slow', size: 'large' },
+  };
+  await bootMockPlayer(page, { tag, kind: 'images', manifest, extraRoutes: async p => {
+    await p.route('**/api/v1/proxy/web*', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body>content</body></html>' }));
+    await p.route('**/api/v1/emergency/messages*', r => ok(r, { active: [message] }));
+  } });
+  await expect(banner(page)).toBeVisible({ timeout: 30000 });
+  const scroll = banner(page).locator('[data-banner-text="scroll"][data-banner-speed="slow"][data-banner-size="large"]');
+  await expect(scroll).toBeVisible();
+  await expect(scroll).toHaveCSS('font-size', '58px');
+});

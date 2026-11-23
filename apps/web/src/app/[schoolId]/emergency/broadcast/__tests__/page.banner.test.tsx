@@ -142,6 +142,65 @@ describe('Broadcast scrolling or static', () => {
   });
 });
 
+describe('Broadcast text size (2026-11-23)', () => {
+  const textEl = () => bar().querySelector('[data-banner-text]') as HTMLElement;
+
+  it('Small / Medium / Large sit with the other controls, Medium chosen, as 44 px radios', async () => {
+    await mount();
+    const group = screen.getByRole('radiogroup', { name: 'emergency.broadcast.textSize' });
+    const radios = Array.from(group.querySelectorAll('[role="radio"]')) as HTMLElement[];
+    expect(radios.map((r) => r.getAttribute('data-testid'))).toEqual(['banner-size-small', 'banner-size-medium', 'banner-size-large']);
+    expect(radios.map((r) => r.textContent)).toEqual(['emergency.broadcast.sizeSmall', 'emergency.broadcast.sizeMedium', 'emergency.broadcast.sizeLarge']);
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false']);
+    for (const r of radios) {
+      expect(r.tagName).toBe('BUTTON'); // focusable and Enter / Space operable (keyboard, remote)
+      expect(r.className).toContain('min-h-11');
+    }
+    // Shown for static text too, not only when scrolling.
+    expect(screen.getByTestId('banner-mode-static').getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('the preview follows the size, and a default send carries no size (byte for byte as before)', async () => {
+    await mount();
+    write();
+    expect(textEl().style.fontSize).toBe('42px'); // medium on the 1920 preview stage
+    fireEvent.click(screen.getByTestId('banner-size-small'));
+    expect(textEl().style.fontSize).toBe('33px');
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    expect(textEl().style.fontSize).toBe('58px');
+    expect(screen.getByTestId('banner-size-large').getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByTestId('banner-size-medium'));
+    expect(textEl().style.fontSize).toBe('42px');
+    const body = await holdSend();
+    expect(body.banner).toEqual({ mode: 'static', speed: 'normal' });
+    expect('size' in body.banner).toBe(false);
+  });
+
+  it('Large + Slow scrolling: the preview draws it and the request carries both', async () => {
+    await mount();
+    write();
+    fireEvent.click(screen.getByTestId('banner-mode-scroll'));
+    fireEvent.click(screen.getByTestId('banner-speed-slow'));
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    const scroll = bar().querySelector('[data-banner-text="scroll"]') as HTMLElement;
+    expect(scroll.getAttribute('data-banner-speed')).toBe('slow');
+    expect(scroll.getAttribute('data-banner-size')).toBe('large');
+    expect(scroll.style.fontSize).toBe('58px');
+    const body = await holdSend();
+    expect(body.banner).toEqual({ mode: 'scroll', speed: 'slow', size: 'large' });
+  });
+
+  it('Critical hides the size control and sends no banner', async () => {
+    await mount();
+    write();
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    fireEvent.click(screen.getByLabelText('emergency.broadcast.sevCritical'));
+    expect(screen.queryByTestId('banner-size-large')).toBeNull();
+    const body = await holdSend();
+    expect(body.banner).toBeUndefined();
+  });
+});
+
 describe('Broadcast auto-clear', () => {
   it.each([
     ['15m', 15 * 60_000],

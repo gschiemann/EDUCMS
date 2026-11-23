@@ -8,8 +8,15 @@
  * Sender options (`BannerOptions`, @cms/api-types):
  *   - colour: any hex; the text colour is chosen for WCAG contrast.
  *   - static: centred text, at most 2 lines, shrunk to a floor to fit.
- *   - scroll: a seamless marquee (the text repeated end to end, the track
- *     slides exactly one copy then loops), slow / normal / fast.
+ *   - scroll: a seamless marquee (the text repeated end to end until it
+ *     fills the bar twice; the track slides half its copies, then loops),
+ *     slow / normal / fast — one stage width every 48 s / 30 s / 20 s
+ *     (2026-11-23, slowed), timed by the distance the track really travels
+ *     so a short message moves exactly as fast as a long one.
+ *   - size (2026-11-23): small / medium / large text, a fraction of the stage
+ *     width (`bannerFontPx`); medium is the size every banner with options
+ *     drew before. The bar's height follows the font (it is content-sized);
+ *     the overlay still caps it at 40% of the canvas.
  *
  * Without options the bar renders EXACTLY as before (left-aligned text-xl) -
  * that is also what an older player does with a message that carries the new
@@ -21,10 +28,13 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type Ref } from 'react';
 import { AlertTriangle, Megaphone } from 'lucide-react';
 import {
-  BANNER_SPEED_STAGES_PER_MIN,
+  bannerFontPx,
+  bannerLoopSeconds,
+  bannerSizeOf,
   readableTextOn,
   sanitizeBannerOptions,
   type BannerOptions,
+  type BannerSize,
 } from '@cms/api-types';
 
 export const BANNER_SEVERITY_STYLES = {
@@ -58,25 +68,25 @@ const KEYFRAMES =
   '@keyframes edu-banner-marquee{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}';
 
 /** Static: centred, at most 2 lines, shrunk (never below `floor`) to fit. */
-function StaticText({ text, stageWidth }: { text: string; stageWidth: number }) {
+function StaticText({ text, stageWidth, size }: { text: string; stageWidth: number; size: BannerSize }) {
   const ref = useRef<HTMLDivElement>(null);
-  const base = Math.max(20, Math.min(120, Math.round(stageWidth * 0.022)));
-  const floor = Math.max(14, Math.min(60, Math.round(stageWidth * 0.0115)));
+  const { base, floor } = bannerFontPx(size, stageWidth);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    let size = base;
-    el.style.fontSize = `${size}px`;
+    let px = base;
+    el.style.fontSize = `${px}px`;
     // line-height is 1.25; two lines plus a hair of slack.
-    while (size > floor && el.scrollHeight > size * 1.25 * 2 + 2) {
-      size -= 2;
-      el.style.fontSize = `${size}px`;
+    while (px > floor && el.scrollHeight > px * 1.25 * 2 + 2) {
+      px = Math.max(floor, px - 2);
+      el.style.fontSize = `${px}px`;
     }
   }, [text, base, floor]);
   return (
     <div
       ref={ref}
       data-banner-text="static"
+      data-banner-size={size}
       className="flex-1 min-w-0 font-bold ml-4 text-center whitespace-pre-wrap break-words"
       style={{ lineHeight: 1.25 }}
     >
@@ -86,11 +96,11 @@ function StaticText({ text, stageWidth }: { text: string; stageWidth: number }) 
 }
 
 /** Scroll: seamless marquee. N even copies; the track moves -50% = N/2 copies. */
-function ScrollText({ text, stageWidth, speed }: { text: string; stageWidth: number; speed: BannerOptions['speed'] }) {
+function ScrollText({ text, stageWidth, speed, size }: { text: string; stageWidth: number; speed: BannerOptions['speed']; size: BannerSize }) {
   const clipRef = useRef<HTMLDivElement>(null);
   const copyRef = useRef<HTMLSpanElement>(null);
   const [fit, setFit] = useState<{ copies: number; seconds: number }>({ copies: 2, seconds: 20 });
-  const size = Math.max(20, Math.min(120, Math.round(stageWidth * 0.022)));
+  const fontPx = bannerFontPx(size, stageWidth).base;
   useLayoutEffect(() => {
     const clip = clipRef.current;
     const copy = copyRef.current;
@@ -99,15 +109,16 @@ function ScrollText({ text, stageWidth, speed }: { text: string; stageWidth: num
       const copyW = copy.offsetWidth;
       if (copyW <= 0) return;
       const perCopy = Math.max(1, Math.ceil(clip.offsetWidth / copyW));
-      const pxPerSecond = (stageWidth * BANNER_SPEED_STAGES_PER_MIN[speed]) / 60;
-      const next = { copies: perCopy * 2, seconds: Math.max(4, Math.round((copyW / pxPerSecond) * 10) / 10) };
+      // One loop slides -50% of the track = perCopy copies: time THAT distance
+      // (timing one copy ran a short message perCopy times too fast).
+      const next = { copies: perCopy * 2, seconds: bannerLoopSeconds(perCopy * copyW, stageWidth, speed) };
       setFit((prev) => (prev.copies === next.copies && prev.seconds === next.seconds ? prev : next));
     };
     measure();
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
     observer?.observe(clip);
     return () => observer?.disconnect();
-  }, [text, stageWidth, speed, size]);
+  }, [text, stageWidth, speed, fontPx]);
   const copies = [];
   for (let i = 0; i < fit.copies; i += 1) {
     copies.push(
@@ -126,8 +137,10 @@ function ScrollText({ text, stageWidth, speed }: { text: string; stageWidth: num
       ref={clipRef}
       data-banner-text="scroll"
       data-banner-speed={speed}
+      data-banner-size={size}
+      data-banner-seconds={fit.seconds}
       className="flex-1 min-w-0 font-bold ml-4"
-      style={{ overflow: 'hidden', whiteSpace: 'nowrap', fontSize: size, lineHeight: 1.25 }}
+      style={{ overflow: 'hidden', whiteSpace: 'nowrap', fontSize: fontPx, lineHeight: 1.25 }}
     >
       <style>{KEYFRAMES}</style>
       <div
@@ -178,9 +191,9 @@ export function BroadcastBannerBar({ severity, text, options, stageWidth, barRef
       <Icon className="w-8 h-8 flex-shrink-0" />
       {opts ? (
         opts.mode === 'scroll' ? (
-          <ScrollText text={text} stageWidth={width} speed={opts.speed} />
+          <ScrollText text={text} stageWidth={width} speed={opts.speed} size={bannerSizeOf(opts)} />
         ) : (
-          <StaticText text={text} stageWidth={width} />
+          <StaticText text={text} stageWidth={width} size={bannerSizeOf(opts)} />
         )
       ) : (
         /* ml-4 stands in for a parent flex GAP (Chrome 84+ only). min-w-0 lets

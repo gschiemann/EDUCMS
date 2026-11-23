@@ -8,6 +8,7 @@ import {
   normalizeHex,
   readableTextOn,
   type BannerOptions,
+  type BannerSize,
   type BannerSpeed,
   type BannerMode,
 } from '@cms/api-types';
@@ -44,9 +45,14 @@ export function contrastReport(hex: string | null): ContrastReport | null {
   return hex ? readableTextOn(hex) : null;
 }
 
-/** What the composer sends as `banner` (INFO / WARN text broadcasts only). */
-export function bannerForSend(hex: string | null, mode: BannerMode, speed: BannerSpeed): BannerOptions {
-  return { ...(hex ? { color: hex } : {}), mode, speed };
+/**
+ * What the composer sends as `banner` (INFO / WARN text broadcasts only), in
+ * the canonical form the API stores: `size` only for small / large, so a
+ * medium send is byte for byte what it was before text sizes existed (and is
+ * accepted by an API build from before them).
+ */
+export function bannerForSend(hex: string | null, mode: BannerMode, speed: BannerSpeed, size: BannerSize = 'medium'): BannerOptions {
+  return { ...(hex ? { color: hex } : {}), mode, speed, ...(size === 'small' || size === 'large' ? { size } : {}) };
 }
 
 export type DurationPreset = 'custom' | '15m' | '1h' | '4h' | 'eod' | 'manual';

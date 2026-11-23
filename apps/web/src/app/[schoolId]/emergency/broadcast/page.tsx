@@ -17,7 +17,7 @@ import { AssetPicker, type AssetKind } from '@/components/assets/AssetPicker';
 import { transformedImageUrl } from '@/lib/asset-image';
 import type { BroadcastInput, MediaAlertInput } from '@cms/api-types';
 import { BroadcastBannerBar } from '@/components/player/BroadcastBannerBar';
-import { BANNER_PRESET_COLORS, BANNER_SPEEDS, normalizeHex, type BannerMode, type BannerSpeed } from '@cms/api-types';
+import { BANNER_PRESET_COLORS, BANNER_SIZES, BANNER_SPEEDS, normalizeHex, type BannerMode, type BannerSize, type BannerSpeed } from '@cms/api-types';
 import {
   bannerForSend, contrastReport, durationMinutesFor, resolveColorChoice,
   type BrandColors, type ColorChoice, type DurationPreset,
@@ -108,6 +108,7 @@ export default function BroadcastPage() {
   const [customHex, setCustomHex] = useState('#');
   const [bannerMode, setBannerMode] = useState<BannerMode>('static');
   const [bannerSpeed, setBannerSpeed] = useState<BannerSpeed>('normal');
+  const [bannerSize, setBannerSize] = useState<BannerSize>('medium');
   const [brand, setBrand] = useState<BrandColors>({ primary: null, accent: null });
   const previewBox = useRef<HTMLDivElement>(null);
   const [previewScale, setPreviewScale] = useState(0.3);
@@ -281,7 +282,7 @@ export default function BroadcastPage() {
             textBlob: text.trim(), severity, expiresAt: Math.floor(Date.now() / 1000) + minutesToSend() * 60 }
         : { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, ...(screenIds ? { screenIds } : {}), text: text.trim(), severity,
             durationMs: minutesToSend() * 60 * 1000,
-            ...(isBannerSend ? { banner: bannerForSend(bannerHex, bannerMode, bannerSpeed) } : {}) };
+            ...(isBannerSend ? { banner: bannerForSend(bannerHex, bannerMode, bannerSpeed, bannerSize) } : {}) };
       const res = await fetchWithTimeout(`${API_URL}/emergency/${withMedia ? 'media-alert' : 'broadcast'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -456,6 +457,14 @@ export default function BroadcastPage() {
                       className={`min-h-11 px-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 ${bannerMode === m ? 'bg-indigo-50 text-indigo-700' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{t(m === 'static' ? 'modeStatic' : 'modeScroll')}</button>)}
                   </div>
                 </div>
+                <div>
+                  <p className="mb-1.5 text-[10px] font-semibold text-slate-500">{t('textSize')}</p>
+                  <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="radiogroup" aria-label={t('textSize')}>
+                    {BANNER_SIZES.map((sz) => <button key={sz} type="button" role="radio" aria-checked={bannerSize === sz} data-testid={`banner-size-${sz}`}
+                      onClick={() => setBannerSize(sz)}
+                      className={`min-h-11 px-3 text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-500 ${bannerSize === sz ? 'bg-indigo-50 text-indigo-700' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{t(sz === 'small' ? 'sizeSmall' : sz === 'large' ? 'sizeLarge' : 'sizeMedium')}</button>)}
+                  </div>
+                </div>
                 {bannerMode === 'scroll' && <div>
                   <p className="mb-1.5 text-[10px] font-semibold text-slate-500">{t('speed')}</p>
                   <div className="inline-flex overflow-hidden rounded-lg border border-slate-200" role="radiogroup" aria-label={t('speed')}>
@@ -517,7 +526,7 @@ export default function BroadcastPage() {
                   <BroadcastBannerBar
                     severity={severity === 'INFO' ? 'INFO' : 'WARN'}
                     text={text || t('previewPlaceholder')}
-                    options={bannerForSend(bannerHex, bannerMode, bannerSpeed)}
+                    options={bannerForSend(bannerHex, bannerMode, bannerSpeed, bannerSize)}
                     stageWidth={PREVIEW_STAGE_W}
                     style={{ width: PREVIEW_STAGE_W, maxHeight: PREVIEW_STAGE_H * 0.4 }}
                     rootProps={{ 'data-testid': 'broadcast-preview-bar' }}
