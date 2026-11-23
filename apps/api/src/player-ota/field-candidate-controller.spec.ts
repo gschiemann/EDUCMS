@@ -15,6 +15,8 @@ beforeEach(() => {
   process.env.PLAYER_APK_FIELD_CANDIDATE = release.versionName;
   process.env.PLAYER_APK_FIELD_TENANT_ID = tenant;
   process.env.PLAYER_APK_FIELD_SCREEN_IDS = id;
+  // FLT-02: with no bench list no screen is a bench screen; `id` is the bench.
+  process.env.PLAYER_FIELD_BENCH_SCREENS = id;
   process.env.PLAYER_APK_FIELD_EXPIRES_AT = new Date(
     Date.now() + 60_000,
   ).toISOString();

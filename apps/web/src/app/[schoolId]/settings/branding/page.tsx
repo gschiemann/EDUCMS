@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { Palette, Sparkles, CircleDashed, Loader2, ImageOff, Trash2, Wand2 } from 'lucide-react';
 
 import { apiFetch } from '@/lib/api-client';
+import { registerUnsavedWork } from '@/lib/unsaved-work';
 import { useUIStore } from '@/store/ui-store';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import {
@@ -197,6 +198,14 @@ export default function SettingsBrandingPage() {
   // Leaving the page with unsaved edits must not leave the app painted in a
   // color nobody saved.
   useEffect(() => () => restoreServerPaint(), [restoreServerPaint]);
+
+  // The inline logo editor (BrandingWizard) keeps its scan picks, logo choice
+  // and text in its own state until Adopt, outside the shell's dirty count.
+  // While it is open it counts as unsaved work (lib/unsaved-work).
+  useEffect(() => {
+    if (!logoEditorOpen) return;
+    return registerUnsavedWork(() => true);
+  }, [logoEditorOpen]);
 
   // ── Logo facts. Dimensions are MEASURED, never assumed. ───────
   const logoUrl = (branding?.logoUrl as string | undefined) || null;

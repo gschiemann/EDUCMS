@@ -34,6 +34,8 @@ beforeEach(() => {
   process.env.PLAYER_APK_FIELD_CANDIDATE = release.versionName;
   process.env.PLAYER_APK_FIELD_TENANT_ID = TENANT;
   process.env.PLAYER_APK_FIELD_SCREEN_IDS = SCREEN;
+  // FLT-02: with no bench list no screen is a bench screen; SCREEN is the bench.
+  process.env.PLAYER_FIELD_BENCH_SCREENS = SCREEN;
   // A field authorization lives at most 24 h (field-candidate.ts); `at()`
   // below moves it along with the simulated clock.
   process.env.PLAYER_APK_FIELD_EXPIRES_AT = new Date(Date.now() + 60 * MIN).toISOString();

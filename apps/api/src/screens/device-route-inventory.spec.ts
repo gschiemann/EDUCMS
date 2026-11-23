@@ -133,9 +133,9 @@ const DEVICE_AUTH_SITES: DeviceAuthSite[] = [
     file: 'screens/screens.controller.ts',
     fn: 'postGameState',
     routes: ['POST /api/v1/screens/:id/game-state'],
-    unpaired: 'allowed',
+    unpaired: 'refused',
     unprovenAllowed: false,
-    why: 'Writes tenant sports state at up to 16 Hz.',
+    why: "Signs and publishes tenant sports state on the screen's own channel at up to 16 Hz. Paired screens only since 2026-11-23 (SDW-02): its only caller, the scoreboard bridge in the player page, mounts only on a paired screen (screenId + tenantId), so a screen with no tenant has nothing to post.",
   },
   {
     file: 'screens/screens.controller.ts',

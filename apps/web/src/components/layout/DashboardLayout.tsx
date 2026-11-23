@@ -109,11 +109,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <SupportAccessBanner />
       {/* 2026-05-12 — operator hit "still shows gschiemann" because
           their tab was on a pre-deploy bundle. StaleBundleWatcher
-          polls /api/build-info every 5 min and shows a "new version
-          available — reload in 30s" toast when the deployed SHA
-          differs from the bundle's baked-in SHA. Auto-reloads after
-          countdown; operator can Reload-now or Later. Pairs with
-          the kiosk player's Phase B4 stale-bundle drift check. */}
+          checks /api/build-info while the tab is visible (at most every
+          5 min) and shows a persistent "A new version is available —
+          Reload" control when the deployed SHA differs from the
+          bundle's baked-in SHA. It reloads on its own only while the tab
+          is hidden, clean and not on a live route (2026-11-23).
+          Pairs with the kiosk player's Phase B4 stale-bundle drift
+          check. */}
       <StaleBundleWatcher />
       {/* Dashboard PWA service worker — Phase 1 of the mobile roadmap.
           Registers /sw.js in production only; keeps the player's own

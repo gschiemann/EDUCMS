@@ -293,6 +293,8 @@ const fcEnv = (primary: string, previous?: string): NodeJS.ProcessEnv => ({
   PLAYER_APK_FIELD_TENANT_ID: TENANT,
   PLAYER_APK_FIELD_SCREEN_IDS: SCREEN,
   PLAYER_APK_FIELD_EXPIRES_AT: new Date(fcNow + 60_000).toISOString(),
+  // FLT-02: with no bench list no screen is a bench screen; SCREEN is the bench.
+  PLAYER_FIELD_BENCH_SCREENS: SCREEN,
   DEVICE_SECRET_KEY: primary,
   ...(previous ? { DEVICE_SECRET_KEY_PREVIOUS: previous } : {}),
 });

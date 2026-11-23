@@ -364,6 +364,17 @@ jobs:
       - name: Bundle budget (ratchet down only)
         run: node apps/web/tools/check-bundle-budget.cjs
 
+      # Launch audit LIV-03 / OPS-04 / PLW-02 / SSC-06 (2026-11-23): the browser
+      # Sentry init sat in a file the Turbopack build never loads, and every
+      # build was green. This reads the build: the init must be in the chunks
+      # every page loads, and the chunks /player loads first must parse at
+      # ES2020 (the Chromium-83 Taurus floor). This build has no DSN, so it
+      # looks for the "not set" warning from src/instrumentation-client.ts.
+      - name: Browser Sentry init + player chunk syntax
+        run: |
+          node apps/web/tools/check-client-sentry.cjs --self-test
+          node apps/web/tools/check-client-sentry.cjs
+
       # Player SW invariants: app-shell tier present + BUG #5 version-sort
       # regression cases (migrated from a .test.ts that NO runner executed —
       # apps/web has no unit-test script; this gate actually runs).

@@ -83,11 +83,26 @@ describe('scrubEvent', () => {
 
 describe('every web Sentry config uses the shared scrubber', () => {
   // The configs call Sentry.init at import; read them as text instead.
-  it.each(['sentry.client.config.ts', 'sentry.server.config.ts', 'sentry.edge.config.ts'])('%s', (file) => {
+  it.each(['sentry.server.config.ts', 'sentry.edge.config.ts'])('%s', (file) => {
     const src = fs.readFileSync(path.join(__dirname, '../../..', file), 'utf8');
     expect(src).toMatch(/from '\.\/src\/lib\/sentry-scrub'/);
     expect(src).toMatch(/beforeSend: \(event\) => scrubEvent\(event\)/);
     expect(src).toMatch(/beforeSendTransaction: \(event\) => scrubEvent\(event\)/);
     expect(src).toMatch(/beforeBreadcrumb: \(crumb\) => scrubBreadcrumb\(crumb\)/);
+  });
+
+  // The browser init is in src/instrumentation-client.ts; its options (and
+  // the hooks, exercised in sentry-client-options.test.ts) are here.
+  it('src/lib/sentry-client-options.ts (browser)', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'sentry-client-options.ts'), 'utf8');
+    expect(src).toMatch(/from '\.\/sentry-scrub'/);
+    expect(src).toMatch(/beforeSendTransaction: \(event\) => scrubEvent\(event\)/);
+    expect(src).toMatch(/beforeBreadcrumb: \(crumb\) => scrubBreadcrumb\(crumb\)/);
+  });
+
+  it('no legacy sentry.client.config.ts (the Turbopack build never loads it)', () => {
+    for (const name of ['sentry.client.config.ts', 'sentry.client.config.js']) {
+      expect(fs.existsSync(path.join(__dirname, '../../..', name))).toBe(false);
+    }
   });
 });

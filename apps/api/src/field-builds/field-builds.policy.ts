@@ -251,15 +251,26 @@ export function offHoursRefusal(v: OffHoursVerdict): PushRuleRefusal {
   };
 }
 
-/** Rule 2, for a push. */
-export function benchRefusal(offBench: ReadonlyArray<NamedScreen>): PushRuleRefusal {
+/**
+ * Rule 2, for a push. `listConfigured: false` = no bench list is set, so no
+ * screen is a bench screen (FLT-02, 2026-11-23). Same code either way; the web
+ * words it from the code.
+ */
+export function benchRefusal(
+  offBench: ReadonlyArray<NamedScreen>,
+  opts: { listConfigured?: boolean } = {},
+): PushRuleRefusal {
+  const listConfigured = opts.listConfigured !== false;
+  const are = offBench.length === 1 ? 'is' : 'are';
   return {
     status: 422,
     code: 'FIELD_BUILD_SCREEN_NOT_BENCH',
-    message:
-      `Field builds go only to the bench screens listed in PLAYER_FIELD_BENCH_SCREENS, and ` +
-      `${listScreenNames(offBench)} ${offBench.length === 1 ? 'is' : 'are'} not on that list.`,
-    extra: { screens: offBench },
+    message: listConfigured
+      ? `Field builds go only to the bench screens listed in PLAYER_FIELD_BENCH_SCREENS, and ` +
+        `${listScreenNames(offBench)} ${are} not on that list.`
+      : `Field builds go only to the bench screens listed in PLAYER_FIELD_BENCH_SCREENS, and no bench ` +
+        `screens are listed, so ${listScreenNames(offBench)} ${are} not one. List the bench screens first.`,
+    extra: { screens: offBench, benchListConfigured: listConfigured },
   };
 }
 

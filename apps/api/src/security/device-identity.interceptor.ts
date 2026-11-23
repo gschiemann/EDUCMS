@@ -24,9 +24,12 @@
  * inherits the same trap. This interceptor fixes the principal itself, once,
  * for every route the guard protects:
  *
- *   • `tenantId` / `screenGroupId` come from the live `Screen` row, or are
- *     `undefined` when the screen is unpaired. Downstream `requireTenantId*`
- *     helpers then fail closed instead of resolving a stale tenant.
+ *   • `tenantId` / `screenGroupId` come from the live `Screen` row.
+ *   • a device whose screen has NO tenant (unpaired) is refused with 401,
+ *     except on the few routes marked `@AllowUnpairedDevice()` (SDW-01,
+ *     2026-11-23). There the principal carries `tenantId: undefined` and the
+ *     handler reads the screen's own row. Everywhere else a handler can rely
+ *     on a device principal's `tenantId` being a real tenant.
  *   • a device whose screen row is gone, is `REVOKED`, or whose credential
  *     epoch no longer matches is rejected with 401 — which is what makes
  *     the DT-01 revocation store actually bite on the guard-protected
@@ -55,9 +58,12 @@ import {
   NestInterceptor,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Observable } from 'rxjs';
 import { from, switchMap } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { hasTenantId } from '../auth/require-tenant';
+import { ALLOW_UNPAIRED_DEVICE_KEY } from './allow-unpaired-device.decorator';
 import {
   loadDeviceCredentialState,
   isEpochAcceptable,
@@ -94,6 +100,21 @@ import { stampRepairRequired } from './repair-required-stamp';
  */
 const UNPROVEN_FORBIDDEN_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/** Reads route metadata only; it has no dependencies, so no injection. */
+const reflector = new Reflector();
+
+/**
+ * SDW-01 — does the route being served accept a screen that has no tenant?
+ * Handler metadata only (see allow-unpaired-device.decorator.ts). A context
+ * that names no handler answers `false`: the refusal is the default.
+ */
+export function routeAllowsUnpairedDevice(context: ExecutionContext): boolean {
+  const handler =
+    typeof context.getHandler === 'function' ? context.getHandler() : undefined;
+  if (!handler) return false;
+  return reflector.get<boolean>(ALLOW_UNPAIRED_DEVICE_KEY, handler) === true;
+}
+
 @Injectable()
 export class DeviceIdentityInterceptor implements NestInterceptor {
   constructor(private readonly prisma: PrismaService) {}
@@ -105,10 +126,16 @@ export class DeviceIdentityInterceptor implements NestInterceptor {
     if (!user || user.kind !== 'device' || typeof user.sub !== 'string') {
       return next.handle();
     }
-    return from(this.resolve(req, user)).pipe(switchMap(() => next.handle()));
+    return from(this.resolve(req, user, context)).pipe(
+      switchMap(() => next.handle()),
+    );
   }
 
-  private async resolve(req: any, user: any): Promise<void> {
+  private async resolve(
+    req: any,
+    user: any,
+    context: ExecutionContext,
+  ): Promise<void> {
     // Request-scoped (`req`) so the handler behind this interceptor reuses
     // the snapshot instead of re-reading the same row, and the cross-replica
     // window (see DEVICE_IDENTITY_CREDENTIAL_MAX_AGE_MS) so a fleet polling
@@ -155,10 +182,28 @@ export class DeviceIdentityInterceptor implements NestInterceptor {
       throw new UnauthorizedException('Device credential unproven');
     }
 
+    // ── SDW-01 — a device principal belongs to a tenant ────────────────────
+    // An unpaired screen (no tenant on its live row) holds a real, signed
+    // credential: registration mints one so the pairing splash can heartbeat,
+    // take OTA updates and report its orientation. Those calls go through
+    // `verifyDeviceForScreen(…, { allowUnpaired: true })`, not this surface.
+    // On the guard surface it may reach only the routes that say so with
+    // `@AllowUnpairedDevice()`; everywhere else it is refused here, before
+    // the handler runs. 401 with the same
+    // meaning `screen_unpaired` has on the explicit device-auth path. A
+    // paired screen never reaches this branch.
+    if (!hasTenantId(state.tenantId) && !routeAllowsUnpairedDevice(context)) {
+      throw new UnauthorizedException({
+        code: 'DEVICE_SCREEN_UNPAIRED',
+        message: 'This screen is not paired',
+      });
+    }
+
     // ── The DT-03 fix itself ──────────────────────────────────────────
     // Live row wins over the claim, always. `undefined` (not null) so the
     // `requireTenantId*` helpers treat an unpaired screen as "no tenant"
-    // and refuse, rather than resolving a stale one.
+    // and refuse, rather than resolving a stale one. Only an
+    // `@AllowUnpairedDevice()` route can see `undefined` here (SDW-01).
     user.tenantId = state.tenantId ?? undefined;
     user.screenGroupId = state.screenGroupId ?? undefined;
     user.credentialEpoch = state.credentialEpoch;

@@ -2815,12 +2815,14 @@ export class AssetsController {
    * endpoint to hit, those resolutions 404'd → operator saw
    * "webpage unavailable" with an Android WebView error page.
    *
-   * Auth follows the same pattern as /templates/:id/playback:
-   *   - kind:'device' → look up the bound screen, scope by tenant
-   *   - SUPER_ADMIN → cross-tenant by design
-   *   - user JWT → scope by tenantId
-   * No @RequireRoles because device JWTs have no role; auth is
-   * enforced via the where-clause filter on the lookup.
+   * Auth: every caller needs a tenant scope, and the lookup is always
+   * constrained to it (SDW-01, 2026-11-23):
+   *   - kind:'device' → the bound screen's live tenant
+   *   - SUPER_ADMIN → the active workspace (support access, 2026-10-11),
+   *     never cross-tenant
+   *   - user JWT → their own tenant
+   * A caller with no tenant scope gets 404. No @RequireRoles because device
+   * JWTs have no role; the where clause always carries `tenantId`.
    *
    * Returns only the playback-needed fields (id, fileUrl, mimeType,
    * fileSize) — never the full Asset row. Status must be PUBLISHED;
@@ -2846,24 +2848,20 @@ export class AssetsController {
       // SUPPORT ACCESS (2026-10-11): scoped to the active workspace, which the
       // global gate has already proved reachable — never cross-tenant.
       scopeTenantId = u.tenantId || u.schoolId || u.districtId || null;
-      if (!scopeTenantId) {
-        throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Asset not found' }, HttpStatus.NOT_FOUND);
-      }
     } else {
       scopeTenantId = u.schoolId || u.tenantId || u.districtId || null;
-      if (!scopeTenantId) {
-        throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Asset not found' }, HttpStatus.NOT_FOUND);
-      }
     }
-    // ten-ok: tenant scope IS applied — `scopeTenantId` is spread in below (device →
-    // its own screen's tenant; non-super user → their own tenant; a missing scope
-    // 404s above). Only SUPER_ADMIN reaches this with scopeTenantId=null, which is
-    // cross-tenant by role. The static gate cannot see a conditional spread.
+    // SDW-01: every caller needs a tenant scope, a device included — a screen
+    // with no tenant (unpaired) has no assets to play. A missing scope is a
+    // 404, and the lookup below always carries `tenantId`.
+    if (!scopeTenantId) {
+      throw new HttpException({ code: 'ASSET_NOT_FOUND', message: 'Asset not found' }, HttpStatus.NOT_FOUND);
+    }
     const asset = await this.prisma.client.asset.findFirst({
       where: {
         id,
         status: 'PUBLISHED',
-        ...(scopeTenantId ? { tenantId: scopeTenantId } : {}),
+        tenantId: scopeTenantId,
       },
       select: {
         id: true,

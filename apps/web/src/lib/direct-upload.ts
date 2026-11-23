@@ -25,6 +25,7 @@
  */
 import { resolveUploadFormat } from '@cms/api-types';
 import { apiFetch } from '@/lib/api-client';
+import { registerUnsavedWork } from '@/lib/unsaved-work';
 
 /** Supabase requires exactly 6 MB TUS chunks (the last one may be shorter). */
 export const RESUMABLE_CHUNK_BYTES = 6 * 1024 * 1024;
@@ -362,12 +363,27 @@ function mapApiError(e: unknown): DirectUploadError {
   return new DirectUploadError('server', message, status, 'api', apiCode, apiBody);
 }
 
+// A transfer in progress lives only in this tab: a reload would end it, so it
+// counts as unsaved work (lib/unsaved-work) until it settles, whichever page
+// started it.
+let uploadsInFlight = 0;
+registerUnsavedWork(() => uploadsInFlight > 0);
+
 /**
  * Upload one file to the media library, directly to storage. Resolves with the
  * created asset; rejects with a DirectUploadError whose `code` a component maps
  * to its own (translated) words.
  */
 export async function uploadAssetDirect(file: File, opts: DirectUploadOptions = {}): Promise<CompletedAsset> {
+  uploadsInFlight += 1;
+  try {
+    return await uploadOneFile(file, opts);
+  } finally {
+    uploadsInFlight -= 1;
+  }
+}
+
+async function uploadOneFile(file: File, opts: DirectUploadOptions): Promise<CompletedAsset> {
   const deps: DirectUploadDeps = { ...realDeps,
     postJson: <T,>(path: string, body: Record<string, unknown>) => {
       if (opts.signal?.aborted) return Promise.reject(new DirectUploadError('aborted', 'Upload cancelled.'));

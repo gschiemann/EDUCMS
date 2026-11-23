@@ -1,15 +1,20 @@
 /**
  * The owner's fleet push rules (fleet-push-policy.ts), every shape pinned.
  *   1. one hardware class for a set of more than one screen;
- *   2. field candidates only to PLAYER_FIELD_BENCH_SCREENS (unset = no change);
+ *   2. field candidates only to PLAYER_FIELD_BENCH_SCREENS (unset = no bench
+ *      screen since 2026-11-23, FLT-02; PLAYER_FIELD_BENCH_FAIL_OPEN restores
+ *      the old reading of an unset list);
  *   3. a push to more than one screen only 22:00–06:00 in each screen's zone.
  */
 import {
   COARSE_HARDWARE_MODELS,
   FIELD_BENCH_ENV,
+  FIELD_BENCH_FAIL_OPEN_ENV,
   OFF_HOURS,
   evaluateHardwareClasses,
   evaluateOffHours,
+  fieldBenchFailOpen,
+  fieldBenchVerdict,
   hardwareClassOf,
   isFieldBenchScreen,
   localTimeIn,
@@ -24,16 +29,49 @@ const C = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc3';
 const reported = (cls: string) => ({ native: { device: { class: cls } } });
 
 describe('rule 2 — PLAYER_FIELD_BENCH_SCREENS', () => {
-  it('UNSET or blank: no restriction at all — every screen passes, exactly as before the variable existed', () => {
+  it('UNSET or blank: NO screen is a bench screen — fail closed (FLT-02, 2026-11-23)', () => {
     for (const env of [{}, { [FIELD_BENCH_ENV]: '' }, { [FIELD_BENCH_ENV]: '  ' }, { [FIELD_BENCH_ENV]: undefined }]) {
       expect(parseFieldBenchScreens(env)).toEqual({ configured: false, ids: new Set() });
-      for (const id of [A, B, 'not-a-uuid', '', null, undefined]) expect(isFieldBenchScreen(id, env)).toBe(true);
+      for (const id of [A, B, 'not-a-uuid', '', null, undefined]) {
+        expect(isFieldBenchScreen(id, env)).toBe(false);
+        expect(fieldBenchVerdict(id, env)).toEqual({ bench: false, reason: 'no-bench-list' });
+      }
     }
+  });
+
+  it('the escape PLAYER_FIELD_BENCH_FAIL_OPEN restores the old reading of an UNSET list: every screen passes', () => {
+    for (const on of ['1', 'true', 'TRUE', 'yes', ' Yes ']) {
+      for (const list of [undefined, '', '  ']) {
+        const env = { [FIELD_BENCH_ENV]: list, [FIELD_BENCH_FAIL_OPEN_ENV]: on };
+        expect(fieldBenchFailOpen(env)).toBe(true);
+        for (const id of [A, B, 'not-a-uuid', '', null, undefined]) {
+          expect(isFieldBenchScreen(id, env)).toBe(true);
+          expect(fieldBenchVerdict(id, env)).toEqual({ bench: true, reason: 'fail-open-escape' });
+        }
+      }
+    }
+  });
+
+  it('the escape needs exactly 1 / true / yes — anything else keeps the gate closed', () => {
+    for (const off of [undefined, '', ' ', '0', 'false', 'no', 'off', 'on', 'open', '2', 'yes please']) {
+      const env = { [FIELD_BENCH_FAIL_OPEN_ENV]: off };
+      expect(fieldBenchFailOpen(env)).toBe(false);
+      expect(isFieldBenchScreen(A, env)).toBe(false);
+    }
+  });
+
+  it('the escape never widens a list that is set — including a list with no valid id', () => {
+    const env = { [FIELD_BENCH_ENV]: A, [FIELD_BENCH_FAIL_OPEN_ENV]: '1' };
+    expect(fieldBenchVerdict(A, env)).toEqual({ bench: true, reason: 'listed' });
+    expect(fieldBenchVerdict(B, env)).toEqual({ bench: false, reason: 'not-listed' });
+    expect(isFieldBenchScreen(B, { [FIELD_BENCH_ENV]: 'all', [FIELD_BENCH_FAIL_OPEN_ENV]: 'yes' })).toBe(false);
   });
 
   it('SET: only the listed screens, matched without regard to case or spaces', () => {
     const env = { [FIELD_BENCH_ENV]: ` ${A.toUpperCase()} ,${B}` };
     expect(parseFieldBenchScreens(env)).toEqual({ configured: true, ids: new Set([A, B]) });
+    expect(fieldBenchVerdict(A, env)).toEqual({ bench: true, reason: 'listed' });
+    expect(fieldBenchVerdict(C, env)).toEqual({ bench: false, reason: 'not-listed' });
     expect(isFieldBenchScreen(A, env)).toBe(true);
     expect(isFieldBenchScreen(B.toUpperCase(), env)).toBe(true);
     expect(isFieldBenchScreen(C, env)).toBe(false);
@@ -53,8 +91,12 @@ describe('rule 2 — PLAYER_FIELD_BENCH_SCREENS', () => {
 
   it('reads process.env by default', () => {
     const saved = process.env[FIELD_BENCH_ENV];
+    const savedEscape = process.env[FIELD_BENCH_FAIL_OPEN_ENV];
     try {
       delete process.env[FIELD_BENCH_ENV];
+      delete process.env[FIELD_BENCH_FAIL_OPEN_ENV];
+      expect(isFieldBenchScreen(C)).toBe(false);
+      process.env[FIELD_BENCH_FAIL_OPEN_ENV] = '1';
       expect(isFieldBenchScreen(C)).toBe(true);
       process.env[FIELD_BENCH_ENV] = A;
       expect(isFieldBenchScreen(C)).toBe(false);
@@ -62,6 +104,8 @@ describe('rule 2 — PLAYER_FIELD_BENCH_SCREENS', () => {
     } finally {
       if (saved === undefined) delete process.env[FIELD_BENCH_ENV];
       else process.env[FIELD_BENCH_ENV] = saved;
+      if (savedEscape === undefined) delete process.env[FIELD_BENCH_FAIL_OPEN_ENV];
+      else process.env[FIELD_BENCH_FAIL_OPEN_ENV] = savedEscape;
     }
   });
 });

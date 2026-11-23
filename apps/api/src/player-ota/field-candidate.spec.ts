@@ -28,6 +28,8 @@ const env = {
   DEVICE_SECRET_KEY: 'fake-test-secret',
   SUPABASE_URL: 'https://bhdaxzfalaycfopvcopm.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'fake-storage-test-key',
+  // FLT-02 (2026-11-23): no bench list = no bench screen; `id` is the bench.
+  PLAYER_FIELD_BENCH_SCREENS: id,
 };
 describe('private field admission and download capability', () => {
   it('covers a tenant list and a tenant-wide `all` (2026-10-17), never another tenant', () => {
@@ -331,13 +333,15 @@ describe('a window armed from the panel (field_build_windows)', () => {
 
   it('a ticket ends with its window and dies when the window is cancelled', () => {
     const short = row({ expiresAt: new Date(now + 60_000) });
-    const ticket = mintFieldTicket(other, id2, tenant2, { DEVICE_SECRET_KEY: 'fake-test-secret' }, now, short)!;
-    const v = verifyFieldTicket(ticket, other, { DEVICE_SECRET_KEY: 'fake-test-secret' }, now, short)!;
+    // Both screens are bench screens, so only the window decides here.
+    const keyed = { DEVICE_SECRET_KEY: 'fake-test-secret', PLAYER_FIELD_BENCH_SCREENS: `${id},${id2}` };
+    const ticket = mintFieldTicket(other, id2, tenant2, keyed, now, short)!;
+    const v = verifyFieldTicket(ticket, other, keyed, now, short)!;
     expect(v.screenId).toBe(id2);
     expect(v.exp).toBe(now + 60_000);
     const cancelled = { ...short, cancelledAt: new Date(now + 1) };
-    expect(verifyFieldTicket(ticket, other, { DEVICE_SECRET_KEY: 'fake-test-secret' }, now + 2, cancelled)).toBeNull();
-    expect(mintFieldTicket(other, id, tenant2, { DEVICE_SECRET_KEY: 'fake-test-secret' }, now, short)).toBeNull();
+    expect(verifyFieldTicket(ticket, other, keyed, now + 2, cancelled)).toBeNull();
+    expect(mintFieldTicket(other, id, tenant2, keyed, now, short)).toBeNull();
   });
 
   it('the default argument is the last row read — what the untouched controller uses', () => {
@@ -355,20 +359,36 @@ describe('a window armed from the panel (field_build_windows)', () => {
 });
 
 /**
- * 2026-10-31 — PLAYER_FIELD_BENCH_SCREENS (fleet-push-policy.ts): the download
- * ticket is minted and honoured only for a listed bench screen. Unset or blank,
- * the ticket is exactly what it was before the variable existed.
+ * PLAYER_FIELD_BENCH_SCREENS (fleet-push-policy.ts): the download ticket is
+ * minted and honoured only for a listed bench screen. Since 2026-11-23
+ * (FLT-02) an unset or blank list names no bench screen, so no ticket is
+ * minted or honoured; PLAYER_FIELD_BENCH_FAIL_OPEN restores the old reading.
  */
 describe('the field download ticket and PLAYER_FIELD_BENCH_SCREENS', () => {
   const other = '66666666-6666-4666-8666-666666666666';
 
-  it('UNSET or blank: the same ticket is minted and honoured as before', () => {
+  it('UNSET or blank: never minted, and a ticket minted while the screen was listed is no longer honoured', () => {
+    const earlier = mintFieldTicket(release, id, tenant, env, now, null)!;
+    expect(verifyFieldTicket(earlier, release, env, now, null)?.screenId).toBe(id);
     for (const bench of [undefined, '', '   ']) {
       const e = { ...env, PLAYER_FIELD_BENCH_SCREENS: bench };
+      expect(mintFieldTicket(release, id, tenant, e, now, null)).toBeNull();
+      expect(verifyFieldTicket(earlier, release, e, now, null)).toBeNull();
+      // The gate's own admission is untouched: the screen is still inside the window.
+      expect(isFieldCandidateTarget(id, tenant, e, now, null)).toBe(true);
+    }
+  });
+
+  it('UNSET with the escape PLAYER_FIELD_BENCH_FAIL_OPEN=1: the same ticket is minted and honoured as before 2026-11-23', () => {
+    for (const bench of [undefined, '', '   ']) {
+      const e = { ...env, PLAYER_FIELD_BENCH_SCREENS: bench, PLAYER_FIELD_BENCH_FAIL_OPEN: '1' };
       const ticket = mintFieldTicket(release, id, tenant, e, now, null);
       expect(ticket).toBe(mintFieldTicket(release, id, tenant, env, now, null));
       expect(verifyFieldTicket(ticket, release, e, now, null)?.screenId).toBe(id);
     }
+    // ...and never widens a list that is set.
+    const offList = { ...env, PLAYER_FIELD_BENCH_SCREENS: other, PLAYER_FIELD_BENCH_FAIL_OPEN: '1' };
+    expect(mintFieldTicket(release, id, tenant, offList, now, null)).toBeNull();
   });
 
   it('SET: never minted for a screen off the list, and a ticket minted earlier dies once the list no longer names it', () => {
