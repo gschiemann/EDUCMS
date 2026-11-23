@@ -871,3 +871,85 @@ describe('applyBrandToTemplates — a widget still showing its sample text', () 
     expect(tx.templateZone.updateMany).toHaveBeenCalledTimes(1);
   });
 });
+
+// ── #347 round-3 review: a generic word the tenant typed survives ──
+// 'WILDCATS', 'WHS' and 'Central Administration' are registered placeholders
+// but also words a tenant types as their own. On a template a brand has
+// already named, the clone / apply paths wrote that brand over them, so the
+// same word back in the key was typed: fill-blanks keeps it (the Settings
+// copy: "Anything you changed by hand is left alone"). Override replaces it.
+describe('applyBrandToTemplates — a generic word typed on a named template', () => {
+  const LINCOLN_KIT = {
+    displayName: 'Lincoln High School',
+    tagline: 'Go Lincoln',
+    logoUrl: 'https://cdn.example/lincoln.png',
+    palette: { primary: '#334455' },
+  };
+  function named(brandKit: unknown): Tpl {
+    return {
+      id: 'named',
+      name: 'Varsity board',
+      tenantId: 'ten1',
+      isSystem: false,
+      bgColor: '#123456',
+      bgGradient: null,
+      bgImage: null,
+      brandKit,
+      zones: [
+        {
+          id: 'named-portrait',
+          widgetType: 'HS_VARSITY_PORTRAIT',
+          defaultConfig: JSON.stringify({
+            schoolName: 'WILDCATS',
+            schoolInitials: 'WHS',
+          }),
+        },
+        {
+          id: 'named-office',
+          widgetType: 'LOGO',
+          defaultConfig: JSON.stringify({
+            theme: 'office-dashboard',
+            schoolName: 'Central Administration',
+          }),
+        },
+      ],
+    };
+  }
+
+  it('fill-blanks keeps them on a template whose brand history has a name', async () => {
+    const { ctrl, tx } = build([named(LINCOLN_KIT)]);
+    await ctrl.applyBrandToTemplates(req, { mode: 'fill-blanks' });
+    expect(zoneWrite(tx, 'named-portrait')).toMatchObject({
+      schoolName: 'WILDCATS',
+      schoolInitials: 'WHS',
+    });
+    const office = zoneWrite(tx, 'named-office');
+    expect(office.schoolName).toBe('Central Administration');
+    // The keys that were absent still fill.
+    expect(office).toMatchObject({
+      logoUrl: 'https://cdn.example/new-logo.png',
+      assetUrl: 'https://cdn.example/new-logo.png',
+      tagline: 'Learning without limits',
+    });
+  });
+
+  it('the same template with no brand history: they are still replaced', async () => {
+    const { ctrl, tx } = build([named(null)]);
+    await ctrl.applyBrandToTemplates(req, { mode: 'fill-blanks' });
+    expect(zoneWrite(tx, 'named-portrait')).toMatchObject({
+      schoolName: 'BUENA PARK ACADEMY',
+      schoolInitials: 'BPA',
+    });
+    expect(zoneWrite(tx, 'named-office').schoolName).toBe('Buena Park Academy');
+  });
+
+  it('override replaces them on the named template', async () => {
+    const { ctrl, tx } = build([named(LINCOLN_KIT)]);
+    await ctrl.applyBrandToTemplates(req, { mode: 'override' });
+    expect(zoneWrite(tx, 'named-portrait')).toMatchObject({
+      schoolName: 'BUENA PARK ACADEMY',
+      schoolInitials: 'BPA',
+    });
+    expect(zoneWrite(tx, 'named-office').schoolName).toBe('Buena Park Academy');
+  });
+});

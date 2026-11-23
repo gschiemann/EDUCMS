@@ -1096,8 +1096,9 @@ export class BrandingController {
     // first brand's colours, fonts, name, tagline, initials and logo, while
     // anything an operator typed by hand survives 'fill-blanks'. An identity
     // key that still shows its widget's own placeholder (registry in
-    // @cms/api-types) is replaced too, snapshot or not; otherwise a template
-    // with no snapshot gets blanks only.
+    // @cms/api-types) is replaced too, snapshot or not, except a GENERIC one
+    // ('WILDCATS', 'WHS') on a template a brand has already named: that word
+    // was typed. Otherwise a template with no snapshot gets blanks only.
     const style = styleFromBrand(branding as BrandLike, true);
     // `appliedDefaults`: this pass stamps the default ink / surface where the
     // palette has none, so the next rebrand must recognise those defaults.

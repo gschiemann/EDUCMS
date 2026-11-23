@@ -27,6 +27,7 @@ import {
   patchTemplateBackground,
   patchZoneIdentity,
   patchZoneStyle,
+  rolesWithHistory,
   styleFromBrand,
 } from './brand-identity';
 
@@ -1021,5 +1022,271 @@ describe('patchZoneIdentity — a renderer placeholder is brand-owned', () => {
     expect(isPlaceholder('whs', [])).toBe(false);
     expect(isPlaceholder('', ['WHS'])).toBe(false);
     expect(isPlaceholder(42, ['42'])).toBe(false);
+  });
+});
+
+// ── A GENERIC placeholder is nobody's only before a brand named the role ──
+// #347 round-3 review: 'WILDCATS', 'WHS', 'HS' and 'CENTRAL ADMINISTRATION'
+// are words a tenant types as their own (a mascot wordmark, a real school
+// abbreviation, a district office). Once a brand has named the template,
+// clone and apply have written that brand over the placeholder, so the same
+// word back in the key was typed: fill-blanks keeps it. With no brand
+// history the word can still be the click-blur capture of the sample, so it
+// is still replaced. Override replaces it either way.
+describe('patchZoneIdentity — a generic placeholder needs a template with no brand history', () => {
+  const LINCOLN_HS: BrandLike = { displayName: 'Lincoln High School' };
+  const WILSON: BrandLike = { displayName: 'Wilson High' };
+  const run = (
+    widgetType: string,
+    cfg: Record<string, unknown>,
+    brand: BrandLike,
+    previous: BrandLike | null,
+    mode: 'fill-blanks' | 'override' = 'fill-blanks',
+    history?: BrandLike[],
+  ) =>
+    patchZoneIdentity({ widgetType, cfg }, brand, previous, mode, {
+      history,
+    });
+
+  it("typed 'WILDCATS', 'Central Administration', 'WHS' and 'HS' survive fill-blanks on a template a brand has named", () => {
+    // The reviewer's reproductions, each with the template's own previous brand.
+    const portrait = run(
+      'HS_VARSITY_PORTRAIT',
+      { schoolName: 'WILDCATS', schoolInitials: 'LHS' },
+      LINCOLN_HS,
+      LINCOLN_HS,
+    );
+    expect(portrait.cfg).toEqual({
+      schoolName: 'WILDCATS',
+      schoolInitials: 'LHS',
+    });
+    expect(portrait.changed).toEqual([]);
+    expect(
+      run(
+        'LOGO',
+        { theme: 'office-dashboard', schoolName: 'Central Administration' },
+        LINCOLN_HS,
+        LINCOLN_HS,
+      ).cfg.schoolName,
+    ).toBe('Central Administration');
+    expect(
+      run('HS_VARSITY', { schoolInitials: 'WHS' }, WILSON, WILSON).cfg
+        .schoolInitials,
+    ).toBe('WHS');
+    expect(
+      run(
+        'LOGO',
+        { variant: 'logo-athletics', initials: 'HS' },
+        LINCOLN_HS,
+        LINCOLN_HS,
+      ).cfg.initials,
+    ).toBe('HS');
+    // A rebrand (a different previous brand with a name) keeps them too.
+    expect(
+      run('HS_VARSITY_PORTRAIT', { schoolName: 'Wildcats' }, NEW, OLD).cfg
+        .schoolName,
+    ).toBe('Wildcats');
+  });
+
+  it('the same words on a template with no brand history are still replaced', () => {
+    expect(
+      run(
+        'HS_VARSITY_PORTRAIT',
+        { schoolName: 'WILDCATS', schoolInitials: 'WHS' },
+        LINCOLN_HS,
+        null,
+      ).cfg,
+    ).toEqual({ schoolName: 'LINCOLN HIGH SCHOOL', schoolInitials: 'LHS' });
+    expect(
+      run(
+        'LOGO',
+        { theme: 'office-dashboard', schoolName: 'Central Administration' },
+        LINCOLN_HS,
+        null,
+      ).cfg.schoolName,
+    ).toBe('Lincoln High School');
+    expect(
+      run('HS_VARSITY', { schoolInitials: 'WHS' }, WILSON, null).cfg
+        .schoolInitials,
+    ).toBe('WH');
+    expect(
+      run(
+        'LOGO',
+        { variant: 'logo-athletics', initials: 'HS' },
+        LINCOLN_HS,
+        null,
+      ).cfg.initials,
+    ).toBe('LHS');
+  });
+
+  it('a previous brand with no name does not count: it never named the role', () => {
+    const logoOnly: BrandLike = {
+      logoUrl: 'https://cdn.example/old-logo.png',
+      palette: { primary: '#112233' },
+    };
+    expect(
+      run(
+        'HS_VARSITY_PORTRAIT',
+        { schoolName: 'WILDCATS', schoolInitials: 'WHS' },
+        LINCOLN_HS,
+        logoOnly,
+      ).cfg,
+    ).toEqual({ schoolName: 'LINCOLN HIGH SCHOOL', schoolInitials: 'LHS' });
+  });
+
+  it('override replaces them whatever the history', () => {
+    expect(
+      run(
+        'HS_VARSITY_PORTRAIT',
+        { schoolName: 'WILDCATS', schoolInitials: 'WHS' },
+        WILSON,
+        LINCOLN_HS,
+        'override',
+      ).cfg,
+    ).toEqual({ schoolName: 'WILSON HIGH', schoolInitials: 'WH' });
+    expect(
+      run(
+        'LOGO',
+        { theme: 'office-dashboard', schoolName: 'Central Administration' },
+        WILSON,
+        LINCOLN_HS,
+        'override',
+      ).cfg.schoolName,
+    ).toBe('Wilson High');
+  });
+
+  it('a sample ORGANISATION (not generic) still matches on a named template', () => {
+    expect(
+      run('HS_VARSITY', { schoolName: 'WESTRIDGE WILDCATS' }, NEW, OLD).cfg
+        .schoolName,
+    ).toBe('BUENA PARK ACADEMY');
+    expect(
+      run(
+        'LOGO',
+        { variant: 'logo-ops', schoolName: 'Roosevelt Academy' },
+        NEW,
+        OLD,
+      ).cfg.schoolName,
+    ).toBe('Buena Park Academy');
+  });
+
+  it('replaced once, typed back by hand: the next apply keeps it', () => {
+    const first = run(
+      'HS_VARSITY',
+      { schoolInitials: 'WHS' },
+      LINCOLN_HS,
+      null,
+    ).cfg;
+    expect(first.schoolInitials).toBe('LHS');
+    const typedBack = { ...first, schoolInitials: 'WHS' };
+    expect(
+      run('HS_VARSITY', typedBack, LINCOLN_HS, LINCOLN_HS).cfg.schoolInitials,
+    ).toBe('WHS');
+  });
+
+  it('opts.history (the duplicate path) blocks generic matching without making its values replaceable', () => {
+    // previous = null, history names the role: the generic word stays...
+    const kept = run(
+      'HS_VARSITY_PORTRAIT',
+      { schoolName: 'WILDCATS', schoolInitials: 'WHS' },
+      NEW,
+      null,
+      'fill-blanks',
+      [OLD],
+    );
+    expect(kept.cfg).toEqual({ schoolName: 'WILDCATS', schoolInitials: 'WHS' });
+    // ...a history brand's own value is NOT brand-owned (that is `previous`)...
+    expect(
+      run(
+        'HS_VARSITY',
+        { schoolName: 'WESTRIDGE HIGH SCHOOL' },
+        NEW,
+        null,
+        'fill-blanks',
+        [OLD],
+      ).cfg.schoolName,
+    ).toBe('WESTRIDGE HIGH SCHOOL');
+    // ...a sample organisation is still replaced, and blanks still fill.
+    expect(
+      run(
+        'HS_VARSITY',
+        { schoolName: 'WESTRIDGE WILDCATS' },
+        NEW,
+        null,
+        'fill-blanks',
+        [OLD],
+      ).cfg,
+    ).toEqual({ schoolName: 'BUENA PARK ACADEMY', schoolInitials: 'BPA' });
+    // An empty history is no history.
+    expect(
+      run(
+        'HS_VARSITY_PORTRAIT',
+        { schoolName: 'WILDCATS' },
+        NEW,
+        null,
+        'fill-blanks',
+        [],
+      ).cfg.schoolName,
+    ).toBe('BUENA PARK ACADEMY');
+  });
+
+  it('genericPlaceholders: false (POST /templates) never matches a generic word, whatever the history', () => {
+    const r = patchZoneIdentity(
+      {
+        widgetType: 'HS_VARSITY_PORTRAIT',
+        cfg: { schoolName: 'WILDCATS', schoolInitials: 'WHS' },
+      },
+      NEW,
+      null,
+      'fill-blanks',
+      { genericPlaceholders: false },
+    );
+    expect(r.cfg).toEqual({ schoolName: 'WILDCATS', schoolInitials: 'WHS' });
+    // A sample organisation and a blank still fill; override is unaffected.
+    expect(
+      patchZoneIdentity(
+        { widgetType: 'HS_VARSITY', cfg: { schoolName: 'WESTRIDGE WILDCATS' } },
+        NEW,
+        null,
+        'fill-blanks',
+        { genericPlaceholders: false },
+      ).cfg,
+    ).toEqual({ schoolName: 'BUENA PARK ACADEMY', schoolInitials: 'BPA' });
+    expect(
+      patchZoneIdentity(
+        { widgetType: 'HS_VARSITY_PORTRAIT', cfg: { schoolName: 'WILDCATS' } },
+        NEW,
+        null,
+        'override',
+        { genericPlaceholders: false },
+      ).cfg.schoolName,
+    ).toBe('BUENA PARK ACADEMY');
+  });
+
+  it('rolesWithHistory: a name names the initials too; nothing for no brand', () => {
+    expect([...rolesWithHistory(OLD)].sort()).toEqual([
+      'initials',
+      'logo',
+      'name',
+      'tagline',
+    ]);
+    expect([...rolesWithHistory(null, [{ tagline: 'x' }])]).toEqual([
+      'tagline',
+    ]);
+    expect(rolesWithHistory(null, undefined, []).size).toBe(0);
+  });
+
+  it('a non-string nested shadow (a number, an object) counts as typed: the flat key is left alone', () => {
+    for (const name of [5, { first: 'Typed' }]) {
+      const r = patchZoneIdentity(
+        { widgetType: 'MS_ARCADE', cfg: { school: { name } } },
+        NEW,
+        null,
+        'fill-blanks',
+      );
+      expect('school.name' in r.cfg).toBe(false);
+      expect(r.cfg['school.logoUrl']).toBe('https://cdn.example/new-logo.png');
+      expect(r.changed).toEqual(['logo']);
+    }
   });
 });

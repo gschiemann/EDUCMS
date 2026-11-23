@@ -96,7 +96,7 @@ import { HttpCode, NotFoundException, UnprocessableEntityException } from '@nest
 import { playlistEmergencyUse, type EmergencyUseDb } from '../emergency/emergency-content-use';
 import { DesignerJobsService, type DesignerJobStatus, type DesignerJobView } from './designer-jobs/designer-jobs.service';
 import { buildDesignerJobRequest, replayableRequest } from './designer-jobs/designer-job-request';
-import { brandKitSnapshot, duplicateBrandKit, patchZoneIdentity } from '../branding/brand-identity';
+import { brandKitSnapshot, duplicateBrandKit, patchZoneIdentity, previousBrands, type ZoneIdentityOptions } from '../branding/brand-identity';
 // AI board HISTORY (2026-09-23) — the list of finished batches (GET generate-designer/jobs).
 import { DesignerJobHistoryQuerySchema, type DesignerJobHistoryQuery, type DesignerHistoryPage } from './designer-jobs/designer-job-history';
 
@@ -590,6 +590,12 @@ export class TemplatesController {
       palette?: any | null;
     },
     widgetType?: string,
+    // Generic placeholders ('WILDCATS', 'WHS', 'CENTRAL ADMINISTRATION'):
+    // the duplicate passes the SOURCE template's brand history (a copy keeps
+    // what the source's own rebrand would keep; those values are not made
+    // replaceable); POST /templates passes genericPlaceholders: false (its
+    // zones may be the tenant's own: Save as copy, import).
+    identityOpts: ZoneIdentityOptions = {},
   ): any {
     const cfg = (() => {
       if (!raw) return {};
@@ -650,9 +656,11 @@ export class TemplatesController {
     // only — a preset's or the request's own text wins unless it is a
     // registered renderer placeholder (sample text nobody typed, such as
     // HS_VARSITY's "WESTRIDGE WILDCATS"), which the organisation's identity
-    // replaces.
+    // replaces. A GENERIC placeholder (a word a tenant could type as their
+    // own: 'WILDCATS', 'WHS', 'CENTRAL ADMINISTRATION') is replaced only when
+    // the zones cannot hold the tenant's typed text (see identityOpts).
     if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return cfg;
-    return patchZoneIdentity({ widgetType: widgetType || '', cfg }, brand, null, 'fill-blanks').cfg;
+    return patchZoneIdentity({ widgetType: widgetType || '', cfg }, brand, null, 'fill-blanks', identityOpts).cfg;
   }
 
   // ───────────────────────────────────────────────────────
@@ -1422,7 +1430,9 @@ export class TemplatesController {
         zones: body.zones
           ? {
               create: body.zones.map((z, i) => {
-                const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
+                // These zones may be the tenant's own (the editor's "Save as
+                // copy", an import): a generic word in them was typed.
+                const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType, { genericPlaceholders: false });
                 return {
                   name: z.name,
                   widgetType: z.widgetType,
@@ -2804,6 +2814,9 @@ export class TemplatesController {
     // source already had a brand-filled config, the helper sees
     // existing keys and skips them; if blank, gets the tenant brand.
     const brand = await this.getBrandDefaults(req.user.tenantId);
+    // The brands the source's zones have carried: a generic placeholder the
+    // source holds under a named brand was typed, so the copy keeps it.
+    const sourceHistory = previousBrands((source as any).brandKit);
 
     // Default name. If canvas was overridden, encode the new dimensions
     // so the operator can tell siblings apart at a glance.
@@ -2838,7 +2851,7 @@ export class TemplatesController {
         createdById: req.user.id,
         zones: {
           create: source.zones.map((z) => {
-            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
+            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType, { history: sourceHistory });
             return {
               name: z.name,
               widgetType: z.widgetType,

@@ -593,3 +593,122 @@ describe('identity registry — (5) the system catalogue ships no identity of it
     expect(offenders).toEqual([]);
   });
 });
+
+// ── (6) Generic placeholders (#347 round-3 review) ──
+// A placeholder that is a word a tenant could type as their own ('WILDCATS',
+// 'WHS', 'HS', 'CENTRAL ADMINISTRATION') is matched only on a template whose
+// brand history has no value for that role (brand-identity.ts
+// rolesWithHistory). Pin the set so a new generic literal is a decision.
+describe('identity registry — (6) generic placeholders', () => {
+  const generic = specRows.flatMap(({ type, spec }) =>
+    (spec.placeholders || [])
+      .filter((p) => p.generic)
+      .map((p) => `${type} ${spec.key} ${p.text}`),
+  );
+
+  it('are exactly the mascot, abbreviation and office words', () => {
+    expect(generic.sort()).toEqual([
+      'HS_VARSITY schoolInitials WHS',
+      'HS_VARSITY_PORTRAIT schoolInitials WHS',
+      'HS_VARSITY_PORTRAIT schoolName WILDCATS',
+      'LOGO initials HS',
+      'LOGO schoolName CENTRAL ADMINISTRATION',
+    ]);
+  });
+
+  it('every initials placeholder is generic (short initials are some school’s real abbreviation)', () => {
+    for (const { type, spec } of specRows) {
+      if (spec.role !== 'initials') continue;
+      for (const p of spec.placeholders || [])
+        expect([type, spec.key, p.text, p.generic]).toEqual([
+          type,
+          spec.key,
+          p.text,
+          true,
+        ]);
+    }
+  });
+
+  it('placeholdersFor { generic: false } drops only the generic ones', () => {
+    const [portraitName, portraitInitials] =
+      WIDGET_IDENTITY_KEYS.HS_VARSITY_PORTRAIT;
+    expect(placeholdersFor(portraitName, {})).toEqual(['WILDCATS']);
+    expect(placeholdersFor(portraitName, {}, { generic: false })).toEqual([]);
+    expect(placeholdersFor(portraitInitials, {}, { generic: false })).toEqual(
+      [],
+    );
+    const [landscapeName] = WIDGET_IDENTITY_KEYS.HS_VARSITY;
+    expect(placeholdersFor(landscapeName, {}, { generic: false })).toEqual([
+      'WESTRIDGE WILDCATS',
+    ]);
+    const logoName = WIDGET_IDENTITY_KEYS.LOGO.find(
+      (s) => s.key === 'schoolName',
+    )!;
+    expect(
+      placeholdersFor(
+        logoName,
+        { theme: 'office-dashboard' },
+        { generic: false },
+      ),
+    ).toEqual([]);
+    expect(
+      placeholdersFor(logoName, { variant: 'logo-ops' }, { generic: false }),
+    ).toEqual(['Roosevelt Academy']);
+  });
+});
+
+// ── (7) LOGO's two logo keys: no renderer reads both ──
+// Apply fills logoUrl AND assetUrl on a LOGO zone (#347). A typed logo in one
+// could only be shadowed by the organisation's logo in the other if a
+// renderer read both (`assetUrl || logoUrl`). Each LOGO renderer reads one:
+// the v2 variants `logoUrl`, LogoWidget and its themed crests `assetUrl`.
+describe('identity registry — (7) LOGO logo keys', () => {
+  const components: Array<[string, string]> = [
+    ...[...LOGO_THEME_COMPONENT.values()].map((c): [string, string] => [
+      c,
+      functionBody(read(fileOf(c)), c),
+    ]),
+    ...[...VARIANT.values()]
+      .filter((v) => v.widgetType === 'LOGO')
+      .map((v): [string, string] => [
+        v.render,
+        functionBody(read(fileOf(v.render)), v.render),
+      ]),
+    ...[...V2_LOGOS.values()].map((c): [string, string] => [
+      c,
+      functionBody(read(fileOf(c)), c),
+    ]),
+    ['LogoWidget', LOGO_WIDGET],
+  ];
+  const logoKeysRead = (body: string) =>
+    ['logoUrl', 'assetUrl'].filter((k) => readsKey(body, k));
+
+  it('finds the LOGO renderers', () => {
+    expect(components.length).toBeGreaterThan(25);
+  });
+
+  it.each(components.map(([c, body]) => [c, body]))(
+    '%s reads at most one of logoUrl / assetUrl',
+    (_c, body) => {
+      expect(logoKeysRead(body).length).toBeLessThanOrEqual(1);
+    },
+  );
+
+  it('the v2 variants read logoUrl; LogoWidget and the themed crests read assetUrl (or no image)', () => {
+    const v2 = new Set(V2_LOGOS.values());
+    for (const c of v2)
+      expect(logoKeysRead(functionBody(read(fileOf(c)), c))).toEqual([
+        'logoUrl',
+      ]);
+    expect(logoKeysRead(LOGO_WIDGET)).toEqual(['assetUrl']);
+    const others = components.filter(([c]) => !v2.has(c));
+    expect(
+      others.filter(([, body]) => logoKeysRead(body).includes('logoUrl')),
+    ).toEqual([]);
+    // The detector sees the crests' reads (most paint config.assetUrl).
+    expect(
+      others.filter(([, body]) => logoKeysRead(body).includes('assetUrl'))
+        .length,
+    ).toBeGreaterThan(15);
+  });
+});

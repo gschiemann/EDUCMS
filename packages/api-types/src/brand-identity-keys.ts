@@ -15,6 +15,15 @@
 // to the brand and is replaced by the organisation's identity. A value the
 // tenant typed survives "fill blanks".
 //
+// A placeholder that is a GENERIC word a tenant could type as their own
+// ('WILDCATS', 'WHS', 'HS', 'CENTRAL ADMINISTRATION') is marked `generic`. It
+// counts as nobody's only on a template with no brand history for that role
+// (no previous brand with a name, for a name or initials key): once a brand
+// has named the template, the clone and apply paths have written that brand
+// over the placeholder, so the same word back in the key was typed by hand.
+// A fictional sample organisation ('WESTRIDGE WILDCATS', 'Roosevelt Academy')
+// is not generic and always matches.
+//
 // Every key and every placeholder literal here is copied from the renderer
 // file and pinned by apps/api/src/branding/identity-registry.spec.ts:
 //   1. the renderer READS the key (pick('k'), pick(config,'k'), c.k, config.k,
@@ -44,6 +53,13 @@ export interface IdentityPlaceholder {
   text: string;
   /** Only on this renderer (no selector = every zone of the type). */
   when?: IdentitySelector;
+  /**
+   * A generic word a tenant could type as their own (a mascot, an
+   * abbreviation, an office name), not a fictional sample organisation.
+   * Matched only on a template with no brand history for the key's role
+   * (placeholdersFor `{ generic: false }` drops it otherwise).
+   */
+  generic?: boolean;
 }
 
 export interface IdentityKeySpec {
@@ -76,17 +92,30 @@ const V2_LOGOS: IdentitySelector = { variants: V2_LOGO_VARIANT_IDS };
 const OFFICE_DASHBOARD_LOGO: IdentitySelector = { variants: ['logo-dashboard'], themes: ['office-dashboard'] };
 const ATHLETICS_LOGO: IdentitySelector = { variants: ['logo-athletics'], themes: ['high-school-athletics'] };
 
-const name = (key: string, placeholders: readonly string[], upper = false): IdentityKeySpec => ({
+/** A generic placeholder (see IdentityPlaceholder.generic). */
+const generic = (text: string, when?: IdentitySelector): IdentityPlaceholder => ({
+  text,
+  ...(when ? { when } : {}),
+  generic: true,
+});
+const asPlaceholder = (p: string | IdentityPlaceholder): IdentityPlaceholder =>
+  typeof p === 'string' ? { text: p } : p;
+
+const name = (
+  key: string,
+  placeholders: ReadonlyArray<string | IdentityPlaceholder>,
+  upper = false,
+): IdentityKeySpec => ({
   key,
   role: 'name',
   ...(upper ? { upper: true } : {}),
-  placeholders: placeholders.map((text) => ({ text })),
+  placeholders: placeholders.map(asPlaceholder),
 });
 const logo = (key: string): IdentityKeySpec => ({ key, role: 'logo' });
-const initials = (key: string, placeholders: readonly string[]): IdentityKeySpec => ({
+const initials = (key: string, placeholders: ReadonlyArray<string | IdentityPlaceholder>): IdentityKeySpec => ({
   key,
   role: 'initials',
-  placeholders: placeholders.map((text) => ({ text })),
+  placeholders: placeholders.map(asPlaceholder),
 });
 
 /** The same specs for a landscape type and its _PORTRAIT twin. */
@@ -140,7 +169,8 @@ export const WIDGET_IDENTITY_KEYS: Readonly<Record<string, readonly IdentityKeyS
       role: 'name',
       placeholders: [
         { text: 'Roosevelt Academy', when: V2_LOGOS },
-        { text: 'CENTRAL ADMINISTRATION', when: OFFICE_DASHBOARD_LOGO },
+        // A district office could type this as its own name.
+        generic('CENTRAL ADMINISTRATION', OFFICE_DASHBOARD_LOGO),
       ],
     },
     {
@@ -153,13 +183,16 @@ export const WIDGET_IDENTITY_KEYS: Readonly<Record<string, readonly IdentityKeyS
       role: 'initials',
       onlyIfPresent: true,
       absentWhen: ATHLETICS_LOGO,
-      placeholders: [{ text: 'HS', when: ATHLETICS_LOGO }],
+      placeholders: [generic('HS', ATHLETICS_LOGO)],
     },
   ],
 
   // ── High school scenes (hs/*; DEFAULTS merged under the config) ──
-  HS_VARSITY: [name('schoolName', ['WESTRIDGE WILDCATS'], true), initials('schoolInitials', ['WHS'])],
-  HS_VARSITY_PORTRAIT: [name('schoolName', ['WILDCATS'], true), initials('schoolInitials', ['WHS'])],
+  // 'WILDCATS' (a common mascot, the portrait's big wordmark) and 'WHS' (the
+  // real abbreviation of many schools) are generic; the landscape's
+  // 'WESTRIDGE WILDCATS' is the fictional sample school.
+  HS_VARSITY: [name('schoolName', ['WESTRIDGE WILDCATS'], true), initials('schoolInitials', [generic('WHS')])],
+  HS_VARSITY_PORTRAIT: [name('schoolName', [generic('WILDCATS')], true), initials('schoolInitials', [generic('WHS')])],
   HS_BROADCAST: [name('schoolName', ['WESTRIDGE HIGH'], true)],
   HS_BROADCAST_PORTRAIT: [name('schoolName', ['WESTRIDGE HIGH'], true)],
   HS_YEARBOOK: [name('schoolName', ['The Westridge Review'], true)],
@@ -296,9 +329,20 @@ export function selectorMatches(sel: IdentitySelector | undefined, cfg: Record<s
   return !!theme && !!sel.themes && sel.themes.includes(theme);
 }
 
-/** The placeholder texts of `spec` that apply to this zone's renderer. */
-export function placeholdersFor(spec: IdentityKeySpec, cfg: Record<string, unknown>): string[] {
-  return (spec.placeholders || []).filter((p) => selectorMatches(p.when, cfg)).map((p) => p.text);
+/**
+ * The placeholder texts of `spec` that apply to this zone's renderer.
+ * `{ generic: false }` leaves out the generic ones (a template whose brand
+ * history names this role: there the word was typed by hand).
+ */
+export function placeholdersFor(
+  spec: IdentityKeySpec,
+  cfg: Record<string, unknown>,
+  opts: { generic?: boolean } = {},
+): string[] {
+  const withGeneric = opts.generic !== false;
+  return (spec.placeholders || [])
+    .filter((p) => selectorMatches(p.when, cfg) && (withGeneric || !p.generic))
+    .map((p) => p.text);
 }
 
 /** Should `spec` be written on this zone at all (onlyIfPresent / absentWhen)? */
