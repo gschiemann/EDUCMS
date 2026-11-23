@@ -19,12 +19,14 @@ const MOCK_KIT = {
 };
 let mockTemplateKit: unknown = MOCK_KIT;
 let mockOrgBrand: unknown = null;
+const mockRecordStamp = jest.fn().mockResolvedValue({ ok: true, changed: true });
 
 jest.mock('@/hooks/use-api', () => ({
   useTemplate: () => ({ data: { id: 't1', brandKit: mockTemplateKit }, isLoading: false }),
   useTenantBranding: () => ({ data: mockOrgBrand }),
   useAdoptTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
   useClearTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
+  useRecordTemplateBrandStamp: () => ({ mutate: jest.fn(), mutateAsync: mockRecordStamp, isPending: false }),
 }));
 jest.mock('next/navigation', () => ({ useParams: () => ({ schoolId: 'school-1' }) }));
 jest.mock('@/lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -64,6 +66,7 @@ beforeEach(() => {
   mockToast.mockClear();
   mockTemplateKit = MOCK_KIT;
   mockOrgBrand = null;
+  mockRecordStamp.mockClear();
 });
 
 describe('no brand set up', () => {
@@ -283,5 +286,18 @@ describe('Brand this template', () => {
     const t = cfg(zone('board')).textOverrides as Record<string, unknown>;
     expect(t['brand.name']).toBe('Lincoln High School');
     expect(t['brand.tagline']).toBe('Home of the Eagles');
+    // The server is told the organisation brand went onto this template, so
+    // the next Settings rebrand recognises (and replaces) these values.
+    expect(mockRecordStamp).toHaveBeenCalledTimes(1);
+  });
+
+  it("branding with the template's own detected kit records nothing (the snapshot already names it)", () => {
+    mockTemplateKit = { ...MOCK_KIT, displayName: 'Sponsor Co', sourceUrl: 'https://sponsor.example' };
+    mockOrgBrand = { ...MOCK_KIT, displayName: 'Lincoln High School' };
+    init([board]);
+    render(<BrandKitPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Brand this template' }));
+    expect((cfg(zone('board')).textOverrides as Record<string, unknown>)['brand.name']).toBe('Sponsor Co');
+    expect(mockRecordStamp).not.toHaveBeenCalled();
   });
 });

@@ -160,6 +160,12 @@ function build(
           (r) => r.tenantId === where.tenantId && r.isSystem === where.isSystem,
         ),
       ),
+      findFirst: jest.fn(
+        async ({ where }: any) =>
+          rows.find(
+            (r) => r.id === where.id && r.tenantId === where.tenantId,
+          ) ?? null,
+      ),
       update: jest.fn(),
     },
     templateZone: { update: jest.fn() },
@@ -394,6 +400,17 @@ describe('applyBrandToTemplates — rebrand', () => {
     const res: any = await second.ctrl.applyBrandToTemplates(req, {});
     expect(res.zonesPatched).toBe(0);
     expect(second.tx.templateZone.update).not.toHaveBeenCalled();
+    // Nothing changed on the template either: no rewrite of its brandKit.
+    expect(second.tx.template.update).not.toHaveBeenCalled();
+  });
+
+  it('runs with a transaction timeout a large tenant does not hit', async () => {
+    const { ctrl, client } = build([rebrandedBoard('t1', 'ten1')]);
+    await ctrl.applyBrandToTemplates(req, {});
+    expect(client.$transaction.mock.calls[0][1]).toEqual({
+      timeout: 30_000,
+      maxWait: 10_000,
+    });
   });
 
   it('no tenant brand → 400, nothing written', async () => {
@@ -406,3 +423,308 @@ describe('applyBrandToTemplates — rebrand', () => {
     expect(client.$transaction).not.toHaveBeenCalled();
   });
 });
+
+// ── Successive brands across the editor and Settings ─────────────────
+
+const BRAND_B = {
+  ...NEW_BRANDING,
+  displayName: 'Crestview Prep',
+  tagline: 'Rise together',
+  logoUrl: 'https://cdn.example/b-logo.png',
+  palette: {
+    primary: '#0000aa',
+    accent: '#aaaa00',
+    ink: '#333333',
+    surface: '#eeeeff',
+  },
+  fontHeading: 'Raleway',
+  fontBody: 'Nunito',
+};
+
+/** What the editor's "Brand this template" writes for a brand (brand-kit-actions.ts brandZoneConfig). */
+function editorStamped(b: typeof BRAND_B, id: string): Tpl['zones'] {
+  return [
+    {
+      id: `${id}-z1`,
+      widgetType: 'EXTERNAL_HTML',
+      defaultConfig: JSON.stringify({
+        brand: {
+          primary: b.palette.primary,
+          accent: b.palette.accent,
+          fontDisplay: b.fontHeading,
+          fontBody: b.fontBody,
+        },
+        textOverrides: {
+          'brand.name': b.displayName,
+          'school.name': b.displayName,
+          'brand.tagline': b.tagline,
+          'school.motto': b.tagline,
+          'menu.special': 'Tacos',
+        },
+        imageOverrides: { 'brand.logo': b.logoUrl, 'school.logo': b.logoUrl },
+      }),
+    },
+    {
+      id: `${id}-z2`,
+      widgetType: 'LOGO',
+      defaultConfig: JSON.stringify({
+        assetUrl: b.logoUrl,
+        logoUrl: b.logoUrl,
+        accentColor: b.palette.primary,
+        color: b.palette.ink,
+        schoolName: b.displayName,
+        tagline: b.tagline,
+      }),
+    },
+  ];
+}
+
+describe('a rebrand recognises what the editor stamped', () => {
+  it('per-template adopt saves the detected tagline; the next rebrand replaces it', async () => {
+    const tpl = rebrandedBoard('t1', 'ten1');
+    tpl.brandKit = null;
+    const adopt = build([tpl]);
+    (adopt.ctrl as any).processBrandingAssets = jest.fn(async () => ({
+      palette: BRAND_B.palette,
+      logoUrl: BRAND_B.logoUrl,
+      logoSvgInline: null,
+      faviconUrl: null,
+    }));
+    await adopt.ctrl.adoptTemplateBranding(req, 't1', {
+      displayName: BRAND_B.displayName,
+      tagline: BRAND_B.tagline,
+      sourceUrl: 'https://crestview.example',
+      fonts: {
+        heading: { family: BRAND_B.fontHeading },
+        body: { family: BRAND_B.fontBody },
+      },
+    } as never);
+    const adopted = adopt.tx.template.update.mock.calls[0][0].data.brandKit;
+    expect(adopted).toMatchObject({
+      displayName: 'Crestview Prep',
+      tagline: 'Rise together',
+    });
+
+    // The editor stamps the adopted kit onto the canvas, then Settings rebrands.
+    const next = rebrandedBoard('t1', 'ten1');
+    next.brandKit = adopted;
+    next.zones = editorStamped(BRAND_B, 't1');
+    const rebrand = build([next]);
+    await rebrand.ctrl.applyBrandToTemplates(req, { mode: 'fill-blanks' });
+    const board = zoneWrite(rebrand.tx, 't1-z1');
+    expect(board.textOverrides).toMatchObject({
+      'brand.name': 'Buena Park Academy',
+      'brand.tagline': 'Learning without limits',
+      'school.motto': 'Learning without limits',
+      'menu.special': 'Tacos',
+    });
+    expect(zoneWrite(rebrand.tx, 't1-z2')).toMatchObject({
+      schoolName: 'Buena Park Academy',
+      tagline: 'Learning without limits',
+      logoUrl: 'https://cdn.example/new-logo.png',
+    });
+  });
+
+  it('A (clone) -> editor stamps organisation brand B -> Settings rebrands to C: every B value becomes C', async () => {
+    // Template cloned under A (OLD_KIT snapshot); the organisation is now B.
+    const tpl = rebrandedBoard('t1', 'ten1');
+    const record = build([tpl], { branding: BRAND_B });
+    const recorded: any = await record.ctrl.recordTemplateBrandStamp(req, 't1');
+    expect(recorded).toMatchObject({ ok: true, changed: true });
+    const kit = record.tx.template.update.mock.calls[0][0].data.brandKit;
+    // The snapshot (A) stays; B joins the history.
+    expect(kit).toMatchObject({ displayName: 'Westridge High School' });
+    expect(kit.stamped).toEqual([
+      expect.objectContaining({
+        displayName: 'Crestview Prep',
+        tagline: 'Rise together',
+        logoUrl: 'https://cdn.example/b-logo.png',
+      }),
+    ]);
+
+    // Zones hold B (the editor's canvas, saved); the organisation rebrands to C.
+    const next = rebrandedBoard('t1', 'ten1');
+    next.brandKit = kit;
+    next.zones = editorStamped(BRAND_B, 't1');
+    const rebrand = build([next]);
+    const res: any = await rebrand.ctrl.applyBrandToTemplates(req, {
+      mode: 'fill-blanks',
+    });
+
+    const board = zoneWrite(rebrand.tx, 't1-z1');
+    expect(board.textOverrides).toEqual({
+      'brand.name': 'Buena Park Academy',
+      'school.name': 'Buena Park Academy',
+      'brand.restaurant': 'Buena Park Academy',
+      'brand.tagline': 'Learning without limits',
+      'school.motto': 'Learning without limits',
+      'school.initials': 'BPA',
+      'brand.initials': 'BPA',
+      'brand.mark': 'BPA',
+      'brand.monogram': 'B',
+      'menu.special': 'Tacos',
+    });
+    expect(board.imageOverrides).toEqual({
+      'brand.logo': 'https://cdn.example/new-logo.png',
+      'school.logo': 'https://cdn.example/new-logo.png',
+    });
+    expect(board.brand).toEqual(styleTokensOf(NEW_BRANDING));
+    expect(zoneWrite(rebrand.tx, 't1-z2')).toEqual({
+      assetUrl: 'https://cdn.example/new-logo.png',
+      logoUrl: 'https://cdn.example/new-logo.png',
+      accentColor: '#00aa00',
+      color: '#222222',
+      fontFamily: 'Montserrat',
+      schoolName: 'Buena Park Academy',
+      tagline: 'Learning without limits',
+    });
+    expect(res.identityZonesPatched).toMatchObject({
+      name: 2,
+      tagline: 2,
+      logo: 2,
+    });
+  });
+
+  it('a canvas change the operator discarded is still covered: A values become C too', async () => {
+    const tpl = rebrandedBoard('t1', 'ten1');
+    const record = build([tpl], { branding: BRAND_B });
+    await record.ctrl.recordTemplateBrandStamp(req, 't1');
+    const next = rebrandedBoard('t1', 'ten1'); // zones still hold A
+    next.brandKit = record.tx.template.update.mock.calls[0][0].data.brandKit;
+    const rebrand = build([next]);
+    await rebrand.ctrl.applyBrandToTemplates(req, { mode: 'fill-blanks' });
+    expect(zoneWrite(rebrand.tx, 't1-z1').textOverrides).toMatchObject({
+      'brand.name': 'Buena Park Academy',
+      'brand.tagline': 'Learning without limits',
+    });
+  });
+
+  it('after a rebrand, the replaced snapshot stays as history (a brand without a tagline does not strand the old one)', async () => {
+    // Rebrand A -> C where C has no tagline: A's tagline stays (nothing to write).
+    const noTagline = { ...NEW_BRANDING, tagline: null };
+    const first = build([rebrandedBoard('t1', 'ten1')], {
+      branding: noTagline,
+    });
+    await first.ctrl.applyBrandToTemplates(req, {});
+    const afterFirst = rebrandedBoard('t1', 'ten1');
+    afterFirst.brandKit =
+      first.tx.template.update.mock.calls[0][0].data.brandKit;
+    afterFirst.zones = afterFirst.zones.map((z) => ({
+      ...z,
+      defaultConfig: JSON.stringify(zoneWrite(first.tx, z.id)),
+    }));
+    expect(
+      JSON.parse(afterFirst.zones[0].defaultConfig!).textOverrides[
+        'brand.tagline'
+      ],
+    ).toBe('Home of the Wildcats');
+
+    // Then C -> B (with a tagline): A's tagline is still recognised.
+    const second = build([afterFirst], { branding: BRAND_B });
+    await second.ctrl.applyBrandToTemplates(req, {});
+    expect(zoneWrite(second.tx, 't1-z1').textOverrides['brand.tagline']).toBe(
+      'Rise together',
+    );
+  });
+
+  it('a default ink the first rebrand stamped is recognised by the next one', async () => {
+    const noInk = {
+      ...NEW_BRANDING,
+      palette: { primary: '#aa0000', accent: '#00aa00' },
+    };
+    const tpl = rebrandedBoard('t1', 'ten1');
+    tpl.brandKit = null;
+    tpl.zones = [{ id: 't1-z1', widgetType: 'TEXT', defaultConfig: null }];
+    const first = build([tpl], { branding: noInk });
+    await first.ctrl.applyBrandToTemplates(req, {});
+    expect(zoneWrite(first.tx, 't1-z1').color).toBe('#0f172a');
+    const kit = first.tx.template.update.mock.calls[0][0].data.brandKit;
+    expect(kit.appliedDefaults).toBe(true);
+
+    const after = rebrandedBoard('t1', 'ten1');
+    after.brandKit = kit;
+    after.zones = [
+      {
+        id: 't1-z1',
+        widgetType: 'TEXT',
+        defaultConfig: JSON.stringify(zoneWrite(first.tx, 't1-z1')),
+      },
+    ];
+    const second = build([after], { branding: BRAND_B });
+    await second.ctrl.applyBrandToTemplates(req, {});
+    expect(zoneWrite(second.tx, 't1-z1').color).toBe('#333333');
+  });
+});
+
+describe('POST /branding/templates/:id/stamped', () => {
+  it("is scoped to the caller's tenant, refuses presets, and audits in the same transaction", async () => {
+    const theirs = build([rebrandedBoard('x', 'ten2')], { branding: BRAND_B });
+    await expect(
+      theirs.ctrl.recordTemplateBrandStamp(req, 'x'),
+    ).rejects.toMatchObject({
+      response: { code: 'BRANDING_TEMPLATE_NOT_FOUND' },
+    });
+    expect(theirs.client.template.findFirst.mock.calls[0][0].where).toEqual({
+      id: 'x',
+      tenantId: 'ten1',
+    });
+    expect(theirs.client.$transaction).not.toHaveBeenCalled();
+
+    const preset = build([rebrandedBoard('p', 'ten1', true)], {
+      branding: BRAND_B,
+    });
+    await expect(
+      preset.ctrl.recordTemplateBrandStamp(req, 'p'),
+    ).rejects.toMatchObject({
+      response: { code: 'BRANDING_SYSTEM_TEMPLATE_NOT_ALLOWED' },
+    });
+
+    const mine = build([rebrandedBoard('t1', 'ten1')], { branding: BRAND_B });
+    await mine.ctrl.recordTemplateBrandStamp(req, 't1');
+    expect(mine.calls).toEqual(['template.update', 'auditLog.create']);
+    expect(mine.tx.template.update.mock.calls[0][0].where).toEqual({
+      id: 't1',
+      tenantId: 'ten1',
+    });
+    expect(mine.tx.auditLog.create.mock.calls[0][0].data).toMatchObject({
+      action: 'RECORD_TEMPLATE_BRAND_STAMP',
+      targetType: 'template',
+      targetId: 't1',
+      tenantId: 'ten1',
+      userId: 'u1',
+    });
+  });
+
+  it('recording the same brand twice writes nothing the second time', async () => {
+    const first = build([rebrandedBoard('t1', 'ten1')], { branding: BRAND_B });
+    await first.ctrl.recordTemplateBrandStamp(req, 't1');
+    const tpl = rebrandedBoard('t1', 'ten1');
+    tpl.brandKit = first.tx.template.update.mock.calls[0][0].data.brandKit;
+    const second = build([tpl], { branding: BRAND_B });
+    const res: any = await second.ctrl.recordTemplateBrandStamp(req, 't1');
+    expect(res.changed).toBe(false);
+    expect(second.client.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('no organisation brand: 400, nothing written', async () => {
+    const { ctrl, client } = build([rebrandedBoard('t1', 'ten1')], {
+      branding: null,
+    });
+    await expect(
+      ctrl.recordTemplateBrandStamp(req, 't1'),
+    ).rejects.toMatchObject({ response: { code: 'BRANDING_NOT_CONFIGURED' } });
+    expect(client.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+function styleTokensOf(b: typeof NEW_BRANDING): Record<string, string> {
+  return {
+    primary: b.palette.primary,
+    accent: b.palette.accent,
+    text: b.palette.ink,
+    surface: b.palette.surface,
+    background: b.palette.primary,
+    fontDisplay: b.fontHeading,
+    fontBody: b.fontBody,
+  };
+}

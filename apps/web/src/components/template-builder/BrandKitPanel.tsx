@@ -8,7 +8,7 @@ import { Check, Copy, ImagePlus, Palette, Sparkles, Undo2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api-client';
 import { appConfirm } from '@/components/ui/app-dialog';
 import { useBuilderStore } from './useBuilderStore';
-import { useTemplate, useAdoptTemplateBrandKit, useClearTemplateBrandKit, useTenantBranding } from '@/hooks/use-api';
+import { useTemplate, useAdoptTemplateBrandKit, useClearTemplateBrandKit, useRecordTemplateBrandStamp, useTenantBranding } from '@/hooks/use-api';
 import { cn } from '@/lib/utils';
 import { logoBackdrop, readLogoBackground } from '@/components/branding/logo-backdrop';
 import { readMediaDimensions } from './media-sizing';
@@ -112,6 +112,7 @@ export function BrandKitPanel() {
   const tenantBrandingQuery = useTenantBranding();
   const adoptMutation = useAdoptTemplateBrandKit(templateId);
   const clearMutation = useClearTemplateBrandKit(templateId);
+  const recordStampMutation = useRecordTemplateBrandStamp(templateId);
 
   const templateKit = ((template as { brandKit?: BrandKit | null } | undefined)?.brandKit ?? null) as BrandKit | null;
   const orgKit = kitFromTenantBranding(tenantBrandingQuery?.data as BrandKit | null | undefined) as BrandKit | null;
@@ -211,9 +212,22 @@ export function BrandKitPanel() {
     toast(t('brandUndone'), { duration: 2500 });
   };
 
-  const handleBrandTemplate = (k: BrandKit) => {
+  // The ORGANISATION brand just went onto this canvas: tell the server, so the
+  // next Settings > Brand "Apply to templates" recognises these values as the
+  // brand's and replaces them (the template's own brandKit snapshot may still
+  // name an older brand). Best effort and appending: a failure leaves the
+  // canvas branded, and a canvas change the operator discards stays covered.
+  const noteOrgBrandStamped = () => {
+    if (isSystem || !templateId) return;
+    recordStampMutation.mutateAsync().catch((err: unknown) => {
+      console.warn('[brand] could not record the organisation brand on this template', err);
+    });
+  };
+
+  const handleBrandTemplate = (k: BrandKit, fromOrg = false) => {
     if (isSystem) return;
     const text = describeApply(applyBrandToAll(k), k);
+    if (fromOrg) noteOrgBrandStamped();
     setLastApply(text);
     toast.success(text, { duration: 6000, action: { label: t('undo'), onClick: undoLast } });
   };
@@ -248,6 +262,7 @@ export function BrandKitPanel() {
         },
       }, false);
       store().select([newId], false, { source: 'panel' });
+      if (picked.source === 'org') noteOrgBrandStamped();
       flash(t('logoAdded', { place: t(`place.${placement}`) }), 'logo');
     } finally {
       setPlacingLogo(false);
@@ -261,6 +276,7 @@ export function BrandKitPanel() {
     if (existing) {
       store().updateZone(existing.id, { defaultConfig: { ...(existing.defaultConfig || {}), assetUrl: url, logoUrl: url } }, true);
       store().select([existing.id], false, { source: 'panel' });
+      if (picked.source === 'org') noteOrgBrandStamped();
       flash(t('logoSwapped'), 'logo');
       return;
     }
@@ -600,7 +616,7 @@ export function BrandKitPanel() {
         </ul>
         <button
           type="button"
-          onClick={() => handleBrandTemplate(kit)}
+          onClick={() => handleBrandTemplate(kit, picked.source === 'org')}
           disabled={isSystem}
           className="w-full px-3 py-2 rounded-md bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
         >

@@ -15,6 +15,7 @@ const invalidateBranding = jest.fn();
 const refetch = jest.fn().mockResolvedValue({ data: null });
 
 let brandingRow: Record<string, unknown> | null = null;
+const applyBrand = jest.fn();
 
 jest.mock('@/lib/api-client', () => ({ apiFetch: (...a: unknown[]) => apiFetch(...a) }));
 jest.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: undefined }) }));
@@ -31,7 +32,7 @@ jest.mock('@/hooks/use-api', () => ({
   useTenant: () => ({ data: { name: 'Garlan Group', vertical: 'GYM' } }),
   useTenantBranding: () => ({ data: brandingRow, isLoading: false, refetch }),
   useInvalidateTenantBranding: () => invalidateBranding,
-  useApplyBrandToTemplates: () => ({ mutateAsync: jest.fn(), isPending: false }),
+  useApplyBrandToTemplates: () => ({ mutateAsync: (...a: unknown[]) => applyBrand(...a), isPending: false }),
   useAuditLog: () => ({ data: { items: [] } }),
 }));
 jest.mock('@/components/branding/BrandingWizard', () => ({
@@ -125,5 +126,21 @@ describe('Brand & appearance editor', () => {
     expect(screen.getByLabelText('Hex value')).toHaveValue('#3D20DF');
     // The unsaved preview must not survive the discard.
     expect(pushBrandingPreview).toHaveBeenLastCalledWith(expect.objectContaining({ appearanceMode: 'branded' }));
+  });
+
+  it('Apply to templates says where the name, tagline and logo went', async () => {
+    applyBrand.mockResolvedValueOnce({
+      count: 2,
+      zonesPatched: 5,
+      identityZonesPatched: { name: 3, tagline: 2, initials: 1, logo: 2 },
+      mode: 'fill-blanks',
+      message: '',
+    });
+    render(<Page />);
+    fireEvent.click(screen.getByRole('button', { name: 'Apply brand to templates' }));
+    await waitFor(() =>
+      expect(screen.getByText(/Applied to 2 templates · 5 zones updated\. Name in 3 · tagline in 2 · logo in 2 places\./)).toBeInTheDocument(),
+    );
+    expect(applyBrand).toHaveBeenCalledWith({ mode: 'fill-blanks' });
   });
 });

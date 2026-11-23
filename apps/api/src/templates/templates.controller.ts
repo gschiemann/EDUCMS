@@ -96,7 +96,7 @@ import { HttpCode, NotFoundException, UnprocessableEntityException } from '@nest
 import { playlistEmergencyUse, type EmergencyUseDb } from '../emergency/emergency-content-use';
 import { DesignerJobsService, type DesignerJobStatus, type DesignerJobView } from './designer-jobs/designer-jobs.service';
 import { buildDesignerJobRequest, replayableRequest } from './designer-jobs/designer-job-request';
-import { brandKitSnapshot, patchZoneIdentity } from '../branding/brand-identity';
+import { brandKitSnapshot, duplicateBrandKit, patchZoneIdentity } from '../branding/brand-identity';
 // AI board HISTORY (2026-09-23) — the list of finished batches (GET generate-designer/jobs).
 import { DesignerJobHistoryQuerySchema, type DesignerJobHistoryQuery, type DesignerHistoryPage } from './designer-jobs/designer-job-history';
 
@@ -2818,7 +2818,10 @@ export class TemplatesController {
         bgColor: source.bgColor || brand.surface || null,
         bgImage: source.bgImage,
         bgGradient: source.bgGradient,
-        brandKit: (source as any).brandKit ?? brand.brandKit ?? undefined,
+        // The source's per-template kit stays; a copy of the organisation
+        // brand becomes the CURRENT one (the blanks just filled are brand B,
+        // not the source's A), with A kept as history for the next rebrand.
+        brandKit: (duplicateBrandKit((source as any).brandKit, brand.brandKit) as any) ?? undefined,
         // Website Tabs (2026-09-28): a touch kiosk stays a touch kiosk when it
         // is duplicated ("Use this template" on the Touch Kiosks tab IS a
         // duplicate). These two were dropped before, so every kiosk preset

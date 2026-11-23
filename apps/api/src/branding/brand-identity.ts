@@ -12,7 +12,9 @@
  *   A field may be written when it is blank/absent, OR when it still equals
  *   what the template's PREVIOUS brand produced. The previous brand is the
  *   template's own `Template.brandKit` snapshot (written at clone time, by
- *   the per-template adopt, and by apply-to-templates itself). Comparison is
+ *   the per-template adopt, and by apply-to-templates itself) plus its
+ *   `stamped` history (the organisation brand the editor's "Brand this
+ *   template" stamped, and the snapshots a later brand replaced). Comparison is
  *   case-insensitive and trimmed, so an HS widget's uppercased name still
  *   reads as brand-owned. Text an operator typed by hand (not blank, not the
  *   old brand) survives 'fill-blanks'; 'override' replaces regardless.
@@ -60,6 +62,39 @@ export interface BrandLike {
   palette?: Record<string, unknown> | null;
   fontHeading?: string | null;
   fontBody?: string | null;
+  /**
+   * True on a snapshot apply-to-templates wrote: it stamped the default ink
+   * (#0f172a) and surface (#ffffff) where the palette had none, so the next
+   * rebrand derives this brand WITH those defaults to recognise them.
+   */
+  appliedDefaults?: boolean | null;
+  /** 'tenant-branding' = a copy of the organisation brand, not a per-template detection. */
+  inheritedFrom?: string | null;
+  /**
+   * Earlier brands stamped onto this template that the snapshot itself no
+   * longer describes: the editor's "Brand this template" with the
+   * organisation brand, and the snapshots a rebrand or an adopt replaced.
+   */
+  stamped?: unknown;
+}
+
+/**
+ * The previous brand(s) of a template — one snapshot, or the snapshot plus
+ * its `stamped` history (previousBrands()). Every value any of them produced
+ * counts as brand-owned.
+ */
+export type PreviousBrands =
+  | BrandLike
+  | ReadonlyArray<BrandLike | null | undefined>
+  | null
+  | undefined;
+
+function prevList(p: PreviousBrands): BrandLike[] {
+  if (!p) return [];
+  const list = Array.isArray(p) ? p : [p as BrandLike];
+  return list.filter(
+    (b): b is BrandLike => !!b && typeof b === 'object' && !Array.isArray(b),
+  );
 }
 
 export interface BrandIdentity {
@@ -153,8 +188,10 @@ export function brandKitSnapshot(
     scrapedAt?: Date | string | null;
   },
   now: Date = new Date(),
+  opts: { appliedDefaults?: boolean } = {},
 ): Record<string, unknown> {
   return {
+    ...(opts.appliedDefaults ? { appliedDefaults: true } : {}),
     palette: (b.palette as Record<string, unknown> | null) || {},
     logoUrl: b.logoUrl ?? null,
     logoSvgInline: b.logoSvgInline ?? null,
@@ -170,6 +207,192 @@ export function brandKitSnapshot(
     inheritedAt: now.toISOString(),
     inheritedFrom: 'tenant-branding',
   };
+}
+
+// ── Brand history (Template.brandKit.stamped) ────────────────────────
+// The snapshot says which brand a template carries NOW. The history says
+// which other brands were stamped onto it and may still be on its zones:
+//   - the editor's "Brand this template" with the organisation brand (the
+//     editor records it through POST /branding/templates/:id/stamped, which
+//     appends; a canvas change the operator then discards stays covered);
+//   - the snapshot a rebrand (apply-to-templates) or an adopt replaced.
+// A rebrand treats a value ANY of them produced as brand-owned.
+
+const HISTORY_CAP = 6;
+
+function hasPaletteColour(p: unknown): boolean {
+  const r = asRecord(p);
+  return !!r && Object.values(r).some((v) => !!str(v));
+}
+
+/** The comparable part of a brand: what it stamps. Null when it stamps nothing. */
+export function stampEntry(b: BrandLike | null | undefined): BrandLike | null {
+  if (!b) return null;
+  const palette = asRecord(b.palette);
+  const e: BrandLike = {
+    displayName: str(b.displayName),
+    tagline: str(b.tagline),
+    logoUrl: str(b.logoUrl),
+    palette: palette ? { ...palette } : null,
+    fontHeading: str(b.fontHeading),
+    fontBody: str(b.fontBody),
+  };
+  if (b.appliedDefaults === true) e.appliedDefaults = true;
+  const stamps =
+    e.displayName ||
+    e.tagline ||
+    e.logoUrl ||
+    e.fontHeading ||
+    e.fontBody ||
+    hasPaletteColour(e.palette);
+  return stamps ? e : null;
+}
+
+/** JSON with sorted keys — Postgres jsonb does not keep key order. */
+export function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .filter((k) => o[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(v ?? null);
+}
+
+function entryKey(e: BrandLike): string {
+  return stableJson(stampEntry(e) ?? {});
+}
+
+/** The `stamped` history a brandKit carries (entries only). */
+export function stampedHistory(raw: unknown): BrandLike[] {
+  const k = brandKitAsBrand(raw);
+  const list = k && Array.isArray(k.stamped) ? k.stamped : [];
+  return list
+    .map((e) => stampEntry(asRecord(e) as BrandLike | null))
+    .filter((e): e is BrandLike => !!e);
+}
+
+/**
+ * Every brand whose values on this template's zones are brand-owned: the
+ * snapshot (when it stamps anything) and its history. Empty = no previous
+ * brand (fill blanks only).
+ */
+export function previousBrands(raw: unknown): BrandLike[] {
+  const k = brandKitAsBrand(raw);
+  if (!k) return [];
+  const out: BrandLike[] = [];
+  if (stampEntry(k)) out.push(k);
+  out.push(...stampedHistory(k));
+  return out;
+}
+
+/** History + additions, deduplicated (latest kept), without `current`, newest last, capped. */
+function mergeHistory(
+  existing: BrandLike[],
+  additions: Array<BrandLike | null | undefined>,
+  current: BrandLike | null | undefined,
+): BrandLike[] {
+  const currentKey = current && stampEntry(current) ? entryKey(current) : null;
+  let out: BrandLike[] = [];
+  for (const raw of [...existing, ...additions]) {
+    const e = stampEntry(raw);
+    if (!e) continue;
+    const key = entryKey(e);
+    if (key === currentKey) continue;
+    out = out.filter((x) => entryKey(x) !== key);
+    out.push(e);
+  }
+  return out.slice(-HISTORY_CAP);
+}
+
+function withHistoryList(
+  kit: Record<string, unknown>,
+  history: BrandLike[],
+): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...kit };
+  delete rest.stamped;
+  return history.length > 0 ? { ...rest, stamped: history } : rest;
+}
+
+/**
+ * The brandKit that replaces `oldRaw` with `next` (a rebrand's snapshot, or
+ * a per-template adopt): `next`, carrying the old kit and its history as
+ * history, so the zones the old brand stamped stay recognisable.
+ */
+export function replaceBrandKit(
+  next: Record<string, unknown>,
+  oldRaw: unknown,
+): Record<string, unknown> {
+  const old = brandKitAsBrand(oldRaw);
+  const history = mergeHistory(
+    old ? stampedHistory(old) : [],
+    [old],
+    next as BrandLike,
+  );
+  return withHistoryList(next, history);
+}
+
+/**
+ * The brandKit after `brand` was stamped onto the template's zones while the
+ * snapshot stays as it is (the editor's "Brand this template" with the
+ * organisation brand; a duplicate that filled blanks with it): the existing
+ * kit untouched, `brand` appended to its history. `{ stamped: [...] }` alone
+ * when the template had no kit — it carries no palette, so nothing reads it
+ * as a per-template brand.
+ */
+export function appendStampedBrand(
+  oldRaw: unknown,
+  brand: BrandLike | null | undefined,
+): Record<string, unknown> | null {
+  const old = brandKitAsBrand(oldRaw);
+  const base: Record<string, unknown> = old
+    ? { ...(old as Record<string, unknown>) }
+    : {};
+  const history = mergeHistory(old ? stampedHistory(old) : [], [brand], old);
+  const out = withHistoryList(base, history);
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** A brand detected for one template (not a copy of the organisation brand). */
+export function isPerTemplateKit(raw: unknown): boolean {
+  const k = brandKitAsBrand(raw);
+  return !!k && k.inheritedFrom !== 'tenant-branding' && !!stampEntry(k);
+}
+
+/**
+ * The brandKit of a DUPLICATE. Its zones are the source's, with blanks
+ * filled by the organisation brand as it is now (`currentSnapshot`):
+ *   - a per-template kit stays, and the organisation brand joins its history;
+ *   - otherwise (a copy of the organisation brand, or none) the current
+ *     snapshot, with the source's kit and history as history — so a
+ *     duplicate made after a rebrand does not hold brand B under snapshot A.
+ * No organisation brand: the source's kit as it is.
+ */
+export function duplicateBrandKit(
+  sourceRaw: unknown,
+  currentSnapshot: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  const src = brandKitAsBrand(sourceRaw);
+  if (!currentSnapshot)
+    return src ? { ...(src as Record<string, unknown>) } : null;
+  if (isPerTemplateKit(src))
+    return appendStampedBrand(src, currentSnapshot as BrandLike);
+  return replaceBrandKit(currentSnapshot, src);
+}
+
+/** Same brandKit, ignoring the inheritedAt timestamp (a rebrand to the same brand changes nothing). */
+export function sameBrandKit(a: unknown, b: unknown): boolean {
+  const norm = (v: unknown) => {
+    const k = brandKitAsBrand(v);
+    if (!k) return 'null';
+    const rest: Record<string, unknown> = { ...(k as Record<string, unknown>) };
+    delete rest.inheritedAt;
+    return stableJson(rest);
+  };
+  return norm(a) === norm(b);
 }
 
 // ── The brand-owned test ─────────────────────────────────────────────
@@ -268,18 +491,18 @@ export interface ZoneIdentityResult {
 export function patchZoneIdentity(
   zone: ZoneIdentityInput,
   next: BrandLike | null | undefined,
-  previous: BrandLike | null | undefined,
+  previous: PreviousBrands,
   mode: BrandApplyMode,
 ): ZoneIdentityResult {
   const id = identityFromBrand(next);
-  const prev = previous ? identityFromBrand(previous) : null;
+  const prev = prevList(previous).map(identityFromBrand);
   const cfg: Record<string, unknown> = { ...(zone.cfg || {}) };
   const changed = new Set<IdentityField>();
-  const prevName = [prev?.name];
-  const prevTagline = [prev?.tagline];
-  const prevInitials = [prev?.initials];
-  const prevMonogram = [prev?.monogram];
-  const prevLogo = [prev?.logoUrl];
+  const prevName = prev.map((p) => p.name);
+  const prevTagline = prev.map((p) => p.tagline);
+  const prevInitials = prev.map((p) => p.initials);
+  const prevMonogram = prev.map((p) => p.monogram);
+  const prevLogo = prev.map((p) => p.logoUrl);
   const type = String(zone.widgetType || '');
 
   if (type === 'EXTERNAL_HTML') {
@@ -379,9 +602,10 @@ export interface BrandStyle {
 
 /**
  * Derive the style a brand stamps. `withDefaults` reproduces the
- * controller's fallbacks (ink #0f172a, surface #ffffff) for the NEW brand;
- * the PREVIOUS brand is derived without them so a hand-picked slate or
- * white is never mistaken for something an empty palette stamped.
+ * controller's fallbacks (ink #0f172a, surface #ffffff) for the NEW brand.
+ * A PREVIOUS brand is derived with them only when its snapshot records that
+ * they were stamped (`appliedDefaults`, previousStyle()), so a hand-picked
+ * slate or white is never mistaken for something an empty palette stamped.
  */
 export function styleFromBrand(
   b: BrandLike | null | undefined,
@@ -413,13 +637,26 @@ export function styleFromBrand(
   return { ink, surface, primary, accent, fontHeading, fontBody, tokens };
 }
 
-/** Every value the previous brand may have written into one `cfg.brand` key (server + editor paths). */
-function previousTokenValues(prev: BrandLike, key: string): string[] {
-  const st = styleFromBrand(prev, false);
-  const p = asRecord(prev.palette) || {};
-  const out: Array<string | null> = [st.tokens[key] ?? null];
-  if (key === 'fontBody') out.push(st.fontHeading); // the editor writes fontBody || fontHeading
-  if (key === 'accent') out.push(str(p.accent));
+/**
+ * How a PREVIOUS brand is derived: with the default ink / surface only when
+ * its snapshot records that apply-to-templates stamped them (appliedDefaults),
+ * so a hand-picked slate or white is never mistaken for an empty palette's
+ * default, and a default that WAS stamped is recognised.
+ */
+function previousStyle(prev: BrandLike): BrandStyle {
+  return styleFromBrand(prev, prev.appliedDefaults === true);
+}
+
+/** Every value the previous brand(s) may have written into one `cfg.brand` key (server + editor paths). */
+function previousTokenValues(prevs: BrandLike[], key: string): string[] {
+  const out: Array<string | null> = [];
+  for (const prev of prevs) {
+    const st = previousStyle(prev);
+    const p = asRecord(prev.palette) || {};
+    out.push(st.tokens[key] ?? null);
+    if (key === 'fontBody') out.push(st.fontHeading); // the editor writes fontBody || fontHeading
+    if (key === 'accent') out.push(str(p.accent));
+  }
   return out.filter((v): v is string => !!v);
 }
 
@@ -432,23 +669,46 @@ function previousTokenValues(prev: BrandLike, key: string): string[] {
 export function patchZoneStyle(
   zone: ZoneIdentityInput,
   next: BrandStyle,
-  previous: BrandLike | null | undefined,
+  previous: PreviousBrands,
   mode: BrandApplyMode,
 ): { cfg: Record<string, unknown>; changed: boolean } {
   const cfg: Record<string, unknown> = { ...(zone.cfg || {}) };
-  const prev = previous ? styleFromBrand(previous, false) : null;
-  const prevPalette = asRecord(previous?.palette) || {};
+  const prevs = prevList(previous);
+  const prev = prevs.map(previousStyle);
   let changed = false;
 
-  if (put(cfg, 'color', next.ink, [prev?.ink], mode)) changed = true;
-  if (put(cfg, 'fontFamily', next.fontHeading, [prev?.fontHeading], mode))
+  if (
+    put(
+      cfg,
+      'color',
+      next.ink,
+      prev.map((p) => p.ink),
+      mode,
+    )
+  )
     changed = true;
+  // The editor writes the body font on some widgets (fontBody || fontHeading).
+  if (
+    put(
+      cfg,
+      'fontFamily',
+      next.fontHeading,
+      prev.flatMap((p) => [p.fontHeading, p.fontBody]),
+      mode,
+    )
+  )
+    changed = true;
+  // apply-to-templates writes accent || primary; the editor writes primary.
   if (
     put(
       cfg,
       'accentColor',
       next.accent,
-      [prev?.accent, str(prevPalette.accent)],
+      prevs.flatMap((b, i) => [
+        prev[i].accent,
+        str((asRecord(b.palette) || {}).accent),
+        prev[i].primary,
+      ]),
       mode,
     )
   )
@@ -462,10 +722,10 @@ export function patchZoneStyle(
     let out: Record<string, unknown> | null = null;
     if (mode === 'override' || cfg.brand === undefined || cfg.brand === null) {
       out = { ...next.tokens };
-    } else if (current && previous) {
+    } else if (current && prevs.length > 0) {
       const owned = (k: string) =>
         isBlank(current[k]) ||
-        previousTokenValues(previous, k).some((v) => sameText(current[k], v));
+        previousTokenValues(prevs, k).some((v) => sameText(current[k], v));
       const keys = Object.keys(current);
       if (keys.every(owned)) {
         // The whole map is what the previous brand stamped: the new brand replaces it.
@@ -515,24 +775,31 @@ function brandBackground(st: BrandStyle): {
 export function patchTemplateBackground(
   tpl: TemplateBg,
   next: BrandStyle,
-  previous: BrandLike | null | undefined,
+  previous: PreviousBrands,
   mode: BrandApplyMode,
 ): { bgColor?: string | null; bgGradient?: string | null } {
   const hasAnyBg = Boolean(tpl.bgColor || tpl.bgGradient || tpl.bgImage);
   let replace = mode === 'override' || !hasAnyBg;
-  if (!replace && previous && !tpl.bgImage) {
-    const prev = styleFromBrand(previous, false);
-    const prevBg = brandBackground(prev);
-    const p = asRecord(previous.palette) || {};
-    const flat = [
-      prevBg.bgColor,
-      prev.surface,
-      str(p.surface),
-      str(p.surfaceAlt),
-      prev.primary,
-    ];
+  const prevs = prevList(previous);
+  if (!replace && prevs.length > 0 && !tpl.bgImage) {
+    const gradients: Array<string | null> = [];
+    const flat: Array<string | null> = [];
+    for (const previousBrand of prevs) {
+      const prev = previousStyle(previousBrand);
+      const prevBg = brandBackground(prev);
+      const p = asRecord(previousBrand.palette) || {};
+      gradients.push(prevBg.bgGradient);
+      flat.push(
+        prevBg.bgColor,
+        prev.surface,
+        str(p.surface),
+        str(p.surfaceAlt),
+        prev.primary,
+      );
+    }
     const gradientOwned =
-      isBlank(tpl.bgGradient) || sameText(tpl.bgGradient, prevBg.bgGradient);
+      isBlank(tpl.bgGradient) ||
+      gradients.some((g) => sameText(tpl.bgGradient, g));
     const colorOwned =
       isBlank(tpl.bgColor) || flat.some((v) => sameText(tpl.bgColor, v));
     replace = gradientOwned && colorOwned;

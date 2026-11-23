@@ -13,9 +13,14 @@ import {
   BOARD_NAME_FIELDS,
   BOARD_TAGLINE_FIELDS,
   BrandLike,
+  appendStampedBrand,
   brandKitAsBrand,
   brandKitSnapshot,
   deriveInitials,
+  duplicateBrandKit,
+  previousBrands,
+  replaceBrandKit,
+  sameBrandKit,
   identityFromBrand,
   isBrandOwned,
   patchTemplateBackground,
@@ -655,5 +660,118 @@ describe('patchZoneIdentity — schoolInitials on a widget that carries schoolNa
       'fill-blanks',
     );
     expect(none.cfg).toEqual({ schoolName: 'Lincoln High School' });
+  });
+});
+
+describe('blank style keys (behaviour pinned)', () => {
+  it("an empty-string color / fontFamily / accentColor counts as blank and is filled (master tested '=== undefined')", () => {
+    const r = patchZoneStyle(
+      {
+        widgetType: 'TEXT',
+        cfg: { color: '', fontFamily: '  ', accentColor: '' },
+      },
+      styleFromBrand(NEW, true),
+      null,
+      'fill-blanks',
+    );
+    expect(r.cfg).toEqual({
+      color: '#222222',
+      fontFamily: 'Montserrat',
+      accentColor: '#00aa00',
+    });
+  });
+});
+
+describe('brand history (Template.brandKit.stamped)', () => {
+  const snapA = brandKitSnapshot(OLD);
+  const snapB = brandKitSnapshot(NEW);
+
+  it('appendStampedBrand keeps the snapshot and adds the brand once', () => {
+    const once = appendStampedBrand(snapA, NEW)!;
+    expect(once).toMatchObject({ displayName: 'Westridge High School' });
+    expect(previousBrands(once).map((b) => b.displayName)).toEqual([
+      'Westridge High School',
+      'Buena Park Academy',
+    ]);
+    expect(sameBrandKit(appendStampedBrand(once, NEW), once)).toBe(true);
+    // The snapshot's own brand is never duplicated into the history.
+    expect(sameBrandKit(appendStampedBrand(snapA, OLD), snapA)).toBe(true);
+    // No kit at all: a history-only kit (no palette, so nothing reads it as a brand).
+    const bare = appendStampedBrand(null, NEW)!;
+    expect(Object.keys(bare)).toEqual(['stamped']);
+  });
+
+  it('replaceBrandKit carries the replaced snapshot and its history, capped', () => {
+    const after = replaceBrandKit(
+      snapB,
+      appendStampedBrand(snapA, {
+        displayName: 'Interim Name',
+      }),
+    );
+    expect(previousBrands(after).map((b) => b.displayName)).toEqual([
+      'Buena Park Academy',
+      'Interim Name',
+      'Westridge High School',
+    ]);
+    let kit: Record<string, unknown> | null = snapA;
+    for (let i = 0; i < 12; i++)
+      kit = appendStampedBrand(kit, { displayName: `Brand ${i}` });
+    expect((kit!.stamped as unknown[]).length).toBe(6);
+  });
+
+  it('sameBrandKit ignores key order (jsonb) and the inheritedAt timestamp', () => {
+    const reordered = JSON.parse(
+      JSON.stringify(Object.fromEntries(Object.entries(snapB).reverse())),
+    );
+    expect(
+      sameBrandKit(reordered, {
+        ...snapB,
+        inheritedAt: '2020-01-01T00:00:00Z',
+      }),
+    ).toBe(true);
+    expect(sameBrandKit(snapA, snapB)).toBe(false);
+  });
+
+  it('a duplicate of an organisation-brand template takes the CURRENT snapshot, keeping the old one as history', () => {
+    const dup = duplicateBrandKit(snapA, snapB)!;
+    expect(dup.displayName).toBe('Buena Park Academy');
+    expect(previousBrands(dup).map((b) => b.displayName)).toContain(
+      'Westridge High School',
+    );
+    // A per-template kit stays; the organisation brand joins its history.
+    const own = { ...OLD, sourceUrl: 'https://sponsor.example' };
+    const kept = duplicateBrandKit(own, snapB)!;
+    expect(kept.displayName).toBe('Westridge High School');
+    expect(previousBrands(kept).map((b) => b.displayName)).toContain(
+      'Buena Park Academy',
+    );
+    // No organisation brand: the source's kit as it is.
+    expect(duplicateBrandKit(own, null)).toEqual(own);
+    expect(duplicateBrandKit(null, null)).toBeNull();
+  });
+
+  it('a rebrand recognises values from any brand in the history', () => {
+    const third: BrandLike = { displayName: 'Third Brand', tagline: 'Third' };
+    const prev = previousBrands(appendStampedBrand(snapA, NEW));
+    const r = patchZoneIdentity(
+      {
+        widgetType: 'EXTERNAL_HTML',
+        cfg: {
+          textOverrides: {
+            'brand.name': 'Buena Park Academy',
+            'school.name': 'Westridge High School',
+            'brand.tagline': 'Hand typed',
+          },
+        },
+      },
+      third,
+      prev,
+      'fill-blanks',
+    );
+    expect(r.cfg.textOverrides).toMatchObject({
+      'brand.name': 'Third Brand',
+      'school.name': 'Third Brand',
+      'brand.tagline': 'Hand typed',
+    });
   });
 });
