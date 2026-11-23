@@ -5872,6 +5872,26 @@
     "deleteAnyway": "Delete anyway",
     "deleteTemplate": "Delete template"
   },
+  "templateBulkDelete": {
+    "title": "Delete {count, plural, one {# template} other {# templates}}?",
+    "followUpTitle": "{count, plural, one {# template just came into use} other {# templates just came into use}}",
+    "followUpBody": "Where these are used changed while deleting. They're checked below; untick any you want to keep.",
+    "checking": "Checking where these templates are used…",
+    "checkingShort": "Checking…",
+    "inUseIntro": "{count, plural, one {# is used by playlists.} other {# are used by playlists.}} Deleting removes them from those playlists, which fall back to their next layout. Untick any you want to keep.",
+    "inUse": "In use",
+    "keptEmergency": "Kept: used by an emergency playlist",
+    "keptUnknown": "Kept: couldn't check where it's used",
+    "usageUnknown": "Couldn't check where this template is used.",
+    "untitled": "Untitled",
+    "confirm": "Delete {count, plural, one {# template} other {# templates}}",
+    "nothingToDelete": "Nothing to delete",
+    "progress": "Deleting {done} of {total}…",
+    "resultDeleted": "{count, plural, =0 {No templates deleted} one {# template deleted} other {# templates deleted}}",
+    "resultKeptEmergency": "{count} kept (emergency playlist)",
+    "resultKeptByChoice": "{count} kept",
+    "resultFailed": "{count} couldn't be deleted: {message}"
+  },
   "builderPanel": {
     "deleteLocked": "Locked — unlock to delete",
     "deleteTextElement": "Delete text element",
@@ -7527,13 +7547,10 @@
     "filterHoliday": "Holiday",
     "categoryTabs": "Category",
     "selectTemplate": "Select {name}",
-    "selectAllShown": "Select all your templates shown",
+    "selectAllYours": "{count, plural, one {Select your # template} other {Select all # of your templates}}",
     "duplicate": "Duplicate",
     "export": "Export",
-    "delete": "Delete",
-    "bulkDeleteTitle": "Delete {count, plural, one {# template} other {# templates}}?",
-    "bulkDeleteBody": "Templates that are showing on screens are skipped — delete those one at a time so you can see where they play.",
-    "bulkDeleteDone": "{deleted, plural, one {# template deleted} other {# templates deleted}}{skipped, plural, =0 {} one {, # skipped (in use)} other {, # skipped (in use)}}"
+    "delete": "Delete"
   },
   "acceptInvite": {
     "title": "Accept your invitation",
