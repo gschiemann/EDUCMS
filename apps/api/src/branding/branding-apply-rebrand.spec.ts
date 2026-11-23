@@ -123,7 +123,7 @@ function rebrandedBoard(
 
 function build(
   rows: Tpl[],
-  opts: { auditFails?: boolean; branding?: unknown } = {},
+  opts: { auditFails?: boolean; branding?: unknown; zoneCount?: number } = {},
 ) {
   const calls: string[] = [];
   const tx = {
@@ -134,9 +134,11 @@ function build(
       }),
     },
     templateZone: {
-      update: jest.fn(async (_a: any) => {
-        calls.push('templateZone.update');
-        return {};
+      // The zone write is an updateMany constrained to the caller's own
+      // (non-preset) template; anything but one row aborts the rebrand.
+      updateMany: jest.fn(async (_a: any) => {
+        calls.push('templateZone.updateMany');
+        return { count: opts.zoneCount ?? 1 };
       }),
     },
     auditLog: {
@@ -168,7 +170,7 @@ function build(
       ),
       update: jest.fn(),
     },
-    templateZone: { update: jest.fn() },
+    templateZone: { update: jest.fn(), updateMany: jest.fn() },
     auditLog: { create: jest.fn() },
     $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<unknown>) =>
       fn(tx),
@@ -186,7 +188,7 @@ function build(
 const req = { user: { id: 'u1', tenantId: 'ten1' } } as never;
 
 const zoneWrite = (tx: ReturnType<typeof build>['tx'], zoneId: string) => {
-  const call = tx.templateZone.update.mock.calls.find(
+  const call = tx.templateZone.updateMany.mock.calls.find(
     (c: any[]) => c[0].where.id === zoneId,
   );
   return call ? JSON.parse(call[0].data.defaultConfig) : null;
@@ -280,7 +282,7 @@ describe('applyBrandToTemplates — rebrand', () => {
     );
   });
 
-  it("no brandKit snapshot: blanks only — the old values stay (today's behaviour)", async () => {
+  it('no brandKit snapshot: blanks (and renderer placeholders) only — the old values stay', async () => {
     const tpl = rebrandedBoard('t1', 'ten1');
     tpl.brandKit = null;
     const { ctrl, tx } = build([tpl]);
@@ -306,9 +308,13 @@ describe('applyBrandToTemplates — rebrand', () => {
       fontDisplay: 'Oswald',
       fontBody: 'Inter',
     });
+    // The old name is not blank, not a previous brand and not HS_VARSITY's
+    // placeholder ('WESTRIDGE WILDCATS'), so it stays. 'WHS' IS the Varsity
+    // renderer's own placeholder for schoolInitials (its DEFAULTS), so since
+    // 2026-11-23 it counts as nobody's and takes the organisation's initials.
     expect(zoneWrite(tx, 't1-z2')).toMatchObject({
       schoolName: 'WESTRIDGE HIGH SCHOOL',
-      schoolInitials: 'WHS',
+      schoolInitials: 'BPA',
     });
 
     // The background is kept; the snapshot is still recorded so the NEXT rebrand can recognise this one.
@@ -341,7 +347,7 @@ describe('applyBrandToTemplates — rebrand', () => {
       (c: any[]) => c[0].where,
     );
     expect(touchedTemplates).toEqual([{ id: 'mine', tenantId: 'ten1' }]);
-    const touchedZones = tx.templateZone.update.mock.calls.map(
+    const touchedZones = tx.templateZone.updateMany.mock.calls.map(
       (c: any[]) => c[0].where.id,
     );
     expect(touchedZones.every((id: string) => id.startsWith('mine-z'))).toBe(
@@ -349,6 +355,14 @@ describe('applyBrandToTemplates — rebrand', () => {
     );
     expect(client.template.update).not.toHaveBeenCalled();
     expect(client.templateZone.update).not.toHaveBeenCalled();
+    expect(client.templateZone.updateMany).not.toHaveBeenCalled();
+    // Every zone write carries the parent template's tenant constraint.
+    for (const c of tx.templateZone.updateMany.mock.calls as any[][])
+      expect(c[0].where).toEqual({
+        id: c[0].where.id,
+        templateId: 'mine',
+        template: { tenantId: 'ten1', isSystem: false },
+      });
   });
 
   it('writes the audit row inside the same transaction, with identity counts', async () => {
@@ -399,7 +413,7 @@ describe('applyBrandToTemplates — rebrand', () => {
     const second = build([tpl]);
     const res: any = await second.ctrl.applyBrandToTemplates(req, {});
     expect(res.zonesPatched).toBe(0);
-    expect(second.tx.templateZone.update).not.toHaveBeenCalled();
+    expect(second.tx.templateZone.updateMany).not.toHaveBeenCalled();
     // Nothing changed on the template either: no rewrite of its brandKit.
     expect(second.tx.template.update).not.toHaveBeenCalled();
   });
@@ -728,3 +742,132 @@ function styleTokensOf(b: typeof NEW_BRANDING): Record<string, string> {
     fontBody: b.fontBody,
   };
 }
+
+// ── The gap #347's round-2 review named (2026-11-23) ──
+// A template cloned BEFORE this rule carries no record of its source preset
+// and often no brandKit. Its themed widgets still show the preset's sample
+// name; fill-blanks now replaces that (the renderer's own placeholder) and
+// fills the keys MS scenes read, while a name somebody typed stays.
+describe('applyBrandToTemplates — a widget still showing its sample text', () => {
+  function legacy(): Tpl {
+    return {
+      id: 'old',
+      name: 'Cloned in 2026-06',
+      tenantId: 'ten1',
+      isSystem: false,
+      bgColor: '#123456',
+      bgGradient: null,
+      bgImage: null,
+      brandKit: null,
+      zones: [
+        {
+          id: 'old-varsity',
+          widgetType: 'HS_VARSITY',
+          defaultConfig: JSON.stringify({
+            schoolName: 'WESTRIDGE WILDCATS',
+            schoolInitials: 'WHS',
+            color: '#101010',
+            fontFamily: 'Anton',
+            accentColor: '#ff0000',
+          }),
+        },
+        {
+          id: 'old-logo',
+          widgetType: 'LOGO',
+          defaultConfig: JSON.stringify({
+            variant: 'logo-ops',
+            schoolName: 'Roosevelt Academy of Fine Arts',
+            color: '#101010',
+            fontFamily: 'Anton',
+            accentColor: '#ff0000',
+          }),
+        },
+        {
+          id: 'old-arcade',
+          widgetType: 'MS_ARCADE',
+          defaultConfig: JSON.stringify({
+            color: '#101010',
+            fontFamily: 'Anton',
+            accentColor: '#ff0000',
+          }),
+        },
+      ],
+    };
+  }
+
+  it('fill-blanks replaces the placeholder, fills the MS scene, keeps the typed name — and counts them', async () => {
+    const { ctrl, tx } = build([legacy()]);
+    const res: any = await ctrl.applyBrandToTemplates(req, {
+      mode: 'fill-blanks',
+    });
+
+    expect(zoneWrite(tx, 'old-varsity')).toEqual({
+      schoolName: 'BUENA PARK ACADEMY',
+      schoolInitials: 'BPA',
+      color: '#101010',
+      fontFamily: 'Anton',
+      accentColor: '#ff0000',
+    });
+    const logo = zoneWrite(tx, 'old-logo');
+    expect(logo.schoolName).toBe('Roosevelt Academy of Fine Arts');
+    expect(logo).toMatchObject({
+      logoUrl: 'https://cdn.example/new-logo.png',
+      assetUrl: 'https://cdn.example/new-logo.png',
+      tagline: 'Learning without limits',
+    });
+    expect(zoneWrite(tx, 'old-arcade')).toEqual({
+      'school.name': 'BUENA PARK ACADEMY',
+      'school.logoUrl': 'https://cdn.example/new-logo.png',
+      color: '#101010',
+      fontFamily: 'Anton',
+      accentColor: '#ff0000',
+    });
+    expect(res).toMatchObject({
+      zonesPatched: 3,
+      identityZonesPatched: { name: 2, tagline: 1, initials: 1, logo: 2 },
+    });
+
+    // The audit row rides in the same transaction, after every zone write.
+    const audit = JSON.parse(tx.auditLog.create.mock.calls[0][0].data.details);
+    expect(audit.identityZonesPatched).toEqual({
+      name: 2,
+      tagline: 1,
+      initials: 1,
+      logo: 2,
+    });
+    expect(audit.templatesWithPreviousBrand).toBe(0);
+  });
+
+  it('override still replaces the typed name', async () => {
+    const { ctrl, tx } = build([legacy()]);
+    await ctrl.applyBrandToTemplates(req, { mode: 'override' });
+    expect(zoneWrite(tx, 'old-logo').schoolName).toBe('Buena Park Academy');
+  });
+
+  it("each zone write is constrained to the caller's own template, never a preset's", async () => {
+    const { ctrl, tx } = build([legacy()]);
+    await ctrl.applyBrandToTemplates(req, {});
+    const wheres = (tx.templateZone.updateMany.mock.calls as any[][]).map(
+      (c) => c[0].where,
+    );
+    expect(wheres.map((w) => w.id).sort()).toEqual([
+      'old-arcade',
+      'old-logo',
+      'old-varsity',
+    ]);
+    for (const w of wheres) {
+      expect(w.templateId).toBe('old');
+      expect(w.template).toEqual({ tenantId: 'ten1', isSystem: false });
+    }
+  });
+
+  it('a zone write that hits no row rolls the whole rebrand back (no audit row, no success)', async () => {
+    const { ctrl, tx, calls } = build([legacy()], { zoneCount: 0 });
+    await expect(ctrl.applyBrandToTemplates(req, {})).rejects.toThrow(
+      /expected 1/,
+    );
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(calls).not.toContain('auditLog.create');
+    expect(tx.templateZone.updateMany).toHaveBeenCalledTimes(1);
+  });
+});

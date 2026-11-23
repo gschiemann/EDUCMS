@@ -65,7 +65,7 @@ The previous brands are the template's `Template.brandKit` snapshot plus its `st
 ## What the owner should know before the demo
 
 - **Fill in the tagline (and the logo) on the new brand.** A rebrand to a brand without a tagline leaves the old tagline on screen, because the rule never writes empty over content.
-- **Themed widgets with a placeholder name.** A themed React widget whose saved config has no `schoolName` key is not renamed. Nor is a preset's own placeholder name: it is neither blank nor a previous brand. Boards, `LOGO` and `HS_*` are covered. For any other template, use the editor's "Brand this template", which writes unconditionally.
+- **Themed widgets with a placeholder name.** A themed React widget whose saved config has no `schoolName` key is not renamed. Nor is a preset's own placeholder name: it is neither blank nor a previous brand. Boards, `LOGO` and `HS_*` are covered. For any other template, use the editor's "Brand this template", which writes unconditionally. (Superseded on `claude/rebrand-placeholders`: see `docs/handoffs/2026-11-23-rebrand-preset-placeholders.md`.)
 - **A brand detected for one template in the editor** (a snapshot without `inheritedFrom`) is now replaced by the organisation brand on "Apply to templates". The help text says so. This reverses the earlier rule that "the per-template kit stays per-template", so it needs the owner's confirmation after the demo.
 - **Recording the editor's stamp is best-effort.** If the `stamped` POST fails, the console logs it and the next Settings rebrand will not recognise what the editor stamped on that template.
 
@@ -92,8 +92,8 @@ There was also a throwaway Chromium check, not committed. It confirmed three thi
 
 ## Follow-ups (not in this branch)
 
-- Treat a system preset's own placeholder value as replaceable, so themed widgets get the organisation name on clone and on rebrand.
-- Add the parent template's tenant constraint to `templateZone.update` in `applyBrandToTemplates`. It is unchanged from `master` and the tenant-isolation gate passes.
+- ~~Treat a system preset's own placeholder value as replaceable, so themed widgets get the organisation name on clone and on rebrand.~~ Done on `claude/rebrand-placeholders`: `docs/handoffs/2026-11-23-rebrand-preset-placeholders.md`.
+- ~~Add the parent template's tenant constraint to `templateZone.update` in `applyBrandToTemplates`. It is unchanged from `master` and the tenant-isolation gate passes.~~ Done on the same branch (`updateMany` with the template's `tenantId` and `isSystem: false`; anything but one row rolls back).
 - Retry the editor's `stamped` POST, or show a toast when it fails.
 - Get the owner's confirmation on replacing a per-template detected brand.
 

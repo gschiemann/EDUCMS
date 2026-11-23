@@ -25,6 +25,7 @@ import {
   pickBrandKit,
   placeBox,
   readableOn,
+  zoneLogoChanged,
   type BrandKitLike,
 } from '../brand-kit-actions';
 
@@ -285,6 +286,39 @@ describe('Brand this template — the organisation name, tagline and initials (o
 
   it('the organisation tagline reaches the kit', () => {
     expect(kitFromTenantBranding({ displayName: 'Lincoln High School', tagline: 'Home of the Eagles', logoUrl: 'l.png' })).toMatchObject({ displayName: 'Lincoln High School', tagline: 'Home of the Eagles' });
+  });
+
+  it('every themed widget gets the keys its renderer reads (shared registry): MS, fitness, welcome, hallway', () => {
+    const arcade = brandZoneConfig({ widgetType: 'MS_ARCADE', defaultConfig: { 'school.name': 'WESTRIDGE.MS', 'school.team': 'Owls' } }, REBRAND);
+    expect(arcade).toMatchObject({ 'school.name': 'LINCOLN HIGH SCHOOL', 'school.logoUrl': KIT.logoUrl, 'school.team': 'Owls' });
+    expect(arcade).not.toHaveProperty('schoolName');
+    expect(brandZoneConfig({ widgetType: 'MS_ATLAS', defaultConfig: {} }, REBRAND)).toMatchObject({ 'brand.name': 'LINCOLN HIGH SCHOOL', 'brand.logoUrl': KIT.logoUrl });
+    expect(brandZoneConfig({ widgetType: 'MS_HOMEROOM_PORTRAIT', defaultConfig: {} }, REBRAND)).toMatchObject({ 'school.name': 'Lincoln High School' });
+    const greenhouse = brandZoneConfig({ widgetType: 'MS_GREENHOUSE', defaultConfig: {} }, REBRAND);
+    expect(greenhouse).toEqual({ 'school.logoUrl': KIT.logoUrl });
+    expect(brandZoneConfig({ widgetType: 'FITNESS_STADIUM', defaultConfig: {} }, REBRAND)).toEqual({ gymLogoUrl: KIT.logoUrl });
+    expect(brandZoneConfig({ widgetType: 'FITNESS_CORNERMAN', defaultConfig: {} }, REBRAND)).toEqual({});
+    expect(brandZoneConfig({ widgetType: 'ANIMATED_WELCOME_MS', defaultConfig: {} }, REBRAND)).toEqual({ logoUrl: KIT.logoUrl });
+    expect(brandZoneConfig({ widgetType: 'ANIMATED_HALLWAY_SCHEDULE', defaultConfig: { tagline: 'every day a new adventure' } }, REBRAND)).toEqual({ tagline: 'Home of the Eagles' });
+    // The athletics crest paints `initials || 'HS'`, so it gets them even when absent.
+    expect(brandZoneConfig({ widgetType: 'LOGO', defaultConfig: { variant: 'logo-athletics' } }, REBRAND)).toMatchObject({ initials: 'LHS' });
+  });
+
+  it('HS_TERMINAL / HS_TRANSIT read no identity key, so they get none', () => {
+    expect(brandZoneConfig({ widgetType: 'HS_TERMINAL', defaultConfig: {} }, REBRAND)).toEqual({});
+    expect(brandZoneConfig({ widgetType: 'HS_TRANSIT_PORTRAIT', defaultConfig: { schoolCode: 'WHS' } }, REBRAND)).toEqual({ schoolCode: 'WHS' });
+    // HS scenes other than Varsity read no schoolInitials.
+    expect(brandZoneConfig({ widgetType: 'HS_GALLERY', defaultConfig: {} }, REBRAND)).toEqual({ schoolName: 'LINCOLN HIGH SCHOOL' });
+  });
+
+  it("identitySnapshot sees the zone's registry text keys; zoneLogoChanged its logo keys", () => {
+    const a = { 'school.name': 'A' };
+    expect(identitySnapshot(a, 'MS_ARCADE')).not.toBe(identitySnapshot({ 'school.name': 'B' }, 'MS_ARCADE'));
+    expect(identitySnapshot(a, 'MS_ARCADE')).toBe(identitySnapshot({ ...a, 'school.logoUrl': 'x.png' }, 'MS_ARCADE'));
+    expect(identitySnapshot({ tagline: 'A' }, 'ANIMATED_HALLWAY_SCHEDULE')).not.toBe(identitySnapshot({ tagline: 'B' }, 'ANIMATED_HALLWAY_SCHEDULE'));
+    expect(zoneLogoChanged('FITNESS_STADIUM', {}, { gymLogoUrl: 'x.png' })).toBe(true);
+    expect(zoneLogoChanged('FITNESS_STADIUM', { gymLogoUrl: 'x.png' }, { gymLogoUrl: 'x.png', color: '#000' })).toBe(false);
+    expect(zoneLogoChanged('CLOCK', {}, { logoUrl: 'x.png' })).toBe(false);
   });
 
   it('which kit: a per-template detection wins; a copy taken at creation gives way to the current organisation brand', () => {

@@ -23,6 +23,7 @@ import {
   sameBrandKit,
   identityFromBrand,
   isBrandOwned,
+  isPlaceholder,
   patchTemplateBackground,
   patchZoneIdentity,
   patchZoneStyle,
@@ -773,5 +774,252 @@ describe('brand history (Template.brandKit.stamped)', () => {
       'school.name': 'Third Brand',
       'brand.tagline': 'Hand typed',
     });
+  });
+});
+
+// ── A value nobody typed: the renderer's own placeholder (2026-11-23) ──
+// The gap #347's round-2 review named: in fill-blanks, a themed widget's
+// schoolName / tagline / initials still showing the preset's sample text is
+// neither blank nor a previous brand, so it was never replaced. The registry
+// (@cms/api-types brand-identity-keys.ts) names each renderer's placeholders.
+describe('patchZoneIdentity — a renderer placeholder is brand-owned', () => {
+  const LINCOLN: BrandLike = {
+    displayName: 'Lincoln Academy',
+    tagline: 'Learning for life',
+    logoUrl: 'https://cdn.example/lincoln.png',
+  };
+  const apply = (
+    widgetType: string,
+    cfg: Record<string, unknown>,
+    brand: BrandLike = LINCOLN,
+    previous: BrandLike | null = null,
+    mode: 'fill-blanks' | 'override' = 'fill-blanks',
+  ) => patchZoneIdentity({ widgetType, cfg }, brand, previous, mode);
+
+  it("HS_VARSITY's own sample name and initials become the organisation's (no previous brand)", () => {
+    const r = apply('HS_VARSITY', {
+      schoolName: 'WESTRIDGE WILDCATS',
+      schoolInitials: 'WHS',
+    });
+    expect(r.cfg).toEqual({
+      schoolName: 'LINCOLN ACADEMY',
+      schoolInitials: 'LA',
+    });
+    expect(r.changed.sort()).toEqual(['initials', 'name']);
+  });
+
+  it('matches an innerText capture: newlines, runs of spaces, NBSP, any case', () => {
+    expect(
+      apply('HS_VARSITY', { schoolName: 'Westridge   Wildcats\n' }).cfg
+        .schoolName,
+    ).toBe('LINCOLN ACADEMY');
+    expect(
+      apply('HS_VARSITY', { schoolName: 'WESTRIDGE WILDCATS' }).cfg.schoolName,
+    ).toBe('LINCOLN ACADEMY');
+  });
+
+  it("the v2 logo variants' FALLBACK name and tagline, and the office dashboard's name", () => {
+    const ops = apply('LOGO', {
+      variant: 'logo-ops',
+      schoolName: 'ROOSEVELT ACADEMY',
+    });
+    expect(ops.cfg.schoolName).toBe('Lincoln Academy');
+    const glass = apply('LOGO', {
+      variant: 'logo-glass',
+      tagline: 'EXCELLENCE · HONOR · SERVICE',
+    });
+    expect(glass.cfg.tagline).toBe('Learning for life');
+    const dash = apply('LOGO', {
+      theme: 'office-dashboard',
+      schoolName: 'Central Administration',
+    });
+    expect(dash.cfg.schoolName).toBe('Lincoln Academy');
+    const dashVariant = apply('LOGO', {
+      variant: 'logo-dashboard',
+      schoolName: 'CENTRAL ADMINISTRATION',
+    });
+    expect(dashVariant.cfg.schoolName).toBe('Lincoln Academy');
+  });
+
+  it('typed text is kept in fill-blanks — including a placeholder of ANOTHER renderer', () => {
+    expect(
+      apply('LOGO', {
+        variant: 'logo-ops',
+        schoolName: 'Roosevelt Academy of Fine Arts',
+      }).cfg.schoolName,
+    ).toBe('Roosevelt Academy of Fine Arts');
+    expect(
+      apply('LOGO', { theme: 'high-school-athletics', initials: 'LHS' }).cfg
+        .initials,
+    ).toBe('LHS');
+    expect(
+      apply('HS_BROADCAST', { schoolName: 'Roosevelt Academy' }).cfg.schoolName,
+    ).toBe('Roosevelt Academy');
+    // An unknown LOGO variant has no placeholders: HS_VARSITY's sample is typed text there.
+    expect(
+      apply('LOGO', {
+        variant: 'logo-unknown',
+        schoolName: 'WESTRIDGE WILDCATS',
+      }).cfg.schoolName,
+    ).toBe('WESTRIDGE WILDCATS');
+    // A variant wins over the theme (WidgetRenderer dispatches the variant).
+    expect(
+      apply('LOGO', {
+        variant: 'logo-neon',
+        theme: 'office-dashboard',
+        schoolName: 'CENTRAL ADMINISTRATION',
+      }).cfg.schoolName,
+    ).toBe('CENTRAL ADMINISTRATION');
+  });
+
+  it('override still replaces typed values', () => {
+    const r = apply(
+      'LOGO',
+      { variant: 'logo-ops', schoolName: 'Roosevelt Academy of Fine Arts' },
+      LINCOLN,
+      null,
+      'override',
+    );
+    expect(r.cfg.schoolName).toBe('Lincoln Academy');
+  });
+
+  it('absent keys: each renderer gets exactly the keys it reads', () => {
+    expect(apply('MS_ARCADE', {}).cfg).toEqual({
+      'school.name': 'LINCOLN ACADEMY',
+      'school.logoUrl': 'https://cdn.example/lincoln.png',
+    });
+    expect(apply('MS_ATLAS_PORTRAIT', {}).cfg).toEqual({
+      'brand.name': 'LINCOLN ACADEMY',
+      'brand.logoUrl': 'https://cdn.example/lincoln.png',
+    });
+    expect(apply('MS_HOMEROOM', {}).cfg).toEqual({
+      'school.name': 'Lincoln Academy',
+      'school.logoUrl': 'https://cdn.example/lincoln.png',
+    });
+    expect(apply('MS_PAPER', {}).cfg).toEqual({
+      'masthead.logoUrl': 'https://cdn.example/lincoln.png',
+    });
+    expect(apply('MS_PLAYLIST', {}).cfg).toEqual({
+      'brand.logoUrl': 'https://cdn.example/lincoln.png',
+    });
+    expect(apply('MS_GREENHOUSE', {}).cfg).toEqual({
+      'school.logoUrl': 'https://cdn.example/lincoln.png',
+    });
+    expect(apply('FITNESS_STADIUM', {}).cfg).toEqual({
+      gymLogoUrl: 'https://cdn.example/lincoln.png',
+    });
+    expect(apply('FITNESS_CORNERMAN', {}).cfg).toEqual({});
+    expect(apply('ANIMATED_WELCOME', {}).cfg).toEqual({
+      logoUrl: 'https://cdn.example/lincoln.png',
+    });
+    expect(apply('ANIMATED_HALLWAY_SCHEDULE', {}).cfg).toEqual({
+      tagline: 'Learning for life',
+    });
+    expect(apply('HS_GALLERY', {}).cfg).toEqual({
+      schoolName: 'LINCOLN ACADEMY',
+    });
+    expect(apply('HS_TERMINAL', {}).cfg).toEqual({});
+    expect(apply('HS_TRANSIT_PORTRAIT', {}).cfg).toEqual({});
+    // Initials: written absent on the athletics crest (it does not derive
+    // them from schoolName), not on a plain LOGO.
+    expect(apply('LOGO', { theme: 'high-school-athletics' }).cfg.initials).toBe(
+      'LA',
+    );
+    expect(apply('LOGO', { variant: 'logo-athletics' }).cfg.initials).toBe(
+      'LA',
+    );
+    expect(
+      apply('LOGO', { theme: 'high-school-athletics', initials: 'HS' }).cfg
+        .initials,
+    ).toBe('LA');
+    expect('initials' in apply('LOGO', {}).cfg).toBe(false);
+  });
+
+  it('MS placeholders on the flat key, uppercased where the design is', () => {
+    expect(
+      apply('MS_ARCADE', { 'school.name': 'WESTRIDGE.MS' }).cfg['school.name'],
+    ).toBe('LINCOLN ACADEMY');
+    expect(
+      apply('MS_FIELDNOTES', { 'school.name': 'Westridge' }).cfg['school.name'],
+    ).toBe('Lincoln Academy');
+    expect(
+      apply('MS_STUDIO', { 'school.name': 'westridge' }).cfg['school.name'],
+    ).toBe('LINCOLN ACADEMY');
+    expect(
+      apply('ANIMATED_HALLWAY_SCHEDULE_PORTRAIT', {
+        tagline: 'Every day a new adventure',
+      }).cfg.tagline,
+    ).toBe('Learning for life');
+  });
+
+  it('a nested shadow (old inline edit pick() never read): typed text keeps the flat key; a placeholder does not', () => {
+    const typed = apply('MS_ARCADE', { school: { name: 'Typed' } });
+    expect(typed.cfg).toEqual({
+      school: { name: 'Typed' },
+      'school.logoUrl': 'https://cdn.example/lincoln.png',
+    });
+    expect(typed.changed).toEqual(['logo']);
+    const sample = apply('MS_ARCADE', { school: { name: 'WESTRIDGE.MS' } });
+    expect(sample.cfg['school.name']).toBe('LINCOLN ACADEMY');
+    expect(sample.cfg.school).toEqual({ name: 'WESTRIDGE.MS' });
+    // Override writes the flat key regardless.
+    expect(
+      apply(
+        'MS_ARCADE',
+        { school: { name: 'Typed' } },
+        LINCOLN,
+        null,
+        'override',
+      ).cfg['school.name'],
+    ).toBe('LINCOLN ACADEMY');
+  });
+
+  it('a brand with no tagline (or logo) writes none, and never blanks a placeholder', () => {
+    const r = apply(
+      'LOGO',
+      { variant: 'logo-glass', tagline: 'Excellence · Honor · Service' },
+      { displayName: 'Lincoln Academy' },
+    );
+    expect(r.cfg.tagline).toBe('Excellence · Honor · Service');
+    expect(r.cfg.schoolName).toBe('Lincoln Academy');
+    expect('logoUrl' in r.cfg).toBe(false);
+    expect(
+      apply('ANIMATED_HALLWAY_SCHEDULE', {}, { displayName: 'X' }).cfg,
+    ).toEqual({});
+  });
+
+  it('a second apply with the same brand writes nothing', () => {
+    for (const [type, cfg] of [
+      [
+        'HS_VARSITY',
+        { schoolName: 'WESTRIDGE WILDCATS', schoolInitials: 'WHS' },
+      ],
+      ['MS_ARCADE', {}],
+      ['LOGO', { variant: 'logo-ops', schoolName: 'Roosevelt Academy' }],
+      ['FITNESS_STADIUM', {}],
+    ] as Array<[string, Record<string, unknown>]>) {
+      const first = apply(type, cfg);
+      expect(first.changed.length).toBeGreaterThan(0);
+      const second = apply(type, first.cfg, LINCOLN, LINCOLN);
+      expect(second.changed).toEqual([]);
+      expect(second.cfg).toEqual(first.cfg);
+    }
+  });
+
+  it('a rebrand still replaces the previous brand on registry keys (rule b unchanged)', () => {
+    const first = apply('MS_ARCADE', {}).cfg;
+    const r = apply('MS_ARCADE', first, NEW, LINCOLN);
+    expect(r.cfg).toEqual({
+      'school.name': 'BUENA PARK ACADEMY',
+      'school.logoUrl': 'https://cdn.example/new-logo.png',
+    });
+  });
+
+  it('isPlaceholder: one-item lists, normalisation, and nothing for an empty list', () => {
+    expect(isPlaceholder(['  WHS '], ['WHS'])).toBe(true);
+    expect(isPlaceholder(['WHS', 'X'], ['WHS'])).toBe(false);
+    expect(isPlaceholder('whs', [])).toBe(false);
+    expect(isPlaceholder('', ['WHS'])).toBe(false);
+    expect(isPlaceholder(42, ['42'])).toBe(false);
   });
 });

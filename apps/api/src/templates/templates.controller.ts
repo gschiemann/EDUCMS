@@ -575,8 +575,9 @@ export class TemplatesController {
    * "WESTRIDGE WILDCATS" defaults baked into the widget.
    *
    * Strict fill-blanks rule preserved — only writes a field when the
-   * preset's defaultConfig didn't already specify one. Operator can
-   * still override anything via the PropertiesPanel.
+   * preset's defaultConfig didn't already specify one, or (identity keys
+   * only) when it still holds the widget's own registered placeholder.
+   * Operator can still override anything via the PropertiesPanel.
    */
   private applyBrandToZoneConfig(
     raw: any,
@@ -642,9 +643,14 @@ export class TemplatesController {
     }
 
     // Identity (2026-11-23): the organisation name, tagline, initials and
-    // logo into board text fields / logo slots, LOGO, HS_* and schoolName
-    // widgets. A new template has no previous brand, so this fills blanks
-    // only — a preset's or the request's own text always wins.
+    // logo into board text fields / logo slots and the keys each themed
+    // widget's renderer reads (the WIDGET_IDENTITY_KEYS registry in
+    // @cms/api-types: LOGO, HS_*, MS_*, FITNESS_*, ANIMATED_*, and schoolName
+    // widgets). A new template has no previous brand, so this fills blanks
+    // only — a preset's or the request's own text wins unless it is a
+    // registered renderer placeholder (sample text nobody typed, such as
+    // HS_VARSITY's "WESTRIDGE WILDCATS"), which the organisation's identity
+    // replaces.
     if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return cfg;
     return patchZoneIdentity({ widgetType: widgetType || '', cfg }, brand, null, 'fill-blanks').cfg;
   }
