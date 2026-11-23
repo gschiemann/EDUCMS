@@ -8,9 +8,12 @@
  *   - an automatic reload happens only while the tab is hidden, with nothing
  *     dirty, no overlay or emergency, focus outside text fields, and a route
  *     that runs nothing live;
+ *   - an unfinished upload counts as unsaved work;
  *   - /api/build-info is never fetched from a hidden tab, and at most once
  *     per interval from a visible one.
  * Real timers are faked; `freshReload` (the navigation) is the observed seam.
+ * The re-check freshReload makes before it navigates is covered with the real
+ * module in StaleBundleWatcher.in-flight.test.tsx.
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { StaleBundleWatcher } from '../StaleBundleWatcher';
@@ -19,13 +22,17 @@ import {
   CHECK_INTERVAL_MS,
   FIRST_CHECK_DELAY_MS,
   HIDDEN_RELOAD_DELAY_MS,
+  LATE_TIMER_TOLERANCE_MS,
+  autoReloadBlocker,
   isAutoReloadExemptPath,
   isEditingElement,
+  type AutoReloadState,
 } from '../stale-bundle-policy';
 import { registerUnsavedWork } from '@/lib/unsaved-work';
+import { clearUploadJobs, updateUploadItems, useUploadJobStore, type UploadItem, type UploadPhase } from '@/lib/upload-job-store';
 import { useAppStore } from '@/lib/store';
 
-jest.mock('../fresh-reload', () => ({ freshReload: jest.fn(() => Promise.resolve()) }));
+jest.mock('../fresh-reload', () => ({ freshReload: jest.fn(() => Promise.resolve(true)) }));
 
 const reload = freshReload as jest.MockedFunction<typeof freshReload>;
 const MINE = 'aaaaaaaaaaaa';
@@ -90,6 +97,8 @@ beforeEach(() => {
 
 afterEach(() => {
   while (cleanups.length) cleanups.pop()!();
+  clearUploadJobs(useUploadJobStore.getState().items.map((i) => i.id));
+  useAppStore.setState({ user: null });
   jest.runOnlyPendingTimers();
   jest.useRealTimers();
   logSpy.mockRestore();
@@ -112,10 +121,11 @@ describe('<StaleBundleWatcher />', () => {
     expect(control()).not.toBeNull();
   });
 
-  it('Reload reloads at once', async () => {
+  it('Reload reloads at once, with no re-check (the operator asked for it)', async () => {
     await mountAndDetect();
     fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
     expect(reload).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledWith();
   });
 
   it('Later snoozes until the NEXT different SHA, not the next check', async () => {
@@ -150,6 +160,13 @@ describe('<StaleBundleWatcher />', () => {
     expect(reload).not.toHaveBeenCalled();
     await advance(1_000);
     expect(reload).toHaveBeenCalledTimes(1);
+    // An automatic reload always hands freshReload its re-check.
+    const recheck = reload.mock.calls[0][0];
+    expect(typeof recheck).toBe('function');
+    expect(recheck!()).toBe(true);
+    // The same re-check says no once the operator is back.
+    await setVisibility('visible');
+    expect(recheck!()).toBe(false);
   });
 
   it('coming back before the hidden delay cancels the automatic reload', async () => {
@@ -177,12 +194,56 @@ describe('<StaleBundleWatcher />', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it('a hidden tab with an unfinished upload does not reload; it does once the upload is done', async () => {
+    const upload = (phase: UploadPhase): UploadItem => ({
+      id: 'u1', file: new File(['v'], 'gym.mp4', { type: 'video/mp4' }), progress: 40, phase,
+      ownerUserId: 'operator', ownerTenantId: 'school-1', folderId: null,
+    });
+    updateUploadItems(() => [upload('uploading')]);
+    await mountAndDetect();
+    await setVisibility('hidden');
+    await advance(2 * HIDDEN_RELOAD_DELAY_MS);
+    expect(reload).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith('[dashboard-drift] automatic reload held: unsaved-work');
+
+    await act(async () => {
+      updateUploadItems(() => [upload('success')]);
+    });
+    await setVisibility('visible');
+    await setVisibility('hidden');
+    await advance(HIDDEN_RELOAD_DELAY_MS);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('stacks above the upload tray while the tray is showing', async () => {
+    await mountAndDetect();
+    expect(screen.getByTestId('app-update-control').className).toContain('bottom-[calc(5rem+env(safe-area-inset-bottom))]');
+    await act(async () => {
+      useAppStore.setState({ user: { id: 'operator', tenantId: 'school-1' } as never });
+      updateUploadItems(() => [{
+        id: 'u2', file: new File(['v'], 'gym.mp4', { type: 'video/mp4' }), progress: 10, phase: 'uploading',
+        ownerUserId: 'operator', ownerTenantId: 'school-1', folderId: null,
+      }]);
+    });
+    expect(screen.getByTestId('app-update-control').className).toContain('bottom-[calc(8.75rem+env(safe-area-inset-bottom))]');
+  });
+
   it('a dirty check that cannot answer counts as unsaved work', async () => {
     cleanups.push(registerUnsavedWork(() => { throw new Error('unreadable'); }));
     await mountAndDetect();
     await setVisibility('hidden');
     await advance(2 * HIDDEN_RELOAD_DELAY_MS);
     expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('logs which rule held the reload', async () => {
+    window.history.pushState({}, '', '/school-1/emergency/broadcast');
+    useAppStore.setState({ isEmergencyActive: true });
+    await mountAndDetect();
+    await setVisibility('hidden');
+    await advance(HIDDEN_RELOAD_DELAY_MS);
+    // The route is checked before the emergency flag.
+    expect(logSpy).toHaveBeenCalledWith('[dashboard-drift] automatic reload held: exempt-route');
   });
 
   it.each([
@@ -303,6 +364,43 @@ describe('<StaleBundleWatcher />', () => {
 });
 
 describe('stale-bundle-policy', () => {
+  const clear: AutoReloadState = {
+    visibilityState: 'hidden',
+    pathname: '/school-1/dashboard',
+    unsavedWork: false,
+    overlayOpenCount: 0,
+    emergencyActive: false,
+    overlayInDocument: false,
+    editing: false,
+    online: true,
+    timerLateMs: 0,
+  };
+  // Every rule tripped at once, in the order autoReloadBlocker reports them.
+  const tripped: Array<[NonNullable<ReturnType<typeof autoReloadBlocker>>, Partial<AutoReloadState>]> = [
+    ['visible', { visibilityState: 'visible' }],
+    ['exempt-route', { pathname: '/school-1/sports/game-42' }],
+    ['emergency', { emergencyActive: true }],
+    ['unsaved-work', { unsavedWork: true }],
+    ['overlay', { overlayOpenCount: 1 }],
+    ['editing', { editing: true }],
+    ['offline', { online: false }],
+    ['resumed-late', { timerLateMs: LATE_TIMER_TOLERANCE_MS + 1 }],
+  ];
+
+  it('allows a reload only when nothing blocks it', () => {
+    expect(autoReloadBlocker(clear)).toBeNull();
+    expect(autoReloadBlocker({ ...clear, overlayInDocument: true })).toBe('overlay');
+    expect(autoReloadBlocker({ ...clear, visibilityState: 'prerender' })).toBe('visible');
+    expect(autoReloadBlocker({ ...clear, timerLateMs: LATE_TIMER_TOLERANCE_MS })).toBeNull();
+  });
+
+  it('reports blockers in a fixed order', () => {
+    for (let i = 0; i < tripped.length; i++) {
+      const state = tripped.slice(i).reduce<AutoReloadState>((acc, [, patch]) => ({ ...acc, ...patch }), clear);
+      expect(autoReloadBlocker(state)).toBe(tripped[i][0]);
+    }
+  });
+
   it.each([
     ['/school-1/sports/game-42', true],
     ['/school-1/sports/game-42/swim-bridge', true],

@@ -15,7 +15,10 @@
  *     HIDDEN_RELOAD_DELAY_MS, with nothing dirty (lib/unsaved-work),
  *     no modal or overlay open, no emergency active, focus not in a
  *     text field, the browser online, and a route that runs nothing
- *     live. The rules are in stale-bundle-policy.ts.
+ *     live. The rules are in stale-bundle-policy.ts. They are read again
+ *     immediately before the navigation (freshReload awaits the service
+ *     worker and CacheStorage first), and a tab that became visible in the
+ *     meantime is never reloaded.
  *
  * Why this exists (2026-05-12):
  *
@@ -37,6 +40,7 @@ import { useTranslations } from 'next-intl';
 import { RefreshCw } from 'lucide-react';
 import { useAppStore } from '@/lib/store';
 import { hasUnsavedWork } from '@/lib/unsaved-work';
+import { useUploadActivityVisible } from '@/components/assets/UploadActivity';
 import { freshReload } from './fresh-reload';
 import {
   CHECK_INTERVAL_MS,
@@ -53,6 +57,8 @@ interface BuildInfo {
 
 export function StaleBundleWatcher() {
   const t = useTranslations('appUpdate');
+  // The upload tray uses the same bottom slot; stack above it while it shows.
+  const uploadTrayShown = useUploadActivityVisible();
 
   // Bake-time SHA — read once at module load. Same logic as the
   // player's drift check: NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA is auto-
@@ -60,8 +66,8 @@ export function StaleBundleWatcher() {
   // convention if anyone sets it explicitly.
   const mySha: string | null = (() => {
     const raw =
-      (process.env as any).NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
-      (process.env as any).NEXT_PUBLIC_BUILD_SHA ||
+      process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
+      process.env.NEXT_PUBLIC_BUILD_SHA ||
       null;
     return raw ? String(raw).slice(0, 12) : null;
   })();
@@ -83,6 +89,9 @@ export function StaleBundleWatcher() {
     let reloadTimer: ReturnType<typeof setTimeout> | null = null;
     let reloadArmedAt = 0;
     let lastCheckAt = 0;
+    // Bumped every time the tab becomes visible. An automatic reload already
+    // in flight goes ahead only if this has not moved since its timer fired.
+    let visibleEpoch = 0;
 
     const isVisible = () => document.visibilityState === 'visible';
     const awaitingOperator = () => !!pendingRef.current && pendingRef.current !== snoozedRef.current;
@@ -91,25 +100,46 @@ export function StaleBundleWatcher() {
       setPendingSha(sha);
     };
 
-    const tryAutoReload = () => {
-      reloadTimer = null;
-      if (cancelled || !awaitingOperator()) return;
+    const currentBlocker = (lateMs: number) => {
       const store = useAppStore.getState();
-      const blocker = autoReloadBlocker(
+      return autoReloadBlocker(
         readAutoReloadState(document, window.location.pathname, {
           unsavedWork: hasUnsavedWork(),
           overlayOpenCount: store.overlayOpenCount,
           emergencyActive: store.isEmergencyActive,
           online: typeof navigator === 'undefined' || navigator.onLine !== false,
-          timerLateMs: Date.now() - reloadArmedAt - HIDDEN_RELOAD_DELAY_MS,
+          timerLateMs: lateMs,
         }),
       );
+    };
+
+    const tryAutoReload = () => {
+      reloadTimer = null;
+      if (cancelled || !awaitingOperator()) return;
+      const blocker = currentBlocker(Date.now() - reloadArmedAt - HIDDEN_RELOAD_DELAY_MS);
       if (blocker) {
         console.log(`[dashboard-drift] automatic reload held: ${blocker}`);
         return;
       }
-      console.log(`[dashboard-drift] tab hidden and idle — reloading onto ${pendingRef.current}`);
-      void freshReload();
+      const epoch = visibleEpoch;
+      const firedAt = Date.now();
+      const target = pendingRef.current;
+      console.log(`[dashboard-drift] tab hidden and idle — reloading onto ${target}`);
+      // Asked again after each await inside freshReload and right before the
+      // navigation. The elapsed time since the decision is checked like a late
+      // timer: a long wait means the page was suspended and may be resuming.
+      void freshReload(() => {
+        if (cancelled || visibleEpoch !== epoch || pendingRef.current !== target || !awaitingOperator()) {
+          console.log('[dashboard-drift] automatic reload held: tab changed while preparing');
+          return false;
+        }
+        const late = currentBlocker(Date.now() - firedAt);
+        if (late) {
+          console.log(`[dashboard-drift] automatic reload held: ${late}`);
+          return false;
+        }
+        return true;
+      });
     };
 
     const armAutoReload = () => {
@@ -164,6 +194,7 @@ export function StaleBundleWatcher() {
         return;
       }
       if (!isVisible()) return;
+      visibleEpoch += 1;
       disarmAutoReload();
       // Resume the same cadence: never sooner than 30 s after the tab comes
       // back, never more than one check per interval.
@@ -189,7 +220,12 @@ export function StaleBundleWatcher() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed z-50 left-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] md:left-auto md:right-[4.25rem] md:bottom-6 max-w-[calc(100vw-6rem)] md:max-w-sm flex items-center gap-2 rounded-full border border-indigo-200 bg-white py-1.5 pl-3 pr-1.5 shadow-lg"
+      data-testid="app-update-control"
+      className={`fixed z-50 left-4 md:left-auto md:right-[4.25rem] max-w-[calc(100vw-6rem)] md:max-w-sm flex items-center gap-2 rounded-full border border-indigo-200 bg-white py-1.5 pl-3 pr-1.5 shadow-lg ${
+        uploadTrayShown
+          ? 'bottom-[calc(8.75rem+env(safe-area-inset-bottom))] md:bottom-[5rem]'
+          : 'bottom-[calc(5rem+env(safe-area-inset-bottom))] md:bottom-6'
+      }`}
     >
       <RefreshCw className="w-3.5 h-3.5 text-indigo-600 shrink-0" aria-hidden />
       <span className="min-w-0 truncate text-[12px] font-semibold text-slate-800">{t('available')}</span>
