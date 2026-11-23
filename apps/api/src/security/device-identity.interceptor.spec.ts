@@ -20,7 +20,8 @@ jest.mock('../security/required-secret', () => ({
   requireSecret: (_n: string, o?: { devFallback?: string }) => o?.devFallback ?? 'test_secret',
 }));
 
-import { DeviceIdentityInterceptor } from './device-identity.interceptor';
+import { DeviceIdentityInterceptor, routeAllowsUnpairedDevice } from './device-identity.interceptor';
+import { AllowUnpairedDevice } from './allow-unpaired-device.decorator';
 import { invalidateDeviceCredentialCache } from '../screens/device-auth';
 
 const SECRET = 'dev_only_device_jwt_secret_CHANGE_ME';
@@ -36,6 +37,24 @@ function ctx(req: any) {
   } as any;
 }
 const next = { handle: () => of('handler-ran') } as any;
+
+/** Two stand-in controllers: one route opted in to unpaired screens, one not. */
+class AllowsUnpaired {
+  @AllowUnpairedDevice()
+  read() { return 'read'; }
+}
+class Ordinary {
+  read() { return 'read'; }
+}
+/** The context Nest hands an interceptor for `cls.prototype[method]`. */
+function routeCtx(req: any, cls: any, method: string) {
+  return {
+    getType: () => 'http',
+    switchToHttp: () => ({ getRequest: () => req }),
+    getHandler: () => cls.prototype[method],
+    getClass: () => cls,
+  } as any;
+}
 
 function interceptorFor(row: any) {
   const prisma: any = { client: { screen: { findUnique: jest.fn().mockResolvedValue(row) } } };
@@ -70,12 +89,15 @@ describe('DeviceIdentityInterceptor (DT-03)', () => {
     expect(req.user.screenGroupId).toBe('group-CURRENT');
   });
 
-  it('leaves an UNPAIRED screen with NO tenant, so tenant-scoped reads fail closed', async () => {
+  it('leaves an UNPAIRED screen with NO tenant on a route that allows one, so tenant-scoped reads fail closed', async () => {
     // This is the dumpstered-screen case. The claim still says the old
     // school; the row says nothing. `requireTenantId*` then refuses rather
-    // than resolving a stale tenant.
+    // than resolving a stale tenant. Since SDW-01 only an
+    // `@AllowUnpairedDevice()` route gets this far (see the block below).
     const req = deviceReq();
-    await lastValueFrom(await interceptorFor(liveRow({ tenantId: null })).intercept(ctx(req), next));
+    await lastValueFrom(
+      await interceptorFor(liveRow({ tenantId: null })).intercept(routeCtx(req, AllowsUnpaired, 'read'), next),
+    );
     expect(req.user.tenantId).toBeUndefined();
     expect(req.user.schoolId).toBeUndefined();
   });
@@ -209,5 +231,84 @@ describe('DeviceIdentityInterceptor (SEC-001 — unproven credentials)', () => {
     const req = readReq({ unproven: true });
     await lastValueFrom(await interceptorFor(liveRow()).intercept(ctx(req), next));
     expect((req.user as Record<string, unknown>).unproven).toBe(true);
+  });
+});
+
+/**
+ * SDW-01 (2026-11-23) — a device principal must belong to a tenant.
+ *
+ * A screen holds a valid device credential before it is paired (the pairing
+ * splash needs one). On the guard surface, a device principal whose live
+ * screen row has no tenant is refused unless the route opts in with
+ * `@AllowUnpairedDevice()`, so every other handler can rely on a device
+ * principal's `tenantId` being a real tenant.
+ */
+describe('DeviceIdentityInterceptor (SDW-01 — tenantless device principals)', () => {
+  const unpaired = () => liveRow({ tenantId: null, screenGroupId: null, status: 'PENDING' });
+  // The registration token for a brand-new screen: no tenant claim, not unproven.
+  const registrationReq = (method = 'GET') => ({
+    ...deviceReq({ deviceId: SCREEN_ID }, { tenantId: undefined }),
+    method,
+  });
+
+  it.each(['GET', 'POST'])('refuses an unpaired screen on an ordinary route (%s) with 401', async (method) => {
+    const req = registrationReq(method);
+    await expect(
+      lastValueFrom(await interceptorFor(unpaired()).intercept(routeCtx(req, Ordinary, 'read'), next)),
+    ).rejects.toMatchObject({ status: 401, response: { code: 'DEVICE_SCREEN_UNPAIRED' } });
+  });
+
+  it('refuses when the context names no handler at all — the refusal is the default', async () => {
+    const req = registrationReq();
+    await expect(
+      lastValueFrom(await interceptorFor(unpaired()).intercept(ctx(req), next)),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('admits an unpaired screen on an @AllowUnpairedDevice() route, with no tenant on the principal', async () => {
+    const req = registrationReq();
+    await expect(
+      lastValueFrom(await interceptorFor(unpaired()).intercept(routeCtx(req, AllowsUnpaired, 'read'), next)),
+    ).resolves.toBe('handler-ran');
+    expect(req.user.tenantId).toBeUndefined();
+    expect((req.user as Record<string, unknown>).schoolId).toBeUndefined();
+  });
+
+  it('a stale tenant CLAIM does not count: the live row decides', async () => {
+    // An unpaired screen still holding a token that names its former school.
+    const req = { ...deviceReq({ tenantId: 'tenant-FORMER' }), method: 'GET' };
+    await expect(
+      lastValueFrom(await interceptorFor(unpaired()).intercept(routeCtx(req, Ordinary, 'read'), next)),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it('a PAIRED screen is admitted on an ordinary route exactly as before', async () => {
+    const req = { ...deviceReq(), method: 'POST' };
+    await expect(
+      lastValueFrom(await interceptorFor(liveRow()).intercept(routeCtx(req, Ordinary, 'read'), next)),
+    ).resolves.toBe('handler-ran');
+    expect(req.user.tenantId).toBe('tenant-CURRENT');
+  });
+
+  it('an unproven write from an unpaired screen keeps its own refusal', async () => {
+    const req = { ...deviceReq({ unproven: true }), method: 'POST' };
+    await expect(
+      lastValueFrom(await interceptorFor(unpaired()).intercept(routeCtx(req, AllowsUnpaired, 'read'), next)),
+    ).rejects.toThrow(/unproven/i);
+  });
+
+  it('never touches a user principal, tenant or not', async () => {
+    const prisma: any = { client: { screen: { findUnique: jest.fn() } } };
+    const req = { headers: {}, method: 'GET', user: { sub: 'u1', kind: 'user', role: 'SCHOOL_ADMIN' } };
+    await expect(
+      lastValueFrom(await new DeviceIdentityInterceptor(prisma).intercept(routeCtx(req, Ordinary, 'read'), next)),
+    ).resolves.toBe('handler-ran');
+    expect(prisma.client.screen.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('routeAllowsUnpairedDevice reads handler metadata only', () => {
+    expect(routeAllowsUnpairedDevice(routeCtx({}, AllowsUnpaired, 'read'))).toBe(true);
+    expect(routeAllowsUnpairedDevice(routeCtx({}, Ordinary, 'read'))).toBe(false);
+    expect(routeAllowsUnpairedDevice(ctx({}))).toBe(false);
   });
 });

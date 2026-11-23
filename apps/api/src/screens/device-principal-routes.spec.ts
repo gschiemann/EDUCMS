@@ -18,17 +18,39 @@
  *   - `open`     — not tenant admin data, or the handler already refuses a
  *                  device / only touches the caller's own user row; reason given.
  * Add such a route and this file fails until you decide.
+ *
+ * SDW-01 (2026-11-23) — and a second decision per route: does it answer a
+ * screen that has NO tenant yet (unpaired)? A device principal whose live
+ * screen row has no tenant is refused unless the route opts in.
+ * `UNPAIRED_ALLOWED` below is the list of routes that opt in; everything else
+ * on this surface is refused by DeviceIdentityInterceptor before its handler
+ * runs, and the bottom of this file proves it route by route against the
+ * real interceptor.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { ForbiddenException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { lastValueFrom, of } from 'rxjs';
 import { DenyDevicePrincipalGuard } from '../auth/deny-device-principal.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { DeviceIdentityInterceptor } from '../security/device-identity.interceptor';
+import { ALLOW_UNPAIRED_DEVICE_KEY } from '../security/allow-unpaired-device.decorator';
+import { deviceJwtSecretRing } from '../security/key-ring';
+import { invalidateDeviceCredentialCache } from './device-auth';
 
 jest.mock('../security/required-secret', () => ({
   requireSecret: (_name: string, opts?: { devFallback?: string }) =>
     opts?.devFallback ?? 'test_secret_32_chars_padded_here_ok',
+}));
+// The SDW-01 block loads every device-reachable controller to read its real
+// handler; the branding controller pulls in an ESM-only sanitizer jest cannot
+// parse. Nothing here sanitizes anything (same stub as the role matrix).
+jest.mock('isomorphic-dompurify', () => ({
+  __esModule: true,
+  default: { sanitize: (raw: string) => String(raw) },
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -108,6 +130,51 @@ const TABLE: Record<string, Decision> = {
   'DELETE /api/v1/auth/passkeys/:id': { kind: 'open', why: "the caller's own passkeys; a screen id is no user row" },
 };
 
+// ── SDW-01: the routes on this surface that answer an UNPAIRED screen ─────
+//
+// A screen with no tenant holds a valid device credential (registration mints
+// one so the pairing splash can heartbeat, take OTA updates and report its
+// orientation — those calls use `verifyDeviceForScreen(…, { allowUnpaired })`
+// and never reach this surface). Here, exactly these routes carry
+// `@AllowUnpairedDevice()`. Each one's handler reads the screen's own row or
+// answers "nothing" without a tenant; none puts `req.user.tenantId` into a
+// query. Every other route is refused in DeviceIdentityInterceptor.
+//
+// `callSite` / `needle`: the client that calls the route with the credential
+// the screen holds while it is unpaired.
+
+interface UnpairedDecision {
+  why: string;
+  callSite?: string;
+  needle?: string;
+}
+
+const UNPAIRED_ALLOWED: Record<string, UnpairedDecision> = {
+  'GET /api/v1/screens/:id/manifest': {
+    why:
+      "self-scoped to the screen's own row (`sub` must equal `:id`); with no tenant it carries no emergency " +
+      'block and no tenant content. The APK native alert watch polls it with the stored registration token ' +
+      'while the panel is in standby on the pairing splash, and the page keeps polling it while it confirms ' +
+      'an "unpaired" answer before leaving content on the glass.',
+    callSite: 'apps/player/app/src/main/java/com/educms/player/alertwatch/NativeAlertWatch.kt',
+    needle: '/api/v1/screens/${target.screenId}/manifest',
+  },
+  'GET /api/v1/emergency/messages': {
+    why:
+      "life-safety poll; reads the screen's own row and answers INACTIVE when it has no tenant. The overlay " +
+      'and the pushed-message reconcile keep polling it with the credential the page holds, and this fix ' +
+      'leaves the emergency path exactly as it was.',
+    callSite: 'apps/web/src/components/player/EmergencyOverlay.tsx',
+    needle: '`${apiUrl}/emergency/messages`',
+  },
+  'GET /api/v1/emergency/status': {
+    why:
+      'life-safety read; answers `{ active: [], tenantId: null }` before any query when the principal has no ' +
+      'tenant. No current client sends it a device credential, so either answer is invisible; it is left ' +
+      'unchanged so this fix does not alter the emergency path.',
+  },
+};
+
 // ── the scanner ──────────────────────────────────────────────────────────
 
 interface FoundRoute {
@@ -117,6 +184,12 @@ interface FoundRoute {
   method: string;
   /** `DenyDevicePrincipalGuard` named in a class- or method-level @UseGuards. */
   deniesInSource: boolean;
+  /** `@AllowUnpairedDevice()` on the method (SDW-01). */
+  allowsUnpairedInSource: boolean;
+  /** `JwtAuthGuard` named in a class- or method-level @UseGuards. */
+  jwt: boolean;
+  /** `@RequireRoles` on the class or the method. */
+  roles: boolean;
 }
 
 const HTTP = new Set(['Get', 'Post', 'Put', 'Patch', 'Delete', 'All', 'Head']);
@@ -143,6 +216,11 @@ function decoratorsOf(node: any): Array<{ name: string; args: string[] }> {
 }
 
 function scanJwtOnlyRoutes(): FoundRoute[] {
+  return scanRoutes().filter((r) => r.jwt && !r.roles);
+}
+
+/** Every HTTP route in every controller, with its guard / role / marker facts. */
+function scanRoutes(): FoundRoute[] {
   const found: FoundRoute[] = [];
   for (const file of walk(API_SRC)) {
     const src = fs.readFileSync(file, 'utf8');
@@ -166,7 +244,6 @@ function scanJwtOnlyRoutes(): FoundRoute[] {
         const denies = [...cd, ...md].some(
           (d) => d.name === 'UseGuards' && d.args.some((a) => a.includes('DenyDevicePrincipalGuard')),
         );
-        if (!jwt || roles) continue;
         const sub = (http.args[0] || "''").replace(/['"`]/g, '');
         found.push({
           key: `${http.name.toUpperCase()} /${[base, sub].filter(Boolean).join('/')}`,
@@ -174,6 +251,9 @@ function scanJwtOnlyRoutes(): FoundRoute[] {
           className: n.name.getText(),
           method: m.name.getText(),
           deniesInSource: denies,
+          allowsUnpairedInSource: md.some((d) => d.name === 'AllowUnpairedDevice'),
+          jwt,
+          roles,
         });
       }
     });
@@ -181,10 +261,13 @@ function scanJwtOnlyRoutes(): FoundRoute[] {
   return found;
 }
 
-function guardsOn(found: FoundRoute): unknown[] {
+function classOf(found: FoundRoute): any {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const mod = require(found.file);
-  const cls = mod[found.className];
+  return require(found.file)[found.className];
+}
+
+function guardsOn(found: FoundRoute): unknown[] {
+  const cls = classOf(found);
   const classGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, cls) || [];
   const methodGuards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, cls.prototype[found.method]) || [];
   return [...classGuards, ...methodGuards];
@@ -262,5 +345,162 @@ describe('DenyDevicePrincipalGuard', () => {
   it('admits a person and an API key unchanged', () => {
     expect(guard.canActivate(ctx({ id: 'u1', role: 'SCHOOL_ADMIN', tenantId: 't' }))).toBe(true);
     expect(guard.canActivate(ctx({ id: 'k1', kind: 'api-key', tenantId: 't' }))).toBe(true);
+  });
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// SDW-01 (2026-11-23) — a device principal must belong to a tenant.
+// ─────────────────────────────────────────────────────────────────────────
+
+const SCREEN_ID = 'screen-sdw01';
+const PAIRED_TENANT = 'tenant-paired';
+
+/** Exactly what `POST /screens/register` mints for a brand-new screen: no tenant, not unproven. */
+const registrationToken = () =>
+  new JwtService({ secret: deviceJwtSecretRing().primary }).sign(
+    { sub: SCREEN_ID, deviceId: SCREEN_ID, kind: 'device', ep: 0 },
+    { expiresIn: '15m' },
+  );
+/** A paired screen's credential. */
+const pairedToken = () =>
+  new JwtService({ secret: deviceJwtSecretRing().primary }).sign(
+    { sub: SCREEN_ID, deviceId: SCREEN_ID, kind: 'device', ep: 0, tenantId: PAIRED_TENANT },
+    { expiresIn: '180d' },
+  );
+
+const screenRow = (tenantId: string | null) => ({
+  id: SCREEN_ID,
+  tenantId,
+  screenGroupId: null,
+  status: tenantId ? 'ONLINE' : 'PENDING',
+  credentialEpoch: 0,
+  credentialEpochRotatedAt: null,
+});
+
+const httpMethodOf = (key: string) => key.split(' ')[0];
+
+/** The request JwtAuthGuard leaves behind for a device bearer token. */
+function guardedRequest(token: string, key: string) {
+  return {
+    method: httpMethodOf(key),
+    headers: { authorization: `Bearer ${token}` },
+    user: { id: SCREEN_ID, sub: SCREEN_ID, kind: 'device', tenantId: undefined as string | undefined },
+  };
+}
+
+/** The ExecutionContext Nest builds for this route's real handler. */
+function routeContext(r: FoundRoute, req: unknown) {
+  const cls = classOf(r);
+  return {
+    getType: () => 'http',
+    switchToHttp: () => ({ getRequest: () => req }),
+    getHandler: () => cls.prototype[r.method],
+    getClass: () => cls,
+  } as any;
+}
+
+function interceptorWith(tenantId: string | null) {
+  return new DeviceIdentityInterceptor({
+    client: { screen: { findUnique: jest.fn().mockResolvedValue(screenRow(tenantId)) } },
+  } as any);
+}
+
+const ran = { handle: () => of('handler-ran') } as any;
+
+describe('SDW-01 — which routes answer a screen with no tenant', () => {
+  const allRoutes = scanRoutes();
+
+  it('exactly the decided routes carry @AllowUnpairedDevice(), anywhere in the API', () => {
+    const marked = allRoutes.filter((r) => r.allowsUnpairedInSource).map((r) => r.key).sort();
+    expect(marked).toEqual(Object.keys(UNPAIRED_ALLOWED).sort());
+  });
+
+  it('…and the decorator really registered the marker on each of them', () => {
+    for (const r of allRoutes.filter((x) => x.allowsUnpairedInSource)) {
+      expect(Reflect.getMetadata(ALLOW_UNPAIRED_DEVICE_KEY, classOf(r).prototype[r.method])).toBe(true);
+    }
+  });
+
+  it('every allowed route is a kept device route of this surface, not a blocked one', () => {
+    for (const key of Object.keys(UNPAIRED_ALLOWED)) {
+      expect(routes.map((r) => r.key)).toContain(key);
+      expect(TABLE[key]?.kind).toBe('player');
+    }
+  });
+
+  it('the cited unpaired call sites still contain the path', () => {
+    const stale: string[] = [];
+    for (const [key, d] of Object.entries(UNPAIRED_ALLOWED)) {
+      if (!d.callSite || !d.needle) continue;
+      const src = fs.readFileSync(path.join(REPO, d.callSite), 'utf8');
+      if (!src.includes(d.needle)) stale.push(`${key} — ${d.callSite}`);
+    }
+    expect(stale).toEqual([]);
+  });
+});
+
+describe('SDW-01 — an unpaired screen’s credential, route by route, through the real interceptor', () => {
+  beforeEach(() => invalidateDeviceCredentialCache());
+
+  // `blocked` routes never get this far: DenyDevicePrincipalGuard 403s every
+  // device principal before any interceptor runs (asserted above).
+  const reachable = routes.filter((r) => TABLE[r.key] && TABLE[r.key].kind !== 'blocked');
+
+  it('covers the whole device-reachable surface', () => {
+    expect(reachable.length).toBeGreaterThan(30);
+  });
+
+  for (const r of reachable) {
+    const allowed = !!UNPAIRED_ALLOWED[r.key];
+    it(`${r.key} → ${allowed ? 'ADMITS' : 'REFUSES'} an unpaired screen`, async () => {
+      const req = guardedRequest(registrationToken(), r.key);
+      const run = lastValueFrom(await interceptorWith(null).intercept(routeContext(r, req), ran));
+      if (allowed) {
+        await expect(run).resolves.toBe('handler-ran');
+        expect(req.user.tenantId).toBeUndefined();
+      } else {
+        await expect(run).rejects.toMatchObject({ status: 401, response: { code: 'DEVICE_SCREEN_UNPAIRED' } });
+      }
+    });
+  }
+
+  it('a PAIRED screen is admitted on every one of them, with its live tenant (no fleet change)', async () => {
+    const refused: string[] = [];
+    for (const r of reachable) {
+      invalidateDeviceCredentialCache();
+      const req = guardedRequest(pairedToken(), r.key);
+      try {
+        await lastValueFrom(await interceptorWith(PAIRED_TENANT).intercept(routeContext(r, req), ran));
+        if (req.user.tenantId !== PAIRED_TENANT) refused.push(`${r.key} (tenant ${String(req.user.tenantId)})`);
+      } catch (e) {
+        refused.push(`${r.key} (${(e as Error).message})`);
+      }
+    }
+    expect(refused).toEqual([]);
+  });
+});
+
+describe('SDW-01 — end to end: a device credential for a screen with no tenant is stopped before the handler', () => {
+  beforeEach(() => invalidateDeviceCredentialCache());
+
+  it('GET /integrations/social/posts: JwtAuthGuard accepts the credential, the interceptor refuses it, the handler never runs', async () => {
+    const token = registrationToken();
+    const req: any = { method: 'GET', originalUrl: '/api/v1/integrations/social/posts', headers: { authorization: `Bearer ${token}` } };
+    const http = { switchToHttp: () => ({ getRequest: () => req }) } as any;
+    const redis = { sismember: jest.fn(async () => false), getTokenInvalidBefore: jest.fn(async () => null) };
+
+    // 1. The signature is good, so the guard builds a device principal (unchanged).
+    await expect(new JwtAuthGuard(new JwtService({}), redis as any).canActivate(http)).resolves.toBe(true);
+    expect(req.user).toMatchObject({ kind: 'device', sub: SCREEN_ID });
+    expect(req.user.tenantId).toBeUndefined();
+
+    // 2. The live row has no tenant, so the interceptor stops the request here.
+    const posts = routes.find((r) => r.key === 'GET /api/v1/integrations/social/posts')!;
+    const handler = jest.fn(() => of('handler-ran'));
+    await expect(
+      lastValueFrom(await interceptorWith(null).intercept(routeContext(posts, req), { handle: handler } as any)),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(handler).not.toHaveBeenCalled();
   });
 });
