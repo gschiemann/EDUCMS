@@ -1,0 +1,121 @@
+# /panic on a short screen: the six buttons own the space (2026-11-23)
+
+**Status.** Branch `claude/panic-short-screen`, cut from `origin/master` `1006d21b2`. One commit. Not pushed, not merged, not deployed. Every claim about a real phone below is **unverified** until the owner's on-glass checks pass. WebKit is not installed in the machine this was built on, so every WebKit result is **unverified locally**; CI's WebKit shards are the gate for it.
+
+- **The owner's go:** "merge and finish everything" (after the 2026-11-23 demo).
+- **Life-safety CHANGE class** (`CLAUDE.md` §5): this is the staff panic trigger on a phone. The owner waived the different-vendor review in writing ("Don't worry about another model review"). The waiver covers the review only: the on-glass check on a real phone stays the owner's.
+- **Not touched:** `HOLD_DURATION_MS`, the pointer and key handlers, every aria-label, the trigger buttons' classes and styles, LIVE | DRILL, the live-alert line, the "Send to" bar, every string. No API, schema, player, widget or Taurus-shipped file changes. No new user-facing string.
+
+## What changed
+
+| Screen height | Before (since 2026-11-16) | Now |
+|---|---|---|
+| 800 px and taller | The panic-phone row sits between the "Send to" bar and the buttons. | Unchanged. The rendered DOM is byte-identical to `master` (checked, below). |
+| Under 800 px | Same place, so every pixel of the row came off the buttons. | The row moves **below** the buttons, starting at the bottom edge of the screen. The panel scrolls a little to reach it. The buttons are sized exactly as if the row were not there. |
+
+"The panic-phone row" is either the "Keep this phone ready for emergencies" card (`panic-keep-ready`: a signed-in person with panic authority on a phone that is not set up) or the "This phone is ready" line (`panic-phone-ready`: a set-up phone). Same test ids, copy and handlers. Reading and focus order follow the DOM, so a keyboard or screen-reader user meets the six buttons before the row, as a sighted user does.
+
+- `(max-height: 799px)` is `apps/web/src/hooks/use-short-panic-screen.ts`: `useSyncExternalStore` on `matchMedia`, false on the server and in jsdom, the same pattern as `use-short-landscape.ts`. It matches a 390 × 844 iPhone in Safari whichever viewport WebKit measures (about 664 px with toolbars, about 750 px without).
+- **It also matches short laptop browser windows** (about 657 px on a 1366 × 768 screen): desktop `/panic` users at that height get the moved card and the scroll too. That is intended (the buttons own the space there as well), but it is a change for them.
+- **No size floor.** On a shorter screen the buttons shrink with their rows, exactly as they did before 2026-11-16, and never move below the fold. A fixed 88 px floor was proposed and rejected by the skeptic: below about 636 px it would have pushed the bottom row off the screen.
+
+### One deliberate departure from the brief's wording
+
+The brief said to wrap the header-to-grid panel in one viewport-tall flex column and render the row after it. That gives the right geometry, but it puts the grid under a new parent element in short mode, so React **remounts every trigger button** whenever the layout crosses 800 px. A rotation during a hold would detach the pressed button: its pointer capture is gone, and an early release could land on another element, so the 3-second hold would complete and send although the finger left early. (Reasoned from how pointer capture ends when an element is removed; not reproduced on a device.)
+
+So the row is instead rendered after the grid, positioned `absolute top-full left-0 right-0` against the `fixed` root (out of the flex column, starting exactly at the bottom edge of the screen), and the root gets `overflow-y-auto`. The flex column is laid out exactly as if the row did not exist, which is the wrapper's purpose. The grid keeps the same place in the tree in both layouts. A jest test starts a hold, flips the media query one second in, checks that all six buttons are the same DOM nodes, releases early on the same node and checks that nothing is sent. With the grid forced to remount (`key` on the grid, a negative control), that test fails.
+
+The below-grid container renders only when a row will show, so it never takes space for nothing.
+
+### A second departure: the 390 × 560 test does not assert "round"
+
+The brief asked the new 390 × 560 test (card plus live-alert line) to assert that all six buttons stay circles. They cannot, with or without the card, and the cause is not the card. At 560 px the rows are 54.7 px, and a button cannot be narrower than its label's min-content width: Lockdown measured **79.22 × 54.7** and Fire / Evacuate 71.2 wide. The run with that assertion failed on every retry with `|w − h|` = 24.515625. With the card dismissed the DOM is `master`'s and the numbers are identical, so it was the same before 2026-11-16. Making them round needs a change to the buttons (their classes are out of scope here) or to the content above the grid, which is an owner decision. The test asserts what the design guarantees instead: all six buttons on screen and apart, the card below them, and **identical button sizes with the card and after "Not now"**, so the card costs them nothing. A fixed 88 px floor would fail it (the bottom row would leave the screen), and so would `master` (the card above the grid takes 74 px off the rows).
+
+Measured in Chromium on this branch (with the live-alert line / without it). Button size is the smallest button's height; "round" means every `|w − h|` < 2.
+
+| Viewport | Buttons with the card | Same after "Not now" | Round |
+|---|---|---|---|
+| 390 × 844 (row above, as before) | 124.7 / 143.4 | 149.4 / 156 | yes |
+| 390 × 750 | 118.0 / 136.7 | same | yes |
+| 390 × 664 | **89.4** / 108.0 (CI on `master`: 64.70) | same | yes |
+| 390 × 600 | 68.0 / 86.7 | same | no / yes |
+| 390 × 560 | 54.7 / 73.4 | same | no |
+| 390 × 548 and 375 × 548 | 50.7 / 69.4 | same | no |
+| 1366 × 657 (a laptop window) | 87.0 / 105.7 | same | yes |
+
+The buttons are round from about 634 px tall with the live-alert line (578 px without). The 1366 × 657 laptop window with the alert line gets 87.0 px buttons, under the spec's 88 px, whether or not the card is there; it is outside the phone-sized checks. On every short viewport the card starts exactly at the bottom edge of the screen (the card is 70 px plus a 4 px margin).
+
+## Why the product failed
+
+`4773ff3ac` ("feat(panic): panic phones, web half", 2026-11-14, merged in the 2026-11-16 release train `d6b113aaa`, PR #329) put the keep-ready card and the phone-ready line directly above the trigger grid. The grid is `flex-1 min-h-0`, and each button is `aspect-square h-full max-h-[156px]`, sized by its row. So a third of every pixel added above the grid came off each row.
+
+At 390 × 664 (Safari with its toolbars) with the live-alert line:
+
+- Above the grid before the card: 331.9 px. Fixed grid overhead: 64 px (8 top padding, 24 bottom, two 16 px gaps).
+- Rows without the card: (664 − 331.9 − 64) / 3 = **89.37 px**, a pass with 1.37 px to spare.
+- The card takes 74 px: 70 px tall (its 12 px text wraps to three lines next to its two buttons) plus a 4 px margin.
+- Rows with the card: (664 − 405.9 − 64) / 3 = **64.70 px**. CI received exactly 64.703125, in Chromium and WebKit, on every retry, on every master commit from `d6b113aaa` on. At that size Lockdown (79.2 px wide) and Fire / Evacuate (71.2 px wide) were not even circles.
+- With no live-alert line the card gave about 83 px, still under the 88 px floor. A set-up phone (the ready line, about 52 px) gave about 72 px; no spec covered that case before this change.
+
+The design rule it broke is written in the page: the live-alert line is "one compact line, so the trigger grid keeps its size". The spec asserted that rule correctly; the test was not wrong.
+
+## Why our system let it reach customers
+
+1. **The spec that caught it is not a required check.** `emergency-targeting.spec.ts` runs only in the general E2E shards (`ci.yml`, "E2E shard (Playwright / …)"). `CLAUDE.md` §10 makes `chromium · Emergency path` and `webkit · Emergency path` required, and those run five other specs. The emergency trigger's own layout test could go red without blocking a merge.
+2. **The release train merged with this spec red.** The `claude/panic-device` branch head (`82b5d77ff`) was already red on exactly this assertion (chromium 2/2 and webkit 3/4) before the train, and the train merged on 2026-11-16 with it red. It stayed red on every master commit CI reported for a week, through at least PR #345's head (`8c69312`).
+3. **The gap was written down and nothing acted on it.** `docs/handoffs/2026-11-14-panic-phones.md` lists "Browser e2e, including `emergency-targeting.spec.ts`" under **Unverified**. An unverified life-safety layout claim had no gate, owner or follow-up attached.
+4. **No other test measures `/panic`.** The jest page test checks text and clicks (jsdom has no layout); the root `tests/e2e` panic specs and `mobile-usability.spec.ts` check no sizes.
+
+## Proposal (not implemented): make the panic layout spec a required check
+
+A CI definition change is consequential (`AGENTS.md`) and needs the owner's written go, so this branch does not make it.
+
+- **Situation.** The `/panic` trigger's geometry and hold contract (`apps/web/tests/e2e/emergency-targeting.spec.ts`) can go red without blocking a merge, and did, for a week.
+- **Evidence.** The section above. The whole spec ran in about 25 s in Chromium locally (results below; WebKit not timed here) and is fully mocked, like the five specs the Emergency Path job already runs.
+- **Recommendation.** Add `tests/e2e/emergency-targeting.spec.ts` to the `Run emergency-path E2E` step's file list in `.github/workflows/emergency-path.yml` (both matrix browsers). The two job names, which the ruleset already requires, do not change, so the ruleset needs no edit.
+- **Risk.** A flaky test there would block merges. Mitigation: the spec has been deterministic (one fixed value on every retry); retries are already 2 in CI.
+- **Validation.** One PR run of both Emergency Path jobs showing the spec green; one deliberate red (revert this fix on a scratch branch) showing the job red.
+- **Rollback.** Remove the path from the step.
+- **Decision.** Owner.
+
+## Tests
+
+`apps/web/src/app/panic/__tests__/panic-page.test.tsx`, new block 7 (jsdom, `matchMedia` mocked):
+
+- matching `(max-height: 799px)`: the keep-ready card follows all six buttons, inside the below-grid container, and the root scrolls;
+- not matching: today's order, no below-grid container, no scrolling root;
+- the card dismissed: no below-grid container at all;
+- a set-up phone: the ready line and its Turn off control follow the buttons;
+- crossing 800 px mid-hold: the buttons are the same DOM nodes and an early release still sends nothing.
+
+`apps/web/tests/e2e/emergency-targeting.spec.ts` (tightened; nothing loosened or removed):
+
+- **390 × 664** (the failing test, its assertions unchanged): it now waits for the keep-ready card before measuring, then also asserts the card's top is at or below the bottom row's bottom and that it is fully in view after `scrollIntoViewIfNeeded`.
+- **390 × 844, new:** the card is fully in view and above the top row; the six buttons are at least 88 px, round, on screen and apart.
+- **A set-up phone at 390 × 664, new:** marker cookie, `/api/panic/status`, `/targets` and `/active` mocked, no tab session. The same 88 px round-button checks; the ready line is below the buttons and reachable.
+- **390 × 560 with the card and the live-alert line, new:** all six buttons on screen and apart; the card below them; and after "Not now" the buttons are exactly the same size, so the card costs them nothing. Not round at this height (see "A second departure").
+
+## Verification record
+
+All local, on a 4-CPU / 16 GB container, against a production build (`next build` with `NEXT_PUBLIC_API_URL=http://api.invalid/api/v1`, served by `tests/e2e-webserver.cjs` with `CI=true E2E_PREBUILT=1`). Chromium is the preinstalled headless shell build 1243 (the repo's Playwright wants 1217), through a wrapper config outside the repository. **WebKit is not installed here: every WebKit result is unverified locally**, and CI's WebKit shards and `webkit · Emergency path` are its gate.
+
+- **`emergency-targeting.spec.ts`, Chromium, on this branch:** 7 passed, 0 failed (the formerly red 390 × 664 test included).
+- **The `emergency-path.yml` Chromium list** (`emergency-path`, `emergency-drill-paint-proof`, `emergency-instant-board`, `player-native-dual-video`, `player-offline-lazy-renderer`) **plus `emergency-targeting`**, one run: 47 passed, 1 skipped, 0 failed. The skip is the Chromium quarantine already in `emergency-drill-paint-proof.spec.ts` since 2026-10-26 ("a page reloaded under a persisted native hold with NO cached alert…").
+- **Negative control:** the same spec against a build of `master`'s `page.tsx`, no retries: 3 failed, 4 passed. The 390 × 664 test got **64.703125** (CI's value exactly), the set-up phone **72.03125**, and the 390 × 560 test failed on the card's position (331.89, above the grid). The 390 × 844 test passes on `master` too, as it should.
+- **Jest:** `src/app/panic/__tests__/panic-page.test.tsx`, 21 passed (16 existing, 5 new). Negative controls: against `master`'s page, 4 of the 5 new tests fail (the "not matching" one passes, as it should). With the grid forced to remount on the flip, the mid-hold test fails at the node-identity check.
+- **800 px and taller is byte-identical:** in jsdom (no `matchMedia`, so the hook reads false), `container.innerHTML` from `master`'s page and from this branch's page are byte-identical for a signed-in admin with the card and a live alert (17,408 bytes) and for a set-up phone (17,314 bytes).
+- **Required-job equivalents:** `pnpm --filter web build` (its TypeScript pass included), exit 0; `node apps/web/tools/check-bundle-budget.cjs`, OK. **Other guards:** i18n parity OK (no new string); `check-inset-serialization.cjs` clean; `check-mobile-perf.cjs` clean; `check-request-budget.cjs` OK (no new network call); `scripts/check-rulebook.cjs` PASS. ESLint on the four changed source files: the same findings, by rule and count, as `master` (all pre-existing), and none in the new hook.
+- **Mount:** the edited component is the `/panic` route's own `page.tsx`. Every e2e above loads `/panic`, and the production bundle's `/panic` server chunk and client chunk both contain the new code.
+
+## Unverified, and left alone
+
+- **A real phone.** Owner on-glass checks: iPhone SE-class Safari (about 548 px tall), 390 × 844 Safari with toolbars shown and as the installed app, each as an unenrolled admin (the keep-ready card) and as a set-up phone (the ready line). Check that the six buttons are fully visible with no scroll (round at 390 × 844 Safari with toolbars; at about 548 px they cannot be, see "A second departure"), that the row is one short scroll below them, and that a hold still takes 3 seconds.
+- **Which viewport iOS Safari measures `(max-height)` against** (small or large). 799 px is chosen to match both on a 390 × 844 phone; on a 932 px-tall phone Safari's two viewports may sit either side of 800, so the row could move when the toolbars collapse. The buttons are never remounted by that move.
+- **WebKit**, locally (not installed here). CI's WebKit shards are the gate.
+- **es and zh** wrapping of the card at 390 px: the card is out of the buttons' way on a short screen whatever its height.
+- **Left alone (pre-existing, outside the brief):** at 390 × 844 the buttons still shrink, from about 149 px to about 125 px, when the card appears after the sign-in check resolves, which is a layout shift under the thumb. Landscape and widths other than 390 and 375 are not asserted by any spec.
+- **Discoverability.** On a short screen the keep-ready offer is below the fold until the person scrolls. That is the trade the brief chose: the offer gives way to the buttons.
+
+## Rollback
+
+Revert the commit. No schema, no API, no stored state.

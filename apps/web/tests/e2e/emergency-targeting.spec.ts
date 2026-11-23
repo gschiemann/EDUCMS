@@ -102,6 +102,74 @@ async function setUp(page: Page): Promise<World> {
   return world;
 }
 
+/**
+ * A phone that is already SET UP (2026-11-14 panic phones): no session in the
+ * tab, the readable marker cookie, and this origin's /api/panic/* answering
+ * with the phone's own credential. The cold start uses the phone first.
+ */
+async function setUpPhone(page: Page, baseURL: string): Promise<World> {
+  const world: World = { active: [], triggers: [], clears: [] };
+  const user = { id: 'u1', email: 'admin@lincoln.test', role: 'SCHOOL_ADMIN', tenantId: TENANT, tenantName: 'Lincoln High', canTriggerPanic: true };
+  await page.context().addCookies([{ name: 'venueos_pm', value: '1', url: baseURL }]);
+
+  await page.route('**/api/v1/**', async (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) }),
+  );
+  // No remembered session in this browser — only the phone's credential.
+  await page.route('**/api/session/**', async (route) =>
+    route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ refreshed: false, reason: 'no-cookie' }) }),
+  );
+  await page.route('**/api/panic/**', async (route) => {
+    const action = new URL(route.request().url()).pathname.replace(/^.*\/api\/panic\//, '');
+    const json = (status: number, body: unknown) =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (action === 'status') return json(200, { device: { id: 'pd-1', label: 'iPhone · Safari' }, user });
+    if (action === 'targets') return json(200, TARGETS);
+    if (action === 'active') return json(200, { alerts: world.active });
+    return json(404, {});
+  });
+  return world;
+}
+
+type Box = { x: number; y: number; w: number; h: number };
+
+async function triggerBoxes(page: Page): Promise<Box[]> {
+  return page.getByRole('button', { name: /^Trigger .* emergency/ }).evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    }),
+  );
+}
+
+/** Six buttons, each inside the viewport, none overlapping another. */
+function expectSixOnScreenApart(boxes: Box[], viewportHeight: number) {
+  expect(boxes).toHaveLength(6);
+  for (const b of boxes) {
+    expect(b.y).toBeGreaterThanOrEqual(0);
+    expect(b.y + b.h).toBeLessThanOrEqual(viewportHeight);
+  }
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i];
+      const c = boxes[j];
+      const overlap = a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h;
+      expect(overlap, `buttons ${i} and ${j} overlap`).toBe(false);
+    }
+  }
+}
+
+/** …and each one still a big round thumb target. */
+function expectSixRoundThumbTargets(boxes: Box[], viewportHeight: number) {
+  expectSixOnScreenApart(boxes, viewportHeight);
+  for (const b of boxes) {
+    expect(b.w).toBeGreaterThanOrEqual(88);
+    expect(Math.abs(b.w - b.h)).toBeLessThan(2);
+  }
+}
+
+const MEDICAL_ON_LOBBY = { alertId: 'ovr_x', scopeType: 'device', scopeId: 's-lobby', targetName: 'Lobby', tenantId: TENANT, tenantName: null, type: 'MEDICAL', severity: 'CRITICAL', screenCount: 1, showingCount: 1, triggeredAt: null };
+
 /** Press and hold for the full 3-second safeguard, then let go. */
 async function hold(page: Page, locator: ReturnType<Page['locator']>, ms = 3400) {
   const box = await locator.boundingBox();
@@ -201,6 +269,10 @@ test.describe('/panic — all screens, a group, or one screen', () => {
     await page.goto('/panic');
     await expect(page.getByTestId('panic-active-alerts')).toBeVisible();
     await expect(page.getByTestId('emergency-target-label')).toHaveText('All screens (24)');
+    // 2026-11-23 — this admin has no ready phone, so the "Keep this phone
+    // ready" card is on the page: measure WITH it (the 2026-11-16 regression).
+    const card = page.getByTestId('panic-keep-ready');
+    await expect(card).toBeAttached();
     await page.screenshot({ path: testInfo.outputPath('panic-short-viewport-390x664.png') });
 
     const boxes = await page.getByRole('button', { name: /^Trigger .* emergency/ }).evaluateAll((els) =>
@@ -223,6 +295,94 @@ test.describe('/panic — all screens, a group, or one screen', () => {
         expect(overlap, `buttons ${i} and ${j} overlap`).toBe(false);
       }
     }
+    // The card gives way to the buttons: it starts at or below the bottom
+    // row, and one short scroll brings it fully into view.
+    const bottomRow = Math.max(...boxes.map((b) => b.y + b.h));
+    const cardTop = await card.evaluate((el) => el.getBoundingClientRect().top);
+    expect(cardTop).toBeGreaterThanOrEqual(bottomRow);
+    await card.scrollIntoViewIfNeeded();
+    await expect(card).toBeVisible();
+    await expect(card).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('panic-keep-ready-button')).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: testInfo.outputPath('panic-short-viewport-390x664-scrolled.png') });
+  });
+
+  test('at 390×844 (the installed app) the keep-ready card stays above the buttons, as before', async ({ page }, testInfo) => {
+    const world = await setUp(page);
+    world.active = [MEDICAL_ON_LOBBY];
+    await page.goto('/panic');
+    await expect(page.getByTestId('panic-active-alerts')).toBeVisible();
+    await expect(page.getByTestId('emergency-target-label')).toHaveText('All screens (24)');
+    const card = page.getByTestId('panic-keep-ready');
+    await expect(card).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('panic-phone-row-below')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('panic-card-above-390x844.png') });
+
+    const boxes = await triggerBoxes(page);
+    const topRow = Math.min(...boxes.map((b) => b.y));
+    const cardBottom = await card.evaluate((el) => el.getBoundingClientRect().bottom);
+    expect(cardBottom).toBeLessThanOrEqual(topRow);
+    expectSixRoundThumbTargets(boxes, 844);
+  });
+
+  test('a set-up phone in a phone browser (390×664): the ready line sits below the buttons, which keep their size', async ({ page, baseURL }, testInfo) => {
+    const world = await setUpPhone(page, baseURL!);
+    world.active = [MEDICAL_ON_LOBBY];
+    await page.setViewportSize({ width: 390, height: 664 });
+    await page.goto('/panic');
+    const line = page.getByTestId('panic-phone-ready');
+    await expect(line).toContainText('iPhone · Safari');
+    await expect(page.getByTestId('panic-active-alerts')).toBeVisible();
+    await expect(page.getByTestId('emergency-target-label')).toHaveText('All screens (24)');
+    await expect(page.getByTestId('panic-keep-ready')).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('panic-phone-ready-390x664.png') });
+
+    const boxes = await triggerBoxes(page);
+    expectSixRoundThumbTargets(boxes, 664);
+    const bottomRow = Math.max(...boxes.map((b) => b.y + b.h));
+    const lineTop = await line.evaluate((el) => el.getBoundingClientRect().top);
+    expect(lineTop).toBeGreaterThanOrEqual(bottomRow);
+    await line.scrollIntoViewIfNeeded();
+    await expect(line).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('panic-phone-turn-off')).toBeInViewport({ ratio: 1 });
+  });
+
+  test('on a smaller phone (390×560) with the card and a live alert, the six buttons stay on screen and apart, and the card costs them nothing', async ({ page }, testInfo) => {
+    // An iPhone SE-class Safari window is about 548 px. There the buttons
+    // shrink with their rows (as they always did) — the card must never push
+    // one below the fold, and must never take height from them.
+    //
+    // Not asserted here: round. At this height the rows are 54.7 px and a
+    // button cannot be narrower than its label (Lockdown measured 79.2 ×
+    // 54.7, Fire / Evacuate 71.2), with or without the card — the same as
+    // before the card existed. The buttons are round from about 634 px with
+    // the alert line (578 px without); below that it is a button-size
+    // question for the owner, not something the card causes.
+    const world = await setUp(page);
+    world.active = [MEDICAL_ON_LOBBY];
+    await page.setViewportSize({ width: 390, height: 560 });
+    await page.goto('/panic');
+    await expect(page.getByTestId('panic-active-alerts')).toBeVisible();
+    await expect(page.getByTestId('emergency-target-label')).toHaveText('All screens (24)');
+    const card = page.getByTestId('panic-keep-ready');
+    await expect(card).toBeAttached();
+    await page.screenshot({ path: testInfo.outputPath('panic-short-viewport-390x560.png') });
+
+    const withCard = await triggerBoxes(page);
+    expectSixOnScreenApart(withCard, 560);
+    const bottomRow = Math.max(...withCard.map((b) => b.y + b.h));
+    expect(await card.evaluate((el) => el.getBoundingClientRect().top)).toBeGreaterThanOrEqual(bottomRow);
+
+    // Dismiss the card ("Not now"): the buttons are exactly the same size.
+    await page.getByRole('button', { name: 'Not now' }).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.getByTestId('panic-phone-row-below')).toHaveCount(0);
+    const withoutCard = await triggerBoxes(page);
+    expectSixOnScreenApart(withoutCard, 560);
+    withoutCard.forEach((b, i) => {
+      expect(Math.abs(b.w - withCard[i].w)).toBeLessThan(0.5);
+      expect(Math.abs(b.h - withCard[i].h)).toBeLessThan(0.5);
+    });
   });
 
   test('a short press does nothing — the 3-second hold is unchanged', async ({ page }) => {
