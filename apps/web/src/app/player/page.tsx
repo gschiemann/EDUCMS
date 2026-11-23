@@ -244,6 +244,7 @@ import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/s
 import { SyncClock } from './sync/syncClock';
 import { resolveTimeline, advanceCounterTo, classifySyncFlip, videoTargetMs, type TimelinePosition } from './sync/syncTimeline';
 import { createVideoServoState, servoDecide, servoSeekLanded } from './sync/videoServo';
+import { RENDER_LEAD_MAX_MS, RENDER_LEAD_SEED_MS, nextRenderLead } from './sync/renderLead';
 // Sprint 13 — scoreboard console bridge (CTS / Daktronics serial). Mounts
 // when the manifest binds this screen to a game (K12-F32 — set up in the
 // game's console, no URL), or on the legacy `?cts=1` kiosk URL; regular
@@ -4508,7 +4509,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // the PAINT — not the decision — lands on the shared boundary. Seeded
   // at one 60Hz frame; measured per flip via double-rAF.
   const syncRenderLeadRef = useRef<number>(
-    typeof window !== 'undefined' ? readStoredLeadMs(LS_SYNC_RENDER_LEAD, 16, 150) : 16,
+    typeof window !== 'undefined'
+      ? readStoredLeadMs(LS_SYNC_RENDER_LEAD, RENDER_LEAD_SEED_MS, RENDER_LEAD_MAX_MS)
+      : RENDER_LEAD_SEED_MS,
   );
   const syncRenderLeadSavedAtRef = useRef<number>(0);
   const [syncEnabled, setSyncEnabled] = useState(false);
@@ -11736,7 +11739,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // the viewer and the camera see — lands on the shared boundary. A
       // slow SoC leads more, a fast one less; glass-side alignment
       // improves automatically with zero operator involvement.
-      const flipLeadMs = SYNC_FLIP_LEAD_MS + Math.max(0, Math.min(150, syncRenderLeadRef.current));
+      const flipLeadMs = SYNC_FLIP_LEAD_MS + Math.max(0, Math.min(RENDER_LEAD_MAX_MS, syncRenderLeadRef.current));
       const evalT = t + flipLeadMs;
       const posFlip = resolveTimeline(sorted, evalT)!;
       const cur = currentIndexRef.current;
@@ -11750,7 +11753,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // time: the true shared boundary (on the epoch grid by construction).
       const boundaryT = evalT - posFlip.offsetInItemMs;
       // Engage snap (first locked tick, or a resync jump) vs a real boundary
-      // crossing — see classifySyncFlip. Diagnostics only below.
+      // crossing — see classifySyncFlip.
       const kind = classifySyncFlip({
         prevEvalT: prevEval,
         evalT,
@@ -11762,8 +11765,11 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // interrupt a live wall or move it out of phase during navigation.
       // Flip-error telemetry: offset into the new item at decision time,
       // minus the deliberate lead ≈ how late this flip is vs the shared
-      // boundary. Only meaningful for single-step advances.
-      if (next - cur === 1) {
+      // boundary. Only meaningful for a boundary crossing (2026-11-23): an
+      // engage that happened to be one step used to seed the EWMA with its
+      // mid-slot offset — up to a whole slot — and the dashboard's
+      // "sync ±N ms" chip showed it for many flips after every boot.
+      if (kind === 'boundary') {
         const err = Math.max(0, posFlip.offsetInItemMs - flipLeadMs);
         const s = syncStatsRef.current;
         s.lastFlipErrMs = err;
@@ -11805,11 +11811,13 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       } catch { /* no-op */ }
       // Measure THIS flip's decision→paint latency: double-rAF fires
       // after the browser paints the frame containing the new slide.
-      // EWMA (α=0.2) smooths raster jitter; clamp guards a stalled tab
-      // from poisoning the lead; persisted at most every 10s. The same
-      // callback stamps the paint onto the flip-log entry.
+      // sync/renderLead.ts owns the estimate (EWMA, a stalled sample capped
+      // so one stall cannot drag the lead); persisted at most every 10s.
+      // Sampled on boundary crossings only: an engage's commit mounts the
+      // new slide mid-slot, often across a post-boot stall, and is not the
+      // steady-state pipeline the lead calibrates. The same callback stamps
+      // the paint onto the flip-log entry for every flip.
       const decisionMono = mono;
-      const step = next - cur;
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const paintMono = performance.now();
@@ -11821,11 +11829,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
               flipEntry.paintT = paintServer !== null ? paintServer + trimMs : null;
             } catch { /* no-op */ }
           }
-          if (step !== 1) return;
-          const measured = paintMono - decisionMono;
-          if (!Number.isFinite(measured) || measured < 0 || measured > 400) return;
-          const prev = syncRenderLeadRef.current;
-          const nextLead = Math.max(0, Math.min(150, prev * 0.8 + measured * 0.2));
+          if (kind !== 'boundary') return;
+          const nextLead = nextRenderLead(syncRenderLeadRef.current, paintMono - decisionMono);
+          if (nextLead === null) return;
           syncRenderLeadRef.current = nextLead;
           const nowMono = performance.now();
           if (nowMono - syncRenderLeadSavedAtRef.current > 10_000) {
