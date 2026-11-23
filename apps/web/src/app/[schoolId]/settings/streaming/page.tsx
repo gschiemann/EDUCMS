@@ -438,7 +438,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: Provider; 
 
         {/* Auth fields per provider */}
         <div className="space-y-3">
-          <Field label={t('streamingSso.displayNameOptional')} placeholder={provider.name} value={displayName} onChange={setDisplayName} />
+          <Field words label={t('streamingSso.displayNameOptional')} placeholder={provider.name} value={displayName} onChange={setDisplayName} />
 
           {provider.auth === 'none' && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
@@ -700,7 +700,7 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
           <div>
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">{t('streamingSso.addChannelByUrl')}</h3>
             <div className="space-y-2">
-              <Field label={t('streamingSso.title')} placeholder={t('streamingSso.channelTitlePlaceholder')} value={manualTitle} onChange={setManualTitle} />
+              <Field words label={t('streamingSso.title')} placeholder={t('streamingSso.channelTitlePlaceholder')} value={manualTitle} onChange={setManualTitle} />
               <Field label={t('streamingSso.url')} placeholder="https://media.example.com/live/playlist.m3u8" value={manualUrl} onChange={(v) => { setManualUrl(v); setValidationState(null); }} />
               <p className="text-[11px] text-slate-500">{t('streamingSso.licensedHlsHelp')}</p>
               {/* 2026-05-25 streaming-overhaul — server-side
@@ -779,11 +779,15 @@ function ChannelPickerModal({ connection, onClose, onChanged }: {
   );
 }
 
-function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+// Every Field here holds a key, account/licence number, region code or URL —
+// except the display name and channel title, which pass `words` so the
+// dashboard's spell-check default applies to them.
+function Field({ label, value, onChange, placeholder, words = false }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; words?: boolean }) {
   return (
     <label className="block">
       <span className="text-xs font-bold text-slate-600">{label}</span>
       <input
+        spellCheck={words ? undefined : false}
         type="text"
         value={value}
         placeholder={placeholder}

@@ -32,6 +32,7 @@ jest.mock('@/hooks/use-api', () => ({
   useTemplate: () => ({ data: { id: 't1', brandKit: MOCK_KIT }, isLoading: false }),
   useAdoptTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
   useClearTemplateBrandKit: () => ({ mutate: jest.fn(), mutateAsync: jest.fn(), isPending: false }),
+  useRecordTemplateBrandStamp: () => ({ mutate: jest.fn(), mutateAsync: jest.fn().mockResolvedValue({ ok: true, changed: true }), isPending: false }),
   useTenantBranding: () => ({ data: null }),
 }));
 

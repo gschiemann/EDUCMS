@@ -60,7 +60,13 @@ concurrency:
 jobs:
   axe:
     name: axe-core Automated Audit
-    runs-on: ubuntu-latest
+    # 2026-11-23 - PINNED to ubuntu-24.04 (was ubuntu-latest): ubuntu-latest
+    # now resolves to ubuntu-26.04, where Playwright 1.59.1 cannot install a
+    # browser ("Playwright does not support chromium on ubuntu26.04-x64"), so
+    # this job died at the install step before any check ran. Same pin and
+    # unpin rule as ci.yml's e2e-build: unpin only after a Playwright upgrade
+    # that installs and passes this job on ubuntu-latest.
+    runs-on: ubuntu-24.04
     # 2026-08-24 (a11y wave, §1 fix) — was 15. The job now also boots a real
     # Postgres + the NestJS API so the scan covers AUTHENTICATED content
     # instead of just the login shell (see a11y-audit.ts's header comment).

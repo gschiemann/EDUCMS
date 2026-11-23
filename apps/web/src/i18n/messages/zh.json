@@ -1327,9 +1327,10 @@
         "templatesTitle": "模板",
         "templatesDesc": "将此品牌应用到屏幕模板，或彻底清除品牌。",
         "applyTemplates": "将品牌应用到模板",
-        "applyTemplatesHelp": "为仍使用默认样式的模板区域填入品牌颜色。你自行设置过的区域不会被改动。",
+        "applyTemplatesHelp": "在模板中空白或仍显示旧品牌的位置放入你的标志、名称、标语、颜色和字体，包括在编辑器中为单个模板检测到的品牌。你手动更改过的内容不会被改动。",
         "applying": "正在应用…",
         "applyDone": "已应用到 {count} 个模板 · 更新了 {zones} 个区域。",
+        "applyIdentityDone": "名称更新了 {name} 处 · 标语 {tagline} 处 · 标志 {logo} 处。",
         "applyFailed": "应用失败——未做任何更改。{message}",
         "previewTitle": "实时预览",
         "previewUnsaved": "未保存",
@@ -5871,6 +5872,26 @@
     "deleteAnyway": "仍然删除",
     "deleteTemplate": "删除模板"
   },
+  "templateBulkDelete": {
+    "title": "删除 {count} 个模板？",
+    "followUpTitle": "{count} 个模板刚刚开始被使用",
+    "followUpBody": "删除过程中，这些模板的使用位置发生了变化。它们已在下方勾选；取消勾选即可保留。",
+    "checking": "正在检查这些模板的使用位置…",
+    "checkingShort": "正在检查…",
+    "inUseIntro": "其中 {count} 个正在被播放列表使用。删除后会从这些播放列表中移除，播放列表将改用下一个布局。取消勾选即可保留。",
+    "inUse": "使用中",
+    "keptEmergency": "已保留：被紧急播放列表使用",
+    "keptUnknown": "已保留：无法检查使用位置",
+    "usageUnknown": "无法检查此模板的使用位置。",
+    "untitled": "未命名",
+    "confirm": "删除 {count} 个模板",
+    "nothingToDelete": "没有可删除的模板",
+    "progress": "正在删除第 {done} 个，共 {total} 个…",
+    "resultDeleted": "已删除 {count} 个模板",
+    "resultKeptEmergency": "保留 {count} 个（紧急播放列表）",
+    "resultKeptByChoice": "保留 {count} 个",
+    "resultFailed": "{count} 个无法删除：{message}"
+  },
   "builderPanel": {
     "deleteLocked": "已锁定 — 解锁后才能删除",
     "deleteTextElement": "删除文字元素",
@@ -6596,6 +6617,8 @@
     "brandIntro": "一次点击完成以下所有操作：",
     "check": {
       "logo": "在标志位置放入您的标志",
+      "name": "在名称位置放入您的名称“{name}”及其首字母",
+      "tagline": "在标语位置放入您的标语“{tagline}”",
       "fonts": "标题和正文使用 {fonts}",
       "colors": "文字、滚动条和倒计时使用品牌颜色",
       "background": "品牌背景"
@@ -6666,6 +6689,8 @@
     "applySummary": "已应用品牌：{parts}。",
     "applyWidgets": "{total} 个组件中有 {count} 个已更新样式",
     "applyLogos": "已填入 {count, plural, other {# 个标志}}",
+    "applyName": "已填入您的名称",
+    "applyNameTagline": "已填入您的名称和标语",
     "applyFonts": "文字使用品牌字体",
     "applyBgGradient": "品牌渐变背景",
     "applyBgSolid": "品牌颜色背景",
@@ -7522,13 +7547,10 @@
     "filterHoliday": "节日",
     "categoryTabs": "类别",
     "selectTemplate": "选择 {name}",
-    "selectAllShown": "选择显示的所有模板",
+    "selectAllYours": "选择你的全部 {count} 个模板",
     "duplicate": "复制",
     "export": "导出",
-    "delete": "删除",
-    "bulkDeleteTitle": "删除 {count} 个模板？",
-    "bulkDeleteBody": "正在屏幕上显示的模板将被跳过——请逐个删除，以便查看它们在哪里播放。",
-    "bulkDeleteDone": "已删除 {deleted} 个模板{skipped, plural, =0 {} other {，跳过 # 个（使用中）}}"
+    "delete": "删除"
   },
   "acceptInvite": {
     "title": "接受邀请",

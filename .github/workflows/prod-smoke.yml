@@ -88,7 +88,13 @@ concurrency:
 jobs:
   prod-smoke:
     name: Prod smoke (Chromium)
-    runs-on: ubuntu-latest
+    # 2026-11-23 - PINNED to ubuntu-24.04 (was ubuntu-latest): ubuntu-latest
+    # now resolves to ubuntu-26.04, where Playwright 1.59.1 cannot install a
+    # browser ("Playwright does not support chromium on ubuntu26.04-x64"), so
+    # this job died at the install step before any check ran. Same pin and
+    # unpin rule as ci.yml's e2e-build: unpin only after a Playwright upgrade
+    # that installs and passes this job on ubuntu-latest.
+    runs-on: ubuntu-24.04
     # 2026-05-11 — bumped 8 → 12 min after the login retry budget
     # extended to 5 attempts × up to 90 s backoffs. Worst-case the
     # Supabase pgbouncer is degraded enough that we burn ~4 min in

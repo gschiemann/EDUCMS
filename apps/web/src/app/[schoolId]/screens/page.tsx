@@ -375,6 +375,7 @@ export default function ScreensPage() {
               <div>
                 <label htmlFor="pair-code-input" className="block text-xs font-semibold text-slate-600 mb-1.5">{t('screens.pairingCode')}</label>
                 <input
+                  spellCheck={false}
                   id="pair-code-input"
                   autoFocus
                   value={pairCode}

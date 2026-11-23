@@ -153,6 +153,7 @@ export function EmailVerificationGate() {
               {t('codeLabel')}
             </label>
             <input
+              spellCheck={false}
               id="verify-email-code"
               ref={codeRef}
               type="text"
