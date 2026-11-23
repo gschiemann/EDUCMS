@@ -316,7 +316,7 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
     note: 'Subtractive. Emergency delivery still works through the manifest polling path.' },
   { name: 'REDIS_URL', type: 'secret', default: null, failureDirection: 'open',
     purpose: 'Redis connection for realtime pub/sub fan-out, leader leases, replay claims and the session store.',
-    note: 'Unset: the API boots anyway and falls back to HTTP-polling realtime (7 s connect hard-cap).' },
+    note: 'Unset: the API boots anyway and falls back to HTTP-polling realtime (7 s connect hard-cap). Set but unreachable: boot still waits at most 7 s, then both connections reconnect forever (backoff capped at 5 s); while instant push is down the API delivers pushes to its own screens, every screen still polls, and /api/v1/health/emergency-path reports degraded (still 200).' },
   { name: 'SENTRY_DSN', type: 'url', default: null, failureDirection: 'open',
     purpose: 'Sentry project DSN for API error tracking.',
     note: 'Unset: error tracking is disabled and a warning is logged at boot.' },
@@ -396,6 +396,10 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
     purpose: 'Turns panic phones off: every panic-phone credential is refused and no phone can be set up; /panic falls back to the remembered session, then sign-in.',
     note: 'Case-insensitive, read per request. SUBTRACTIVE: credentials are KEPT, not revoked, so unsetting it brings every phone back. Turning one phone off still works while set. When the credential check cannot run (database unreachable) the phone is refused with a retryable 503 and keeps its cookie.' },
 
+  { name: 'EMERGENCY_ALERT_IDENTITY_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,
+    purpose: 'Turns off the tenant all-clear identity rule (EMG-01): no 409 ALERT_CHANGED, no compare-and-set on the tenant rows, a district all-clear ends every school again - the all-clear behaves exactly as before 2026-11-21.',
+    note: 'Case-insensitive, read per request. SUBTRACTIVE: the trigger keeps writing Tenant.emergencyAlertId and /emergency/active keeps listing it, so unsetting it restores the rule with nothing lost. Set it only if operators are refused an all-clear they must send; it brings back the defect where a stale all-clear ends a newer alert. With it unset, when the pre-dispatch identity read cannot run the all-clear is not refused there, and the compare-and-set on the write still keeps a newer alert (closed).' },
+
   // ─── Synthetic emergency drill (emergency/drill/; design 2026-10-31) ───────────────────────
   { name: 'EMERGENCY_DRILL_CRON_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,
     purpose: 'Turns the synthetic emergency drill off entirely: no tick, no orphan sweep, no dead-man check, nothing dispatched.',
@@ -440,6 +444,9 @@ export const ENV_VARS: readonly EnvVarSpec[] = [
   { name: 'MANAGER_APK_SHA_PINS', type: 'csv', default: null, failureDirection: 'closed',
     purpose: 'Extra Manager APK digest pins as "version=sha256" pairs, merged with the committed pins.',
     note: 'A wrong or stale pin makes the server DECLINE to advertise that build; it can never advertise a bad one.' },
+  { name: 'OTA_EMERGENCY_HOLD_DISABLED', type: 'boolean', default: false, accepts: '1 | true | yes', failureDirection: 'closed', killSwitch: true,
+    purpose: 'Lead kill switch over the OTA emergency hold: set, update checks offer APKs during an alert exactly as before (nothing is read, nothing is held).',
+    note: 'Unset = no Player (or legacy-lane Manager) APK is offered while the screen or any other side of its double-sided unit, its tenant or an ancestor has an alert or drill, a pushed message of any severity is live, or the render proof of any side shows an alert; the answer is { uptoDate: true, heldFor: "emergency" } and a held push stays pending. Unreadable state holds. Case-insensitive. Code: apps/api/src/player-ota/ota-emergency-hold.ts.' },
   { name: 'OTA_REQUIRE_DEVICE_AUTH', type: 'boolean', default: false, accepts: 'true', failureDirection: 'closed',
     purpose: 'Opt-in hard gate: refuse player update checks that do not carry a device credential (401 OTA_DEVICE_AUTH_REQUIRED).',
     note: 'Off by default; turn on only once a token-sending player build is fleet-wide.' },

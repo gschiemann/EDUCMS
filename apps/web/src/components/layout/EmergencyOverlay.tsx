@@ -5,16 +5,33 @@ import { AlertTriangle, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { allClearEmergency } from '@/actions/trigger-emergency';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
 import { useTenantStatus } from '@/hooks/use-api';
 import { canSendAllClear, hasPanicAuthority } from '@/lib/emergency-capability';
 import { fetchActiveAlerts } from '@/lib/emergency-api';
-import { activeAlertLabel, allAlertsAreDrills, allClearScopeOf, typeIdOf, type ActiveAlert } from '@/lib/emergency-target';
+import {
+  activeAlertLabel,
+  allAlertsAreDrills,
+  allClearScopeOf,
+  listsSeveralTenantAlerts,
+  typeIdOf,
+  type ActiveAlert,
+} from '@/lib/emergency-target';
 import { EmergencyTriggerModal } from '@/components/emergency/EmergencyTriggerModal';
 
-/** A stable key for one live alert (the tenant-wide one has no id). */
-const alertKey = (a: ActiveAlert) => a.alertId ?? `${a.scopeType}:${a.scopeId}`;
+/**
+ * A stable key for one live alert. EMG-01 review round 2: a tenant-wide entry
+ * is keyed by its tenant AND its id, so two entries can never share a key
+ * (React's list key, the selection) even if a server lists one alert on two
+ * tenants. A group / one-screen alert keeps its id; one with no id (raised
+ * before alert identity) keeps its scope.
+ */
+const alertKey = (a: ActiveAlert) =>
+  a.scopeType === 'tenant'
+    ? `tenant:${a.scopeId}:${a.alertId ?? ''}`
+    : a.alertId ?? `${a.scopeType}:${a.scopeId}`;
 
 export function EmergencyOverlay() {
   // P0-10 (mobile-UX audit 2026-05-29) — LIFE-SAFETY. The fixed
@@ -106,7 +123,68 @@ export function EmergencyOverlay() {
     const id = typeIdOf(apiType);
     return id ? t(`emergency.types.${id}.name`) : (apiType || t('emergency.active'));
   };
-  const labelOf = (a: ActiveAlert) => activeAlertLabel(t, typeName(a.type), a);
+  // Review round 3 — with two tenant-wide alerts listed (the district's and a
+  // school's own), each is named by its location, or they read the same.
+  const nameLocation = listsSeveralTenantAlerts(alerts);
+  const labelOf = (a: ActiveAlert) => activeAlertLabel(t, typeName(a.type), a, { nameLocation });
+
+  // ── THE ALERT CHANGED (EMG-01, 2026-11-21) ───────────────────────────
+  // The tenant-wide alert now carries an id, and the server refuses (409
+  // ALERT_CHANGED) an all-clear that names an alert a newer one replaced —
+  // another operator escalated a Hold to a Lockdown while this overlay was
+  // open. Nothing was cleared then. Say so, show the current list, and make
+  // the operator confirm again for the alert that is actually live.
+  const alertChangedMessage = (apiType: string | null | undefined) =>
+    t('emergency.overlay.alertChanged', { type: typeName(apiType ?? null) });
+  // Review round 2 — the alert a 409 said is live now, and the id it replaced.
+  // If the list cannot be re-read (or the tenant status is stale), the next
+  // all-clear would otherwise name the replaced id again and get another 409,
+  // forever. A freshly confirmed CLEAR that would name `replacedId` on that
+  // tenant names `current` instead — the alert the message just told the
+  // operator is active. Another 409 (a third alert) simply moves it on.
+  const supersededRef = useRef<{
+    tenantId: string;
+    replacedId: string;
+    current: { alertId: string; isDrill: boolean };
+  } | null>(null);
+  const aimAtCurrent = (body: Parameters<typeof allClearEmergency>[0]): Parameters<typeof allClearEmergency>[0] => {
+    const s = supersededRef.current;
+    const isTenantScope = !body.scopeType || body.scopeType === 'tenant';
+    if (!s || !isTenantScope || body.schoolId !== s.tenantId || body.overrideId !== s.replacedId) return body;
+    // The drill flag follows the alert now live, never the one it replaced.
+    const next = { ...body, overrideId: s.current.alertId };
+    delete next.isDrill;
+    if (s.current.isDrill) next.isDrill = true;
+    return next;
+  };
+  // The same rule on this side of the wire: if the alert under a typed CLEAR
+  // is replaced by another one when the list refreshes (the operator did not
+  // pick it — `selectedKey` is not it), the CLEAR does not carry over to it.
+  // Review round 1: only when a typed CLEAR is actually dropped (a refresh
+  // with the box empty says nothing), and in words that fit: the same target
+  // now holding a different alert is "a newer alert"; the alert the operator
+  // had picked simply being gone (another one is auto-selected) is not.
+  const selectedIdentity = selected ? alertKey(selected) : null;
+  const selectedScope = selected ? `${selected.scopeType}:${selected.scopeId}` : null;
+  const lastSelectedRef = useRef<{ key: string; scope: string | null } | null>(null);
+  useEffect(() => {
+    const prev = lastSelectedRef.current;
+    lastSelectedRef.current = selectedIdentity !== null ? { key: selectedIdentity, scope: selectedScope } : null;
+    const movedUnderTypedClear =
+      prev !== null &&
+      selectedIdentity !== null &&
+      prev.key !== selectedIdentity &&
+      selectedIdentity !== selectedKey &&
+      confirmKey !== '';
+    if (movedUnderTypedClear) {
+      setConfirmKey('');
+      setClearError(
+        prev.scope === selectedScope ? alertChangedMessage(selected?.type) : t('emergency.overlay.selectionChanged'),
+      );
+    }
+    // `selected` / `selectedKey` / `confirmKey` are read only when the identity moved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIdentity]);
 
   // A11y audit 2026-05-12 — the takeover overlay was a bare <div> that
   // never told assistive tech "this is a blocking dialog" and let Tab
@@ -156,15 +234,16 @@ export function EmergencyOverlay() {
     setClearError(null);
     startTransition(async () => {
       try {
-        const result = await allClearEmergency(
+        const base: Parameters<typeof allClearEmergency>[0] =
           target
             ? {
                 // The tenant-wide entry's scopeId IS the tenant to clear (a
                 // district admin may end one school's own alert).
                 schoolId: target.scopeType === 'tenant' ? target.scopeId : user?.tenantId || 'global',
                 token: token || undefined,
-                // Exactly this alert. The tenant-wide alert carries no id on
-                // the Tenant row, so it keeps the one the modal recorded.
+                // Exactly this alert. Since EMG-01 the tenant-wide entry carries
+                // its id too; one raised before that (id null) keeps the id the
+                // modal recorded, which the server treats as before.
                 overrideId: target.alertId ?? (target.scopeType === 'tenant' ? activeOverrideId || undefined : undefined),
                 // Its own scope — or, if that target was deleted mid-alert, the
                 // scope the server says still reaches it.
@@ -176,10 +255,66 @@ export function EmergencyOverlay() {
             : {
                 schoolId: user?.tenantId || 'global',
                 token: token || undefined,
-                overrideId: activeOverrideId || undefined,
+                // The list is unavailable: name the alert the tenant status
+                // this overlay describes says is live (EMG-01), else the one
+                // this browser sent.
+                overrideId:
+                  (tenant as { emergencyAlertId?: string | null } | undefined)?.emergencyAlertId ||
+                  activeOverrideId ||
+                  undefined,
                 ...(drillOnly ? { isDrill: true } : {}),
-              },
-        );
+              };
+        const request = aimAtCurrent(base);
+        const result = await allClearEmergency(request);
+        // EMG-01 — a newer alert replaced the one this all-clear named, and
+        // the server cleared NOTHING. Show the live list and ask for a fresh
+        // confirmation for the alert that is actually on the screens.
+        if (result && result.success !== true && result.code === 'ALERT_CHANGED') {
+          setConfirmKey('');
+          setSelectedKey(null);
+          setClearError(alertChangedMessage(result.currentAlertType));
+          const current = result.currentAlert ?? null;
+          // Keyed on what this CLEAR named before any aim, so a third alert
+          // replacing the one aimed at moves the aim on, never back.
+          const replacedId = base.overrideId;
+          supersededRef.current =
+            current && replacedId && replacedId !== current.alertId
+              ? {
+                  tenantId: current.scopeId || request.schoolId,
+                  replacedId,
+                  current: { alertId: current.alertId, isDrill: current.isDrill === true },
+                }
+              : null;
+          void queryClient.invalidateQueries({ queryKey: ['tenant-status'] });
+          inputRef.current?.focus();
+          if (mayClear && token) {
+            const refreshed = await activeQuery.refetch().catch(() => null);
+            // Review round 2 — the re-read failed (react-query keeps the old
+            // list) or still shows the replaced id: show the alert the 409
+            // named in its place, so the list matches the message. The next
+            // successful read replaces it.
+            const sup = supersededRef.current;
+            if (sup && current) {
+              queryClient.setQueryData<ActiveAlert[]>(['emergency-active', user?.tenantId ?? null], (old) =>
+                old?.map((a) =>
+                  a.scopeType === 'tenant' && a.scopeId === sup.tenantId && a.alertId === sup.replacedId
+                    ? { ...a, alertId: current.alertId, type: current.type ?? a.type, isDrill: current.isDrill === true }
+                    : a,
+                ),
+              );
+            }
+            // A 409 that did not carry the newer alert's type (an API older
+            // than review round 1, or a proxy that stripped the body): name it
+            // from the list just re-read, for the same target.
+            if (!result.currentAlertType && target) {
+              const now = refreshed?.data?.find(
+                (a) => a.scopeType === target.scopeType && a.scopeId === target.scopeId,
+              );
+              if (now?.type) setClearError(alertChangedMessage(now.type));
+            }
+          }
+          return;
+        }
         // LIFE-SAFETY: the action reports failure in its RESULT. It used to
         // be ignored and the overlay closed anyway — telling the operator the
         // incident was over while every screen stayed locked down.
@@ -189,6 +324,28 @@ export function EmergencyOverlay() {
         }
         setConfirmKey('');
         setSelectedKey(null);
+        supersededRef.current = null;
+        // Review round 2 — a district all-clear that left child locations in
+        // their own alert says so. The dashboard lock follows the district's
+        // own row and can come down a moment from now, taking this overlay
+        // with it, so the note is a toast that outlives it.
+        // Review round 3 — it counts ALERTS (the server sends one entry per
+        // kept alert, the entry the alert list shows), and it says "open
+        // Emergency Trigger, where it is listed" only when the server says
+        // this operator's list shows it. A school admin's list shows only
+        // their own tenant, so they are told who can end it instead.
+        const keptAlertCount = new Set(result.keptTenantIds ?? []).size;
+        if (keptAlertCount > 0) {
+          toast.warning(
+            t(
+              result.keptListedForCaller === true
+                ? 'emergency.overlay.keptOwnAlert'
+                : 'emergency.overlay.keptOwnAlertNotListed',
+              { count: keptAlertCount },
+            ),
+            { duration: 20_000 },
+          );
+        }
         void queryClient.invalidateQueries({ queryKey: ['tenant-status'] });
         if (!mayClear || !token) {
           setEmergencyActive(false);

@@ -6,13 +6,16 @@ import { bootMockPlayer, playerManifest, playerIds, ok } from './helpers/mock-pl
  * player in Chromium AND WebKit. The options arrive exactly as the API signs
  * them (`banner` in the TEXT_BROADCAST payload).
  */
+let pushSeq = 0;
 async function push(page: Page, type: string, payload: unknown = {}) {
   // A slow runner may not have opened the (stubbed) realtime socket yet.
   await page.waitForFunction(() => !!(window as unknown as { __eduTestRealtime?: unknown }).__eduTestRealtime, undefined, { timeout: 60000 });
-  await page.evaluate(({ type, payload }) => {
+  // A unique eventId per push: two clears in the same millisecond must not read as a replay.
+  const eventId = `${type}-${Date.now()}-${++pushSeq}`;
+  await page.evaluate(({ type, payload, eventId }) => {
     const socket = (window as unknown as { __eduTestRealtime: { deliver(message: unknown): void } }).__eduTestRealtime;
-    socket.deliver({ type, timestamp: Date.now(), signature: 'test-signature', eventId: `${type}-${Date.now()}`, payload });
-  }, { type, payload });
+    socket.deliver({ type, timestamp: Date.now(), signature: 'test-signature', eventId, payload });
+  }, { type, payload, eventId });
 }
 
 const banner = (page: Page) => page.locator('[data-edu-emergency-root="banner"]');
@@ -75,11 +78,17 @@ test('static and scrolling banners render with the sender colour on the player',
   if (process.env.BROADCAST_SHOTS) await page.screenshot({ path: `${process.env.BROADCAST_SHOTS}/banner-scroll-${test.info().project.name}.png` });
 
   // ── An older message with no options keeps today's look ──
+  // EMG-04: every pushed message is held and the most severe is shown, so the
+  // WARN scroll banner above is cleared (by its own id) before the INFO one.
+  await push(page, 'ALL_CLEAR_MESSAGE', { messageId: 'style-scroll', clearedBy: 'u1' });
   await push(page, 'TEXT_BROADCAST', { messageId: 'style-none', severity: 'INFO', text: 'Plain announcement.' });
   await expect(banner(page)).toHaveCSS('background-color', 'rgb(250, 204, 21)'); // INFO yellow
   await expect(banner(page).locator('[data-banner-text]')).toHaveCount(0);
 
-  await push(page, 'ALL_CLEAR_MESSAGE');
+  // A clear removes only the message it names: clear every one still held.
+  for (const messageId of ['style-none', 'style-static-long', 'style-static']) {
+    await push(page, 'ALL_CLEAR_MESSAGE', { messageId, clearedBy: 'u1' });
+  }
   await expect(banner(page)).toHaveCount(0);
 });
 

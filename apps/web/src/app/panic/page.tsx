@@ -49,6 +49,7 @@ import {
   allScreensTarget,
   isAllScreens,
   isSameAlert,
+  listsSeveralTenantAlerts,
   targetChipLabel,
   targetSummary,
   typeIdOf,
@@ -213,18 +214,32 @@ export default function MobilePanicPage() {
   const [sentAlert, setSentAlert] = useState<{ overrideId?: string; target: EmergencyTarget; isDrill?: boolean } | null>(null);
   const firedRef = useRef<{ overrideId?: string; target: EmergencyTarget; isDrill?: boolean } | null>(null);
   // The overrideId of an "All screens" alert sent from this page, so its
-  // all-clear pairs with the trigger in the audit log (the Tenant row carries
-  // no id). Same chain-of-custody rule as the dashboard overlay (P2 #3).
+  // all-clear pairs with the trigger in the audit log. Since EMG-01 the
+  // active list carries the tenant-wide alert's own id, which wins; this is
+  // the fallback for an alert raised before that (its entry's id is null).
+  // Same chain-of-custody rule as the dashboard overlay (P2 #3).
   const tenantOverrideIdRef = useRef<string | undefined>(undefined);
 
   const allScreens = allScreensTarget(verifiedUser?.tenantId ?? '', targets?.allScreensCount ?? null);
   const target: EmergencyTarget = chosenTarget ?? allScreens;
-  const alertKey = (a: ActiveAlert) => a.alertId ?? `${a.scopeType}:${a.scopeId}`;
+  // EMG-01 review round 2 — a tenant-wide entry is keyed by its tenant AND its
+  // id, so two entries never share a key even if a server lists one alert on
+  // two tenants (the sheet's list key and its selection).
+  const alertKey = (a: ActiveAlert) =>
+    a.scopeType === 'tenant' ? `tenant:${a.scopeId}:${a.alertId ?? ''}` : a.alertId ?? `${a.scopeType}:${a.scopeId}`;
+  // Review round 2 — the alert a 409 ALERT_CHANGED said is live now, and the
+  // id it replaced. If the list cannot be re-read, the sheet would otherwise
+  // keep offering the replaced alert and every hold would get another 409. A
+  // fresh hold on that entry ends the alert the message named instead.
+  const supersededRef = useRef<{ tenantId: string; replacedId: string; alertId: string; isDrill: boolean } | null>(null);
   const alertTypeName = (apiType: string | null) => {
     const id = typeIdOf(apiType);
     return id ? typeName(id) : (apiType || t('emergency.active'));
   };
-  const alertLabel = (a: ActiveAlert) => activeAlertLabel(t, alertTypeName(a.type), a);
+  // EMG-01 review round 3 — with two tenant-wide alerts listed (the
+  // district's and a school's own), each is named by its location.
+  const nameLocation = listsSeveralTenantAlerts(activeAlerts ?? []);
+  const alertLabel = (a: ActiveAlert) => activeAlertLabel(t, alertTypeName(a.type), a, { nameLocation });
 
   // A11y audit (2026-05-25): update the live region so a screen reader
   // follows the trigger lifecycle.
@@ -337,21 +352,34 @@ export default function MobilePanicPage() {
     // A panic phone can raise, never release: ending an alert needs a full sign-in.
     if (credential?.kind === 'device') return { ok: false, error: t('emergency.panic.endNeedsSignIn') };
     if (!verifiedToken || !verifiedUser?.tenantId) return { ok: false, error: t('emergency.panic.errNoToken') };
-    const clearWith = (token: string, tenantId: string) =>
-      allClearEmergency({
+    const sup = supersededRef.current;
+    // The id this entry names for a session of tenant `tenantId`, before any
+    // aim. Review round 3 — computed from the SAME tenant the request is sent
+    // under: after a 401 the resend may run under a restored session of
+    // another tenant, and the aim and the 409 bookkeeping below must follow
+    // the id that request actually named, never the first session's.
+    const namedFor = (tenantId: string) =>
+      alert.alertId ??
+      (alert.scopeType === 'tenant' && alert.scopeId === tenantId ? tenantOverrideIdRef.current : undefined);
+    /** What the request whose answer is in `result` named, before any aim. */
+    let named: string | undefined;
+    const clearWith = (token: string, tenantId: string) => {
+      named = namedFor(tenantId);
+      const aimed =
+        sup && alert.scopeType === 'tenant' && alert.scopeId === sup.tenantId && named === sup.replacedId ? sup : null;
+      return allClearEmergency({
         // The tenant-wide entry's scopeId IS the tenant to clear.
         schoolId: alert.scopeType === 'tenant' ? alert.scopeId : tenantId,
         token,
-        overrideId:
-          alert.alertId ??
-          (alert.scopeType === 'tenant' && alert.scopeId === tenantId ? tenantOverrideIdRef.current : undefined),
+        overrideId: aimed ? aimed.alertId : named,
         // Its own scope — or, if that target was deleted mid-alert, the scope
         // the server says still reaches it.
         ...allClearScopeOf(alert),
         // Ending a DRILL may end drill state only — never a live alert that
         // replaced it between this list's reads.
-        ...(alert.isDrill === true ? { isDrill: true } : {}),
+        ...((aimed ? aimed.isDrill : alert.isDrill === true) ? { isDrill: true } : {}),
       });
+    };
     let result = await clearWith(verifiedToken, verifiedUser.tenantId);
     // 2026-11-14 — a 401 is refused before the server does anything, so one
     // remembered-session restore and one resend can never clear twice.
@@ -360,6 +388,44 @@ export default function MobilePanicPage() {
       // Only a dashboard session may end an alert — never a panic phone.
       if (next?.kind === 'session') result = await clearWith(next.token, next.user.tenantId);
     }
+    if (!result?.success && result?.code === 'ALERT_CHANGED') {
+      // EMG-01 (2026-11-21) — a newer alert replaced the one this all-clear
+      // named, and the server cleared NOTHING. Re-read the list so the sheet
+      // shows the alert that is live now; ending it takes its own hold.
+      if (alert.scopeType === 'tenant') tenantOverrideIdRef.current = undefined;
+      const current = result.currentAlert ?? null;
+      // Keyed on what this entry names (before any aim), so a third alert
+      // replacing the one aimed at moves the aim on, never back.
+      const replacedId = named;
+      supersededRef.current =
+        current && replacedId && replacedId !== current.alertId && alert.scopeType === 'tenant'
+          ? { tenantId: alert.scopeId, replacedId, alertId: current.alertId, isDrill: current.isDrill === true }
+          : null;
+      let fresh: ActiveAlert[] | null = null;
+      try { if (credential) { fresh = await readActive(credential); setActiveAlerts(fresh); } } catch { /* next poll */ }
+      // The re-read failed: show the alert the 409 named in place of the one
+      // it replaced, so the sheet matches the message (the next poll that
+      // succeeds replaces it).
+      const supNow = supersededRef.current;
+      if (!fresh && supNow && current) {
+        setActiveAlerts((prev) =>
+          prev
+            ? prev.map((a) =>
+                a.scopeType === 'tenant' && a.scopeId === supNow.tenantId && a.alertId === supNow.replacedId
+                  ? { ...a, alertId: current.alertId, type: current.type ?? a.type, isDrill: current.isDrill === true }
+                  : a,
+              )
+            : prev,
+        );
+      }
+      // The 409 names the newer alert's type; if it did not, the list just
+      // re-read does (the same target's entry).
+      const newerType =
+        result.currentAlertType ??
+        fresh?.find((a) => a.scopeType === alert.scopeType && a.scopeId === alert.scopeId)?.type ??
+        null;
+      return { ok: false, error: t('emergency.panic.alertChanged', { type: alertTypeName(newerType) }) };
+    }
     if (!result?.success) {
       const raw = result?.error || '';
       if (raw.includes('401') || raw.includes('403')) return { ok: false, error: t('emergency.panic.errNoAuthority') };
@@ -367,6 +433,7 @@ export default function MobilePanicPage() {
       return { ok: false, error: raw || t('emergency.panic.errGeneric') };
     }
     if (alert.scopeType === 'tenant') tenantOverrideIdRef.current = undefined;
+    supersededRef.current = null;
     // Re-read now so the list (and the lock it describes) updates at once.
     try { if (credential) setActiveAlerts(await readActive(credential)); } catch { /* next poll */ }
     return { ok: true };

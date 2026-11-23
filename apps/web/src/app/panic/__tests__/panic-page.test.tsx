@@ -376,3 +376,175 @@ describe('2026-11-14 — panic phones on the page', () => {
     expect(push).toHaveBeenCalledWith('/login?redirect=/panic&reason=panic-enroll');
   });
 });
+
+// EMG-01 (2026-11-21) — the tenant-wide alert carries an id. Ending it from
+// /panic sends that id; if another operator replaced the alert in the
+// meantime the server refuses (409 ALERT_CHANGED) and clears NOTHING, and the
+// page must say so, re-read the list, and leave the newer alert to its own hold.
+describe('6 — ending an alert that was replaced meanwhile', () => {
+  const tenantAlert = (alertId: string, type: string) => ({ ...LIVE_TENANT_ALERT, alertId, type });
+  it('sends the listed id, says a newer alert is active, and shows it for review', async () => {
+    const defaultActive = fetchActiveAlerts.getMockImplementation();
+    let serverHolds: 'hold' | 'lockdown' = 'hold';
+    (fetchActiveAlerts as jest.Mock).mockImplementation(async () => [
+      serverHolds === 'hold' ? tenantAlert('ovr_hold', 'HOLD') : tenantAlert('ovr_lockdown', 'LOCKDOWN'),
+    ]);
+    allClearEmergency.mockImplementation(async () => {
+      serverHolds = 'lockdown';
+      return { success: false, error: 'All clear failed: 409', code: 'ALERT_CHANGED', currentAlertType: 'LOCKDOWN' };
+    });
+    try {
+      act(() => {
+        useUIStore.setState({ token: 'tab.jwt', user: TEACHER as never });
+      });
+      render(<MobilePanicPage />);
+      await flush();
+      expect(screen.getByTestId('panic-active-alerts')).toHaveTextContent(/Hold/);
+
+      fireEvent.click(screen.getByTestId('panic-active-alerts'));
+      const end = screen.getByTestId('panic-hold-to-end');
+      fireEvent.keyDown(end, { key: ' ' });
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+      await flush(10);
+
+      expect(allClearEmergency).toHaveBeenCalledTimes(1);
+      expect(allClearEmergency.mock.calls[0][0]).toMatchObject({ overrideId: 'ovr_hold', scopeType: 'tenant', scopeId: 't1', token: 'tab.jwt' });
+      const sheet = screen.getByTestId('panic-alerts-sheet');
+      expect(sheet).toHaveTextContent('All-clear was NOT sent — the alert is still on screens.');
+      expect(sheet).toHaveTextContent('A newer alert is now active (Lockdown), so nothing was cleared.');
+      // The list was re-read: the Lockdown is what the sheet now offers to end.
+      expect(screen.getByTestId('panic-active-alerts')).toHaveTextContent(/Lockdown/);
+      expect(sheet).toHaveTextContent(/Lockdown/);
+    } finally {
+      if (defaultActive) fetchActiveAlerts.mockImplementation(defaultActive);
+      allClearEmergency.mockReset();
+    }
+  });
+
+  // Review round 1 — a 409 without the type (an API older than the filter
+  // fix, a proxy that stripped the body) still names the newer alert, from
+  // the list the page just re-read.
+  it('names the newer alert from the re-read list when the 409 carries no type', async () => {
+    const defaultActive = fetchActiveAlerts.getMockImplementation();
+    let serverHolds: 'hold' | 'lockdown' = 'hold';
+    (fetchActiveAlerts as jest.Mock).mockImplementation(async () => [
+      serverHolds === 'hold' ? tenantAlert('ovr_hold', 'HOLD') : tenantAlert('ovr_lockdown', 'LOCKDOWN'),
+    ]);
+    allClearEmergency.mockImplementation(async () => {
+      serverHolds = 'lockdown';
+      return { success: false, error: 'All clear failed: 409', code: 'ALERT_CHANGED' };
+    });
+    try {
+      act(() => {
+        useUIStore.setState({ token: 'tab.jwt', user: TEACHER as never });
+      });
+      render(<MobilePanicPage />);
+      await flush();
+      fireEvent.click(screen.getByTestId('panic-active-alerts'));
+      const end = screen.getByTestId('panic-hold-to-end');
+      fireEvent.keyDown(end, { key: ' ' });
+      await act(async () => {
+        jest.advanceTimersByTime(3000);
+      });
+      await flush(10);
+      expect(screen.getByTestId('panic-alerts-sheet')).toHaveTextContent('A newer alert is now active (Lockdown), so nothing was cleared.');
+    } finally {
+      if (defaultActive) fetchActiveAlerts.mockImplementation(defaultActive);
+      allClearEmergency.mockReset();
+    }
+  });
+
+  // Review round 2 — the re-read after the 409 FAILS. The sheet must not keep
+  // offering the replaced alert (every hold would get another 409): it shows
+  // the alert the 409 named, and the next hold ends that one by its id.
+  it('a 409 whose list re-read fails does not loop: the next hold ends the alert the 409 named', async () => {
+    const defaultActive = fetchActiveAlerts.getMockImplementation();
+    let listDown = false;
+    (fetchActiveAlerts as jest.Mock).mockImplementation(async () => {
+      if (listDown) throw new Error('/emergency/active failed: 503');
+      return [tenantAlert('ovr_hold', 'HOLD')];
+    });
+    allClearEmergency
+      .mockImplementationOnce(async () => {
+        listDown = true;
+        return {
+          success: false,
+          error: 'All clear failed: 409',
+          code: 'ALERT_CHANGED',
+          currentAlertType: 'LOCKDOWN',
+          currentAlert: { alertId: 'ovr_lockdown', scopeId: 't1', type: 'LOCKDOWN', isDrill: false },
+        };
+      })
+      .mockImplementation(async () => ({ success: true }));
+    try {
+      act(() => {
+        useUIStore.setState({ token: 'tab.jwt', user: TEACHER as never });
+      });
+      render(<MobilePanicPage />);
+      await flush();
+      fireEvent.click(screen.getByTestId('panic-active-alerts'));
+      const holdToEnd = async () => {
+        fireEvent.keyDown(screen.getByTestId('panic-hold-to-end'), { key: ' ' });
+        await act(async () => {
+          jest.advanceTimersByTime(3000);
+        });
+        await flush(10);
+      };
+      await holdToEnd();
+      expect(allClearEmergency.mock.calls[0][0]).toMatchObject({ overrideId: 'ovr_hold', scopeType: 'tenant', scopeId: 't1' });
+      const sheet = screen.getByTestId('panic-alerts-sheet');
+      expect(sheet).toHaveTextContent('A newer alert is now active (Lockdown), so nothing was cleared.');
+      // The re-read failed, but the sheet now offers the Lockdown, not the Hold.
+      expect(sheet).toHaveTextContent(/Lockdown/);
+      expect(screen.getByTestId('panic-active-alerts')).toHaveTextContent(/Lockdown/);
+
+      await holdToEnd();
+      expect(allClearEmergency).toHaveBeenCalledTimes(2);
+      expect(allClearEmergency.mock.calls[1][0]).toMatchObject({ overrideId: 'ovr_lockdown', scopeType: 'tenant', scopeId: 't1' });
+      expect(allClearEmergency.mock.calls[1][0]).not.toHaveProperty('isDrill');
+    } finally {
+      if (defaultActive) fetchActiveAlerts.mockImplementation(defaultActive);
+      allClearEmergency.mockReset();
+    }
+  });
+
+  // Review round 3 — the id an entry names, and the aim after a 409, are
+  // computed from the SAME tenant the request is sent under. After a 401 the
+  // resend may run under a restored session of another tenant; the fallback
+  // id this page remembers belongs to the tenant it was sent from, so the
+  // resend must not carry it, and the bookkeeping follows what was sent.
+  // (This pins the rule; before round 3 the request already followed it and
+  // only the 409 bookkeeping read the first session's tenant.)
+  it('a resend after a 401 names what the restored session’s tenant names, never the first session’s fallback id', async () => {
+    act(() => {
+      useUIStore.setState({ token: 'tab.jwt', user: TEACHER as never });
+    });
+    broadcastEmergency.mockResolvedValue({ success: true, overrideId: 'ovr_mine' });
+    onRefresh = () => refreshed('other.jwt', { ...TEACHER, id: 'u-other', email: 'other@lincoln.test', tenantId: 't2' });
+    allClearEmergency
+      .mockResolvedValueOnce({ success: false, error: 'All clear failed: 401' })
+      .mockResolvedValue({ success: true });
+    render(<MobilePanicPage />);
+    await flush();
+    // This page sends the All-screens alert (it remembers its id), and the
+    // server lists it without one (an alert from before alert identity).
+    await hold(lockdown());
+    await flush(10);
+    fireEvent.click(screen.getByTestId('panic-back-to-panel'));
+    await flush(10);
+    fireEvent.click(screen.getByTestId('panic-active-alerts'));
+    fireEvent.keyDown(screen.getByTestId('panic-hold-to-end'), { key: ' ' });
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    await flush(10);
+
+    expect(allClearEmergency).toHaveBeenCalledTimes(2);
+    expect(allClearEmergency.mock.calls[0][0]).toMatchObject({ token: 'tab.jwt', scopeId: 't1', overrideId: 'ovr_mine' });
+    expect(allClearEmergency.mock.calls[1][0]).toMatchObject({ token: 'other.jwt', scopeId: 't1' });
+    expect(allClearEmergency.mock.calls[1][0].overrideId).toBeUndefined();
+  });
+});
+

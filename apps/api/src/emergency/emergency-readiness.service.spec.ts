@@ -77,6 +77,17 @@ function makeMocks(overrides: Partial<Record<string, any>> = {}) {
             ? jest.fn(async () => { throw new Error('no pong'); })
             : jest.fn(async () => 'PONG'),
         },
+    // EMG-03 push-channel state. Absent unless a test sets `push` (the
+    // service then grades on the PING alone, as before); 'throw' makes the
+    // read throw.
+    ...(overrides.push === undefined
+      ? {}
+      : {
+          pushChannelState: jest.fn(() => {
+            if (overrides.push === 'throw') throw new Error('state unreadable');
+            return overrides.push;
+          }),
+        }),
   } as any;
   const wsSigner = {
     signMessage: overrides.signerThrows
@@ -252,6 +263,51 @@ describe('EmergencyReadinessService', () => {
     expect(delivery.status).toBe('warn');
     expect(delivery.detail).toMatch(/polling/i);
     expect(r.verdict).toBe('NEEDS_ATTENTION');
+  });
+
+  // EMG-03 follow-up: a publisher PONG with the push channel down (the
+  // subscriber gone, or publishes unconfirmed) is fallback, not "all healthy".
+  it('publisher answers PONG but the push channel is down → delivery WARN (delivery.fallback)', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({
+      push: { configured: true, live: false, publisher: 'ready', subscriber: 'reconnecting', subscribed: false, downSince: new Date().toISOString(), reason: 'x' },
+    });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    const delivery = r.items.find((i) => i.key === 'delivery')!;
+    expect(redis.publisher.ping).toHaveBeenCalled();
+    expect(redis.pushChannelState).toHaveBeenCalled();
+    expect(delivery.status).toBe('warn');
+    expect(delivery.code).toBe('delivery.fallback');
+    expect(delivery.detail).toMatch(/polling/i);
+    expect(r.verdict).toBe('NEEDS_ATTENTION');
+  });
+
+  it('publisher PONG and a live push channel → delivery OK, READY', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({
+      push: { configured: true, live: true, publisher: 'ready', subscriber: 'ready', subscribed: true, downSince: null, reason: null },
+    });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    const delivery = r.items.find((i) => i.key === 'delivery')!;
+    expect(delivery.status).toBe('ok');
+    expect(delivery.code).toBe('delivery.ok');
+    expect(r.verdict).toBe('READY');
+  });
+
+  it('an unreadable push-channel state is fallback, never "all healthy"', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({ push: 'throw' });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    const delivery = r.items.find((i) => i.key === 'delivery')!;
+    expect(delivery.status).toBe('warn');
+    expect(delivery.code).toBe('delivery.fallback');
+  });
+
+  it('the push-channel state never raises a failed PING to ok', async () => {
+    const { prisma, redis, wsSigner } = makeMocks({
+      redisState: 'fail',
+      push: { configured: true, live: true, publisher: 'ready', subscriber: 'ready', subscribed: true, downSince: null, reason: null },
+    });
+    const r = await new EmergencyReadinessService(prisma, redis, wsSigner).compute('t1');
+    const delivery = r.items.find((i) => i.key === 'delivery')!;
+    expect(delivery.status).toBe('warn');
   });
 
   it('signer failure → delivery MISSING → NOT_CONFIGURED (platform fault copy)', async () => {

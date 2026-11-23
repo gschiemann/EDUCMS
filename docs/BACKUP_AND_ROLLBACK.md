@@ -67,6 +67,36 @@ pushes (its admin bypass is not a rollback tool), the Foundry Standard forbids p
 the main branch at all, and a reset discards every commit after the target. A
 `backup/*` tag is for **comparison** (section D), not for moving `master`.
 
+#### Rolling back across EMG-01 (tenant alert identity), then forward again
+
+The EMG-01 migration adds `tenants.emergency_alert_id` / `emergency_triggered_at`; a build
+from before it ignores both. It neither writes them on a trigger nor nulls them on an
+all-clear, so a tenant that raises an alert while that build runs keeps the id of an
+**older** alert. After the roll-forward, `GET /emergency/active` lists that stored (old) id,
+and the dashboard and `/panic` send it back, so they clear normally. A client that does not
+read the list (an old cached dashboard tab whose alert list is down, sending the id it
+received when it triggered) gets "All clear failed: 409" every time. The alert stays on
+the screens, which is the safe direction, but that tab cannot end it.
+
+Before rolling forward over such a window, do one of these:
+
+- **Recommended:** roll forward with `EMERGENCY_ALERT_IDENTITY_DISABLED=1` (kill switch,
+  `docs/ENVIRONMENT.md`). Unset it once every alert raised during the window has been
+  cleared.
+- **Owner-run:** just before the roll-forward deploy, while the previous build is still the
+  one running, null the two columns on every tenant:
+
+  ```sql
+  UPDATE tenants SET emergency_alert_id = NULL, emergency_triggered_at = NULL
+  WHERE emergency_alert_id IS NOT NULL;
+  ```
+
+  Every alert that is up then counts as raised before identity, so it clears exactly as
+  it did before EMG-01. Do not run this after the roll-forward: it would also drop the
+  identity of alerts the new build raised.
+
+Detail: `docs/handoffs/2026-11-21-emg-01-alert-identity.md`.
+
 ### B) Recover uncommitted files from a tarball (non-destructive, one file)
 
 ```bash

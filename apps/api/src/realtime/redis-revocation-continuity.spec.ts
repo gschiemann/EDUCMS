@@ -522,3 +522,154 @@ describe('revocation continuity — the restore', () => {
     );
   });
 });
+
+// ── EMG-03 (2026-11-21): Redis now reconnects in-process ──────────────────
+//
+// Before EMG-03 a lost Redis connection never came back, so every lookup
+// stayed on Postgres until the API restarted. Now it does come back — usually
+// NOT wiped (the marker is still there) but having missed every revocation
+// written while it was away (those reached only the Postgres mirror). A miss
+// must not be trusted again until a restore that started after the loss has
+// copied the mirror back.
+
+/** The private connection state these tests drive. */
+interface ConnectionInternals {
+  onPublisherDown(reason: string): void;
+  noteRevocationMissedRedis(key: string): void;
+  revocationContinuityTrusted(): boolean;
+  publisherReady: boolean;
+  subscriberListening: boolean;
+  connected: boolean;
+  lastRestoreAttemptAt: number;
+}
+const internals = (svc: RedisService) => svc as unknown as ConnectionInternals;
+
+/** What the service does when its publisher connection drops and comes back. */
+function outageAndReconnect(svc: RedisService) {
+  const s = internals(svc);
+  s.onPublisherDown('test: publisher closed');
+  // Both connections back (what the ready watchers set), without the restore
+  // the publisher 'ready' watcher would start — the lookups must cope alone.
+  s.publisherReady = true;
+  s.subscriberListening = true;
+  s.connected = true;
+}
+
+describe('revocation continuity across a Redis outage (EMG-03)', () => {
+  it('a logout written during the outage stays revoked after Redis comes back with its marker intact', async () => {
+    const redis = new FakeRedis();
+    await redis.set(REVOCATION_CONTINUITY_KEY, 'x'); // Redis was not wiped
+    const prisma = makePrisma([
+      // Written during the outage: the mirror has it, Redis does not.
+      {
+        id: 'a',
+        kind: REVOKED_KIND_JTI,
+        key: hashRevokedToken('tok-out'),
+        value: null,
+        expiresAt: inAnHour(),
+      },
+    ]);
+    const svc = makeService(redis, prisma);
+    outageAndReconnect(svc);
+
+    // Before the fix: Redis miss + marker present → 'clear' — un-revoked.
+    await expect(svc.checkTokenRevoked('tok-out')).resolves.toBe('revoked');
+    await expect(svc.sismember('jwt_revoked_list', 'tok-out')).resolves.toBe(
+      true,
+    );
+
+    // The miss started a restore; afterwards Redis alone answers again.
+    await settle(svc);
+    expect(
+      await redis.sismember(
+        REVOKED_TOKEN_HASH_SET,
+        hashRevokedToken('tok-out'),
+      ),
+    ).toBe(1);
+    prisma.findUnique.mockClear();
+    await expect(svc.checkTokenRevoked('tok-out')).resolves.toBe('revoked');
+    await expect(svc.checkTokenRevoked('someone-else')).resolves.toBe('clear');
+    expect(prisma.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('a role downgrade written during the outage is still enforced after the reconnect', async () => {
+    const redis = new FakeRedis();
+    await redis.set(REVOCATION_CONTINUITY_KEY, 'x');
+    const prisma = makePrisma([
+      {
+        id: 'a',
+        kind: REVOKED_KIND_USER_INVALID_BEFORE,
+        key: 'user-1',
+        value: '1700000500',
+        expiresAt: inAnHour(),
+      },
+    ]);
+    const svc = makeService(redis, prisma);
+    outageAndReconnect(svc);
+
+    // Before the fix: null — every pre-downgrade token valid again.
+    await expect(svc.getTokenInvalidBefore('user-1')).resolves.toBe(1700000500);
+    await settle(svc);
+    expect(await redis.get('jwt_invalid_before:user-1')).toBe('1700000500');
+  });
+
+  it('a revocation write that misses Redis (logout while the push channel is down) also stops the marker being trusted', async () => {
+    const redis = new FakeRedis();
+    await redis.set(REVOCATION_CONTINUITY_KEY, 'x');
+    const prisma = makePrisma([
+      {
+        id: 'a',
+        kind: REVOKED_KIND_JTI,
+        key: hashRevokedToken('tok-out'),
+        value: null,
+        expiresAt: inAnHour(),
+      },
+    ]);
+    const svc = makeService(redis, prisma);
+
+    internals(svc).connected = false;
+    await expect(svc.sadd('jwt_revoked_list', 'tok-out')).resolves.toBe(false);
+    internals(svc).connected = true;
+
+    await expect(svc.checkTokenRevoked('tok-out')).resolves.toBe('revoked');
+  });
+
+  it('a restore that started BEFORE a later miss does not re-establish trust', async () => {
+    const redis = new FakeRedis();
+    await redis.set(REVOCATION_CONTINUITY_KEY, 'x');
+    const holder: { svc?: RedisService } = {};
+    let missedDuringRestore = false;
+    const prisma = makePrisma([], {
+      beforePage: () => {
+        if (missedDuringRestore || !holder.svc) return;
+        missedDuringRestore = true;
+        // A revocation misses Redis while the restore is reading the mirror.
+        internals(holder.svc).noteRevocationMissedRedis('jwt_revoked_list');
+      },
+    });
+    const svc = makeService(redis, prisma);
+    holder.svc = svc;
+    outageAndReconnect(svc);
+
+    await svc.checkTokenRevoked('t1'); // starts the restore
+    await settle(svc);
+    expect(missedDuringRestore).toBe(true);
+    expect(internals(svc).revocationContinuityTrusted()).toBe(false);
+
+    // The next miss restores again; that one completes cleanly.
+    internals(svc).lastRestoreAttemptAt = 0;
+    await svc.checkTokenRevoked('t2');
+    await settle(svc);
+    expect(internals(svc).revocationContinuityTrusted()).toBe(true);
+  });
+
+  it('a process that never lost Redis keeps the F1 hot path: no database read on a miss', async () => {
+    const redis = new FakeRedis();
+    await redis.set(REVOCATION_CONTINUITY_KEY, 'x');
+    const prisma = makePrisma([]);
+    const svc = makeService(redis, prisma);
+    await expect(svc.checkTokenRevoked('tok')).resolves.toBe('clear');
+    expect(prisma.findUnique).not.toHaveBeenCalled();
+    expect(prisma.findMany).not.toHaveBeenCalled();
+  });
+});

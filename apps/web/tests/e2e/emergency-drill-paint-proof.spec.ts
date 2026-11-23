@@ -374,6 +374,12 @@ test('a page reloaded under a persisted native hold with NO cached alert holds b
   // at a timing interaction between the mocked legacy bridge and the boot
   // effects, not at the product rule (the cached-alert reload above proves the
   // rule for the path the push-raise makes real). Investigate before removing.
+  // 2026-11-22: the same symptom failed the REQUIRED WebKit job 3 of 3 on PR
+  // #344. It was the harness: the raise below ran before the old document's
+  // first live manifest, whose release dropped the hold before the reload (see
+  // PRECONDITION). With that precondition, local Chromium (this line lifted)
+  // passed 30 of 30, against 24 of 30 without it. Lifting this quarantine is
+  // its own change.
   test.fixme(browserName === 'chromium', 'intermittent on Chromium in the mocked harness — see the note above');
   test.setTimeout(60_000);
   const tag = 'paint-hold';
@@ -383,6 +389,22 @@ test('a page reloaded under a persisted native hold with NO cached alert holds b
   const manifestDelayRef = { value: 0 };
   await bootUnderTest(page, tag, manifestRef, manifestDelayRef);
   await expect.poll(async () => (await readTimeline(page)).at(-1)?.state, { timeout: 20_000 }).toBe('content');
+  // PRECONDITION (2026-11-22): the OLD document has applied its first LIVE
+  // manifest before the native raise below. `content` above does not prove it:
+  // the recorder reports `content` for the black media root the page mounts in
+  // phase `connecting`, a few hundred ms BEFORE its first manifest request
+  // goes out. A document's first live no-alert manifest always sends
+  // `displayEmergencyHold(false)` (`lastSent` starts null in emergencyHold.ts),
+  // so a raise simulated inside that window was released by the old document
+  // 5 ms later — the WebKit CI trace of PR #344 (holdCalls: raise …718, release
+  // …723, `held: false` at the reload) — and the reloaded document then
+  // correctly found no hold to boot under. That release is the signal: once it
+  // is recorded, the old document's hold is latched released and nothing it
+  // does before the reload sends another.
+  await expect.poll(async () => (await readMock(page)).holdCalls.some(c => !c.active), { timeout: 15_000 }).toBe(true);
+  const beforeRaise = await readMock(page);
+  expect(beforeRaise.holdCalls.map(c => c.active), `hold calls before the raise: ${JSON.stringify(beforeRaise.holdCalls)}`).toEqual([false]);
+  expect(beforeRaise.held).toBe(false);
 
   // The APK is holding (a native raise the page never got to announce: the
   // ladder reloaded it before the committed manifest ever landed), nothing is
@@ -394,6 +416,8 @@ test('a page reloaded under a persisted native hold with NO cached alert holds b
     try { sessionStorage.setItem('__eduGlassTimeline', '[]'); } catch { /* ignore */ }
   });
   manifestDelayRef.value = 1_500; // the live manifest that releases is a real round trip away
+  // … and the APK is still holding when its ladder reloads the page.
+  expect((await readMock(page)).held, 'the native hold must be engaged at the reload').toBe(true);
   const reloadedAt = Date.now();
   await page.reload();
   await expect.poll(async () => (await readTimeline(page)).at(-1)?.state, { timeout: 25_000 }).toBe('content');

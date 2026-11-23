@@ -326,5 +326,7 @@ describe('helpers', () => {
     const expired = holdSentence('EXPIRED', 'not-offered-within-24h', { targetVersion: null, callerVersion: null, offeredAt: null });
     expect(expired).toContain('was not handed to this screen within 24 hours');
     expect(expired).not.toContain('did not check in');
+    // FLT-04: an alert on the glass withholds every offer, so it is named.
+    expect(expired).toContain('held while an alert was on its screen');
   });
 });

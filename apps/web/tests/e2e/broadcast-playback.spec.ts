@@ -53,7 +53,8 @@ test('banner arrival, resize and clear preserve the running video and its clock'
   if (process.env.BROADCAST_SHOTS) await page.screenshot({ path: `${process.env.BROADCAST_SHOTS}/player-banner-${test.info().project.name}.png` });
   message = null;
   delayingClear = true;
-  await push(page, 'ALL_CLEAR_MESSAGE');
+  // The real signed clear names its message (EMG-04: a clear removes only its own id).
+  await push(page, 'ALL_CLEAR_MESSAGE', { messageId: 'banner-one', clearedBy: 'u1' });
   await expect(banner).toHaveCount(0);
   await expect.poll(async () => Math.round((await root.boundingBox())?.height || 0)).toBe(720);
   await expect(page.locator('[data-edu-emergency-transition]')).toHaveCount(0);
@@ -83,7 +84,7 @@ test('an animated webpage keeps the same iframe document and viewport under a ba
   const initialLoads = loads;
   await push(page, 'TEXT_BROADCAST', { messageId: 'iframe-banner', severity: 'INFO', text: 'A routine announcement.' });
   await expect(page.locator('[data-edu-emergency-root="banner"]')).toBeVisible();
-  await push(page, 'ALL_CLEAR_MESSAGE');
+  await push(page, 'ALL_CLEAR_MESSAGE', { messageId: 'iframe-banner', clearedBy: 'u1' });
   await expect(page.locator('[data-edu-emergency-root="banner"]')).toHaveCount(0);
   expect(content.isDetached()).toBe(false);
   const after = await content.evaluate(() => ({ time: performance.now(), width: innerWidth, height: innerHeight }));

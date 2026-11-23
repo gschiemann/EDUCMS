@@ -43,8 +43,24 @@ import { TouchOverlay, TouchNavOverlay } from '@/components/player/TouchOverlay'
 import { EmergencyOverlay, type EmergencyMessageView } from '@/components/player/EmergencyOverlay';
 import { useEmergencyFaceStage, readEmergencyFaceStage } from '@/components/player/useEmergencyFaceStage';
 import { EmergencyFaceText } from '@/components/player/EmergencyFaceText';
-import { reconcileStrandedEmergency } from './emergencyReconcile';
 import { pushedEmergencyFromPayload } from './pushedEmergencyMessage';
+// EMG-04 (2026-11-21): every pushed message held by its signed id; the glass
+// shows the most severe, then the newest; a clear removes only its own id.
+import {
+  EMPTY_PUSHED_MESSAGES,
+  addPushedMessage,
+  addedPushedMessageIds,
+  clearPushedMessage,
+  emergencyMessageFromPollRow,
+  pushedClearMessageId,
+  reconcilePushedMessages,
+  removedPushedMessageIds,
+  shownPushedMessage,
+  type PushClock,
+  type PushedMessages,
+} from './pushedMessages';
+// FLT-09 (2026-11-21): the durable REFRESH_WEB waits while an alert is on the glass.
+import { LS_REFRESH_ACK, refreshWaitsForAlert, runDurableRefresh, type DurableRefreshOutcome } from './durableRefresh';
 import { decideEmergencySurface, isBannerEmergencyMessage } from './emergencySurface';
 import { broadcastContentStyle, type BroadcastLayout } from './broadcastLayout';
 import { cachedManifestWouldClearLiveAlert, emergencyBoardStaysOnGlass, provisionalAlertSurvivesPreCommitManifest } from './emergencyInterlock';
@@ -111,7 +127,7 @@ import { otaCheckAnswered } from './otaAttempt';
 // person's refresh is always honoured; a SYSTEM refresh (wedge detector,
 // rendition swap) is declined by a screen that can prove it is painting and
 // fetching; a waiting web bundle is picked up only when nothing is on glass.
-import { admitRefresh, manifestRefreshOrigin, pushRefreshOrigin, type LiveEvidence, type RefreshAdmission, type RefreshOrigin } from './refreshAdmission';
+import { admitRefresh, pushRefreshOrigin, type LiveEvidence, type RefreshAdmission, type RefreshOrigin } from './refreshAdmission';
 // Off-hours background update (2026-10-10): a newer bundle is PREPARED while
 // content plays and APPLIED only in the screen's off-hours window, at an item
 // boundary, under the last frame. Decisions: offHoursUpdate.ts; cover frame:
@@ -968,16 +984,10 @@ function backoffMs(attempt: number, baseMs = 1000, maxMs = 30_000): number {
 
 // ── Durable REFRESH_WEB via the manifest (2026-08-30, reliability W1-11) ──
 //
-// The wedge detector used to publish REFRESH_WEB over the push channel only —
-// the exact channel that is dead on a wedged screen (35 AUTO_RECOVERY_PUSH_
-// DEAD audit rows in the week before this fix). The command now ALSO rides
-// the manifest as `refreshRequestedAt`. Semantics are VALUE-IDENTITY, never
-// clock comparison (Android boxes run minutes of skew and a timestamp
-// inequality would reload-loop them): reload once per distinct value, persist
-// the acknowledged value BEFORE acting, echo it on render-proof so the server
-// clears the flag. Unreadable storage → do nothing (fail-safe: no ack means
-// a reload could loop, so we refuse to start one).
-const LS_REFRESH_ACK = 'edu_refresh_ack';
+// The command rides the manifest as `refreshRequestedAt` and is acknowledged
+// by VALUE identity (player rule 6). Its steps — and, since FLT-09
+// (2026-11-21), its wait while an alert is on the glass — live in
+// `durableRefresh.ts`, unit-tested there; this is the page's wiring.
 function readRefreshAck(): number | null {
   try {
     const v = localStorage.getItem(LS_REFRESH_ACK);
@@ -991,60 +1001,22 @@ function readRefreshAck(): number | null {
 function maybeExecuteDurableRefresh(
   manifest: any,
   // Never-interrupt (2026-10-10): the page's admission for the command's
-  // origin (`refreshAdmission.ts`). The ack below is persisted regardless —
-  // a declined command is still CONSUMED (value identity), so the server
-  // clears the flag on the next telemetry post instead of re-offering it.
-  admit: (origin: RefreshOrigin) => RefreshAdmission = () => ({ action: 'reload' }),
-): void {
-  // The command targets the SCREEN. An admin's "Open in Browser" preview
-  // fetches the same manifest — reloading their tab (and consuming the ack
-  // into the wrong localStorage) would be both baffling and wrong.
-  if (isPreviewMode()) return;
-  const req = manifest?.refreshRequestedAt;
-  if (typeof req !== 'number' || !Number.isFinite(req)) return;
-  let acked: number | null = null;
-  try {
-    const v = localStorage.getItem(LS_REFRESH_ACK);
-    acked = v ? Number(v) : null;
-  } catch {
-    return; // storage unreadable → cannot guarantee once-only → refuse
-  }
-  if (acked === req) return;
-  try {
-    localStorage.setItem(LS_REFRESH_ACK, String(req));
-    // B-P2-12 (2026-08-30): some stores ACCEPT the write and don't persist
-    // it (ephemeral/partitioned storage). If the read-back disagrees, the
-    // once-only guarantee is gone — refuse to reload rather than loop.
-    if (localStorage.getItem(LS_REFRESH_ACK) !== String(req)) return;
-  } catch {
-    return; // ack MUST be durable before we act
-  }
-  // Never-interrupt (2026-10-10): who asked? The wedge detector's durable
-  // ride reaches push-dead screens — exactly the fleet's problem boxes — so
-  // this is where a SYSTEM reload most often lands on content a customer is
-  // watching. A manifest just arrived (the fetch loop is alive by
-  // construction), so a painting screen declines it; an operator's Resync,
-  // or a manifest from an API that does not say, reloads as it always has.
-  const origin = manifestRefreshOrigin(manifest?.refreshRequestedBy);
-  if (admit(origin).action === 'decline') {
-    console.warn(`[Player] durable REFRESH_WEB (${origin}) declined — content is playing and provably healthy; acknowledged without a reload (never-interrupt)`);
-    return;
-  }
-  console.warn('[Player] durable REFRESH_WEB arrived via manifest — reloading once');
-  setTimeout(() => {
-    // Deep-audit C-P1-7 (2026-08-30): this path exists precisely for
-    // screens whose push channel is dead — and it burns its once-only ack
-    // on the way in, so it must use the STRONGEST reload available, not a
-    // bare location.reload() (which the Taurus WebView serves from cache,
-    // spending the escape hatch without escaping). Same ladder as the WS
-    // REFRESH_WEB arm: native reload first, cache-busting web reload as
-    // the fallback. Emergency safety is by construction: the emergency
-    // manifest branch never carries refreshRequestedAt, and this helper
-    // only runs on live (non-cached) manifests.
-    try {
-      void reloadUnderCover('refresh-durable');
-    } catch { /* swallow */ }
-  }, 250);
+  // origin (`refreshAdmission.ts`). A declined command is still CONSUMED.
+  admit: (origin: RefreshOrigin) => RefreshAdmission,
+  // FLT-09: an alert on the glass defers the command, unacknowledged; the
+  // caller re-runs it on the first live manifest answer after the alert.
+  alertOnGlass: () => boolean,
+): DurableRefreshOutcome {
+  return runDurableRefresh(manifest, {
+    isPreview: isPreviewMode,
+    storage: () => localStorage,
+    admit,
+    alertOnGlass,
+    // Deep-audit C-P1-7: the STRONGEST reload available (native first).
+    reload: () => { void reloadUnderCover('refresh-durable'); },
+    schedule: (fn, ms) => { setTimeout(fn, ms); },
+    log: (line) => { console.warn(line); },
+  });
 }
 
 /** Save received manifests separately from content that actually became ready. */
@@ -5023,13 +4995,82 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // 10s as a fallback. Separate from `activeEmergency` (which tracks
   // tenant-wide LOCKDOWN-style overrides) so the two systems can
   // coexist — a SOS can fire on a screen that's already in lockdown.
-  const [pushedEmergencyMessage, setPushedEmergencyMessage] = useState<EmergencyMessageView | null>(null);
+  //
+  // EMG-04 (2026-11-21) — the page holds EVERY pushed message, keyed by its
+  // signed `messageId` (`pushedMessages.ts`); `pushedEmergencyMessage` is the
+  // ONE the glass shows: highest severity, then newest — the overlay poll's
+  // own order. It used to hold one message that every push replaced and every
+  // ALL_CLEAR_MESSAGE nulled, so an INFO banner took a CRITICAL SOS down and
+  // clearing any message cleared whatever was shown.
+  const [pushedMessages, setPushedMessages] = useState<PushedMessages>(EMPTY_PUSHED_MESSAGES);
+  const pushedMessagesRef = useRef<PushedMessages>(EMPTY_PUSHED_MESSAGES);
+  const pushedEmergencyMessage: EmergencyMessageView | null = useMemo(() => shownPushedMessage(pushedMessages), [pushedMessages]);
   // Ref mirror for the remote-input lockout below (same pattern as
   // activeEmergencyRef — the key/back handlers live in a closure with
   // [playbackStopped] deps and must read live emergency state).
   const pushedEmergencyMessageRef = useRef<EmergencyMessageView | null>(null);
   const [polledEmergencyHeld, setPolledEmergencyHeld] = useState(false);
   const polledEmergencyHeldRef = useRef(false);
+  // The message the overlay's OWN poll is showing (`onPolledMessageChange`).
+  // When the first push takes the overlay over (its poll stops while a pushed
+  // message is held), that message joins the held set, so a banner pushed
+  // after a poll-raised SOS can never hide the SOS.
+  const polledMessageRef = useRef<EmergencyMessageView | null>(null);
+  // Counts gate-passed ALL_CLEAR_MESSAGEs: a reconcile answer that was in
+  // flight while one landed may still list what it took down, so it adds nothing.
+  const pushedClearCountRef = useRef(0);
+  /** Monotonic + server-corrected clocks for the held set (`pushedMessages.ts` reads none itself). */
+  const pushClock = useCallback((): PushClock => ({ monoNowMs: performance.now(), serverNowMs: Date.now() + serverClockOffsetRef.current }), []);
+  /** The server-corrected clock a pushed message's `createdAt` is stamped with (the poll's rows carry the server's). */
+  const pushedServerNow = useCallback(() => Date.now() + serverClockOffsetRef.current, []);
+  /**
+   * The one commit point for the held set. Interlock first, then the state —
+   * the push path's order since 2026-08-13: the display hold goes up with the
+   * message the glass will show (a banner posture only when THAT message is a
+   * banner and no tenant / pending override holds the glass). A clear or a
+   * reconcile that leaves another message up re-signals for it; one that
+   * empties the set does not release anything — the hold is released on one
+   * path only, the manifest handler (`emergencyHold.ts` rule 1).
+   */
+  const commitPushedMessages = useCallback((next: PushedMessages, why: 'push' | 'clear' | 'reconcile') => {
+    const before = pushedMessagesRef.current;
+    if (next === before && why !== 'push') return;
+    const shown = shownPushedMessage(next);
+    if (shown && (why === 'push' || shown !== pushedEmergencyMessageRef.current)) {
+      signalDisplayEmergencyHold(true, true, isBannerEmergencyMessage(shown) && !activeEmergencyRef.current && !pendingOverrideConfirmRef.current);
+    }
+    pushedMessagesRef.current = next;
+    pushedEmergencyMessageRef.current = shown;
+    if (next !== before) setPushedMessages(next);
+  }, []);
+  /** A gate-passed SOS / TEXT_BROADCAST / MEDIA_ALERT, from either transport. */
+  const acceptPushedMessage = useCallback((message: EmergencyMessageView) => {
+    const clock = pushClock();
+    let state = pushedMessagesRef.current;
+    const polled = polledMessageRef.current;
+    if (state.entries.size === 0 && polled && polled.id && polled.id !== message.id) {
+      state = addPushedMessage(state, polled, clock);
+    }
+    commitPushedMessages(addPushedMessage(state, message, clock), 'push');
+  }, [commitPushedMessages, pushClock]);
+  /**
+   * A gate-passed ALL_CLEAR_MESSAGE: removes ONLY the id it names. One for an
+   * id this screen does not hold, or with no id at all (the API always signs
+   * one), changes nothing on the glass — the server-confirmed reconcile below
+   * still releases anything the server stopped listing.
+   */
+  const clearPushedMessageFromPush = useCallback((payload: unknown, transport: 'WS' | 'SSE') => {
+    const id = pushedClearMessageId(payload);
+    pushedClearCountRef.current += 1;
+    if (id && polledMessageRef.current?.id === id) polledMessageRef.current = null;
+    const before = pushedMessagesRef.current;
+    const next = clearPushedMessage(before, id, performance.now());
+    if (next === before) {
+      console.warn(`[Player ${transport}] ALL_CLEAR_MESSAGE for ${id ?? '(no message id)'} — not held on this screen; nothing on the glass changes`);
+      return;
+    }
+    commitPushedMessages(next, 'clear');
+  }, [commitPushedMessages]);
   // 2026-10-23 (B3) — is the poll-only message a FULL-SCREEN one (SOS /
   // media / CRITICAL text) rather than a banner? Only a full-screen message
   // takes the content down; see `emergencySurface.ts`.
@@ -5317,71 +5358,92 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   }, []);
 
   // ── LIFE-SAFETY BACKSTOP (2026-07-04) — HTTP reconcile for a stranded
-  // pushed emergency. `pushedEmergencyMessage` is set by WS/SSE and was
-  // cleared ONLY by an ALL_CLEAR_MESSAGE over that same transport; if that
-  // clear is dropped (WS blip) or freshness-gated (clock-skewed kiosk past the
-  // 30s staleness gate), the SOS / broadcast / media-alert takeover strands on
-  // the wall forever — and EmergencyOverlay's own self-poll is DISABLED while a
-  // pushed `message` prop is present. This poll makes the SERVER the sole
-  // arbiter for the pushed message too (the same principle the manifest already
-  // applies to tenant-wide lockdowns): if the device-authed /emergency/messages
-  // endpoint no longer lists the shown message as active, clear it. FAIL-SAFE
-  // toward OVER-alerting — see reconcileStrandedEmergency(): only a SUCCESSFUL
-  // poll that confirms absence TWICE in a row clears it; an offline/erroring
-  // poll leaves the alert up untouched.
-  useEffect(() => {
-    if (!pushedEmergencyMessage) return; // nothing on screen to reconcile
+  // pushed emergency. A pushed message is set by WS/SSE and cleared by an
+  // ALL_CLEAR_MESSAGE over that same transport; if that clear is dropped (WS
+  // blip) or freshness-gated (clock-skewed kiosk past the 30s staleness gate),
+  // the SOS / broadcast / media-alert takeover strands on the wall forever —
+  // and EmergencyOverlay's own self-poll is DISABLED while a pushed `message`
+  // prop is present. This poll makes the SERVER the sole arbiter for the
+  // pushed messages too (the same principle the manifest already applies to
+  // tenant-wide lockdowns): an id the device-authed /emergency/messages
+  // endpoint no longer lists as active is cleared. FAIL-SAFE toward
+  // OVER-alerting — see reconcileStrandedEmergency(): only a SUCCESSFUL poll
+  // that confirms absence TWICE in a row clears it; an offline/erroring poll
+  // leaves the alert up untouched.
+  //
+  // EMG-04 (2026-11-21): the rule runs for EVERY held id, not only the shown
+  // one, and a message the server lists that this page does not hold joins
+  // the set (a push that never arrived here must not stay hidden behind a
+  // banner that did). Same request, same cadence — the answer was already
+  // fetched; it is now read both ways (`reconcilePushedMessages`).
+  const hasPushedMessages = pushedMessages.entries.size > 0;
+  // Bumped when the set empties: an answer still in flight then is ignored
+  // (the overlay's own poll owns the glass again).
+  const pushedReconcileGenRef = useRef(0);
+  const reconcilePushedNow = useCallback(async () => {
     const token = getDeviceToken();
-    if (!token) return; // only paired devices ever receive a WS-pushed message
-    let stopped = false;
-    let consecutiveMisses = 0;
-    const shownId = pushedEmergencyMessage.id;
-    const reconcile = async () => {
-      try {
-        const res = await fetch(`${getApiRoot()}/api/v1/emergency/messages`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (stopped || !res.ok) return; // transient failure ≠ a confirmed clear
-        const json = await res.json();
-        const activeIds = new Set<string>(
-          (Array.isArray(json.active) ? json.active : []).map((r: { id: string }) => r.id),
+    if (!token) return;
+    const gen = pushedReconcileGenRef.current;
+    const clears = pushedClearCountRef.current;
+    const sentMono = performance.now();
+    try {
+      const res = await fetch(`${getApiRoot()}/api/v1/emergency/messages`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (gen !== pushedReconcileGenRef.current || !res.ok) return; // transient failure ≠ a confirmed clear
+      const json = await res.json();
+      if (gen !== pushedReconcileGenRef.current || !Array.isArray(json?.active)) return;
+      const before = pushedMessagesRef.current;
+      const next = reconcilePushedMessages(before, {
+        active: json.active.map(emergencyMessageFromPollRow),
+        sentMono,
+        mayAdd: clears === pushedClearCountRef.current,
+      }, pushClock());
+      if (next === before) return;
+      for (const id of removedPushedMessageIds(before, next)) {
+        console.warn(
+          `[Player] emergency message ${id} no longer active server-side — ` +
+            `clearing stranded overlay (missed ALL_CLEAR_MESSAGE backstop)`,
         );
-        const decision = reconcileStrandedEmergency(activeIds, shownId, consecutiveMisses);
-        consecutiveMisses = decision.consecutiveMisses;
-        if (decision.clear) {
-          console.warn(
-            `[Player] emergency message ${shownId} no longer active server-side — ` +
-              `clearing stranded overlay (missed ALL_CLEAR_MESSAGE backstop)`,
-          );
-          setPushedEmergencyMessage(null);
-        }
-      } catch {
-        /* offline — keep the alert up (fail-safe toward over-alerting) */
       }
-    };
+      for (const id of addedPushedMessageIds(before, next)) {
+        console.warn(`[Player] emergency message ${id} is active server-side but was not held here — raising it (missed push backstop)`);
+      }
+      commitPushedMessages(next, 'reconcile');
+    } catch {
+      /* offline — keep the alert up (fail-safe toward over-alerting) */
+    }
+  }, [commitPushedMessages, pushClock]);
+  useEffect(() => {
+    if (!hasPushedMessages) return; // nothing on screen to reconcile
+    if (!getDeviceToken()) return; // only paired devices ever receive a WS-pushed message
     // Interval-only (no immediate tick): the server persists the message row
     // BEFORE publishing the WS push, so by the first poll a still-live message
     // is guaranteed to be in the active set — the grace period prevents a
     // just-pushed alert from being reconciled away in a persist/poll race.
-    const h = setInterval(reconcile, 12_000);
-    // 2026-10-23 (launch QA B3b) — EXPIRY. The server stops listing a message
-    // at its `expiresAt`; the 12 s cadence then needed up to two more polls
-    // (~24 s) to confirm, and the screen kept the ended alert that long. Two
-    // extra reconciles right after the expiry (1 s and 4 s past it, device
-    // clock) make the confirm land within ~5 s. Both are the same two-miss
-    // rule — a device clock running early simply finds the id still active
-    // (streak reset), one running late is covered by the interval; nothing
-    // here clears on the clock alone.
-    const timers: ReturnType<typeof setTimeout>[] = [];
+    const h = setInterval(() => { void reconcilePushedNow(); }, 12_000);
+    return () => { pushedReconcileGenRef.current += 1; clearInterval(h); };
+  }, [hasPushedMessages, reconcilePushedNow]);
+  // 2026-10-23 (launch QA B3b) — EXPIRY. The server stops listing a message
+  // at its `expiresAt`; the 12 s cadence then needed up to two more polls
+  // (~24 s) to confirm, and the screen kept the ended alert that long. Two
+  // extra reconciles right after the expiry of the message ON THE GLASS (1 s
+  // and 4 s past it, device clock) make the confirm land within ~5 s. Both
+  // are the same two-miss rule — a device clock running early simply finds
+  // the id still active (streak reset), one running late is covered by the
+  // interval; nothing here clears on the clock alone.
+  useEffect(() => {
+    if (!pushedEmergencyMessage || !getDeviceToken()) return;
     const expiresAtMs = typeof pushedEmergencyMessage.expiresAt === 'number' ? pushedEmergencyMessage.expiresAt * 1000 : null;
-    if (expiresAtMs !== null) {
-      const untilExpiry = Math.max(0, expiresAtMs - Date.now());
-      if (untilExpiry < 24 * 60 * 60 * 1000) {
-        timers.push(setTimeout(reconcile, untilExpiry + 1_000), setTimeout(reconcile, untilExpiry + 4_000));
-      }
-    }
-    return () => { stopped = true; clearInterval(h); timers.forEach(clearTimeout); };
-  }, [pushedEmergencyMessage]);
+    if (expiresAtMs === null) return;
+    const untilExpiry = Math.max(0, expiresAtMs - Date.now());
+    if (untilExpiry >= 24 * 60 * 60 * 1000) return;
+    const timers = [
+      setTimeout(() => { void reconcilePushedNow(); }, untilExpiry + 1_000),
+      setTimeout(() => { void reconcilePushedNow(); }, untilExpiry + 4_000),
+    ];
+    return () => { timers.forEach(clearTimeout); };
+  }, [pushedEmergencyMessage, reconcilePushedNow]);
 
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null);
   // Sprint 13 — live CTS scoreboard state pushed from the CtsBridge via
@@ -6602,6 +6664,28 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     (origin: RefreshOrigin): RefreshAdmission => admitRefresh(origin, liveEvidence()),
     [liveEvidence],
   );
+  // FLT-09 (2026-11-21) — is an alert on the glass, in any form, right now?
+  // Refs only, read live. The durable REFRESH_WEB waits while it is.
+  const refreshAlertOnGlass = useCallback(() => refreshWaitsForAlert({
+    manifestAlert: !!activeEmergencyRef.current || !!contentIsEmergencyRef.current,
+    pushedMessage: !!pushedEmergencyMessageRef.current,
+    polledMessage: polledEmergencyHeldRef.current,
+    pendingOverride: !!pendingOverrideConfirmRef.current,
+  }), []);
+  // The `refreshRequestedAt` value now waiting for an alert to end (one log line per command).
+  const durableRefreshDeferredRef = useRef<unknown>(null);
+  const runDurableRefreshNow = useCallback((manifest: { refreshRequestedAt?: unknown } | null) => {
+    const outcome = maybeExecuteDurableRefresh(manifest, admitRefreshNow, refreshAlertOnGlass);
+    const value = manifest?.refreshRequestedAt;
+    if (outcome === 'deferred') {
+      if (durableRefreshDeferredRef.current !== value) {
+        console.warn('[Player] durable REFRESH_WEB deferred — an alert is on the glass; it runs on the first live manifest answer after the alert ends (not acknowledged until then)');
+      }
+      durableRefreshDeferredRef.current = value;
+    } else {
+      durableRefreshDeferredRef.current = null;
+    }
+  }, [admitRefreshNow, refreshAlertOnGlass]);
 
   // ── 2026-08-25 (v1.1.5) — hand the APK this screen's DEVICE JWT ────────
   //
@@ -8548,6 +8632,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             !!pendingOverrideConfirmRef.current;
           signalDisplayEmergencyHold(holdNow, holdNow, bannerHoldFor(!!activeEmergencyRef.current));
         }
+        // FLT-09 (2026-11-21) — a durable REFRESH_WEB that waited for an alert
+        // to leave the glass runs on the first live answer after it. A 304
+        // re-confirms the applied manifest, so the command it carried is
+        // still the server's (it is not acknowledged while it waits); an
+        // acknowledged or absent one makes this a no-op.
+        if (lastAppliedManifestRef.current) runDurableRefreshNow(lastAppliedManifestRef.current);
         return;
       }
 
@@ -8680,8 +8770,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
         lastAppliedManifestRef.current = manifest;
         appliedWindowSigRef.current = windowSignature(manifest?.playlists, new Date(), screenTimeZoneRef.current);
         // Durable REFRESH_WEB — live manifests only (a disk-cached command
-        // value is either already acked or pointless offline).
-        maybeExecuteDurableRefresh(manifest, admitRefreshNow);
+        // value is either already acked or pointless offline). Runs AFTER the
+        // apply above, so the alert it waits for (FLT-09) is this manifest's.
+        runDurableRefreshNow(manifest);
         // Screen diagnostics (2026-11-08, screenDiagnostics.ts): an open self-test
         // rides the manifest too; fire-and-forget, never touches playback.
         onLiveManifestApplied(manifest, { apiRoot: getApiRoot(), token: getDeviceToken(), screenId });
@@ -8953,6 +9044,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // authenticated manifest to confirm clear through its existing lane.
     if (!active) preemptReconcile();
   }, [preemptReconcile]);
+
+  // EMG-04 — what the overlay's own poll is showing (stable identity: the
+  // overlay lists it as an effect dependency). Read when the first push lands.
+  const onPolledEmergencyMessageChange = useCallback((message: EmergencyMessageView | null) => {
+    polledMessageRef.current = message;
+  }, []);
 
   // 2026-10-23 (launch QA B3b) — the same confirm-through-the-manifest for a
   // PUSHED message that ends (ALL_CLEAR_MESSAGE, the stranded-message
@@ -10298,19 +10395,19 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // EventSource opened (device JWT) and at the Redis fan-out gate;
       // the SSE `handle()` wrapper hands us the inner signed payload.
       const onEmergencyMessage = (type: 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT') => (p: any) => {
-        const message = pushedEmergencyFromPayload(type, p, undefined);
-        signalDisplayEmergencyHold(true, true, isBannerEmergencyMessage(message) && !activeEmergencyRef.current && !pendingOverrideConfirmRef.current);
         // The DB row id arrives as `messageId` in the signed payload (a
         // literal `id` is accepted too). Shared with the WS branch since
         // 2026-10-22 — see `pushedEmergencyMessage.ts`. The SSE `handle()`
         // wrapper hands us only the inner payload, so there is no eventId.
-        pushedEmergencyMessageRef.current = message;
-        setPushedEmergencyMessage(message);
+        // EMG-04: the message joins the held set (hold first, then state —
+        // `commitPushedMessages`); the glass shows the most severe one.
+        acceptPushedMessage(pushedEmergencyFromPayload(type, p, undefined, pushedServerNow));
       };
       handle('SOS', onEmergencyMessage('SOS'));
       handle('TEXT_BROADCAST', onEmergencyMessage('TEXT_BROADCAST'));
       handle('MEDIA_ALERT', onEmergencyMessage('MEDIA_ALERT'));
-      handle('ALL_CLEAR_MESSAGE', () => setPushedEmergencyMessage(null));
+      // EMG-04: removes only the message it names (the signed `messageId`).
+      handle('ALL_CLEAR_MESSAGE', (pl) => clearPushedMessageFromPush(pl, 'SSE'));
       // Tier-3 camera calibration — mirror of the WS branch (a new WS
       // type MUST be handled on both transports or it silently no-ops
       // for SSE-tier screens; recon doc 01 gotcha #12).
@@ -10675,18 +10772,18 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             // no player handler consumed them. The EmergencyOverlay
             // component renders the matching UI; we just set the
             // pushed-message state from the WS payload. ALL_CLEAR_MESSAGE
-            // (emergency.controller.ts:981) clears.
+            // (emergency.controller.ts `clearMessage`) clears ITS OWN id.
             if (msg.type === 'SOS' || msg.type === 'TEXT_BROADCAST' || msg.type === 'MEDIA_ALERT') {
               // Interlock: a pushed alert takes the glass exactly like a
-              // tenant override, so the display hold goes up with it.
-              const message = pushedEmergencyFromPayload(msg.type as 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT', msg.payload, msg.eventId);
-              signalDisplayEmergencyHold(true, true, isBannerEmergencyMessage(message) && !activeEmergencyRef.current && !pendingOverrideConfirmRef.current);
+              // tenant override, so the display hold goes up with it — for
+              // the message the glass will show (`commitPushedMessages`).
               // 2026-10-22 — id = the signed `messageId`, never the eventId
               // (the 12 s reconcile must find it). See pushedEmergencyMessage.ts.
-              pushedEmergencyMessageRef.current = message;
-              setPushedEmergencyMessage(message);
+              // EMG-04: the message joins the held set; it never replaces a
+              // more severe one.
+              acceptPushedMessage(pushedEmergencyFromPayload(msg.type as 'SOS' | 'TEXT_BROADCAST' | 'MEDIA_ALERT', msg.payload, msg.eventId, pushedServerNow));
             } else if (msg.type === 'ALL_CLEAR_MESSAGE') {
-              setPushedEmergencyMessage(null);
+              clearPushedMessageFromPush(msg.payload, 'WS');
             }
             // Sprint 13 — CTS scoreboard updates broadcast from the
             // bridge. The payload carries one CtsFullSnapshot per
@@ -13413,6 +13510,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           // Stable useCallback — see its definition for why.
           onTenantEmergencyHint={onTenantEmergencyHint}
           onPolledActiveChange={onPolledEmergencyActiveChange}
+          onPolledMessageChange={onPolledEmergencyMessageChange}
           onBannerLayoutChange={onBannerLayoutChange}
           fullPresentation={emergencyBannerRefused}
         />

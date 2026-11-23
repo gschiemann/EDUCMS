@@ -57,6 +57,10 @@ import { test, expect, type Page, type Route } from '@playwright/test';
  *      Removing the MEDIA_ALERT branch breaks this. (P0-3.)
  *   8. ALL_CLEAR_MESSAGE removes the overlay. Removing the branch
  *      means a SOS cannot be cleared without a tab reload. (P0-3.)
+ *      8b. Several pushed messages: a lower-severity push never hides a
+ *      CRITICAL one, and a clear removes only the id it names. (EMG-04.)
+ *      8d. A durable REFRESH_WEB (manifest) waits while a pushed broadcast
+ *      is on the glass, unacknowledged, and runs once after it. (FLT-09.)
  *   9. Power-cycle ride-through: a kiosk that boots with a cached
  *      emergency in localStorage shows the overlay on first render,
  *      BEFORE the first manifest poll lands. Breaking the
@@ -1121,13 +1125,14 @@ test.describe('Emergency path — P0-8 regression suite', () => {
     });
     await expect(page.getByText('Will be cleared')).toBeVisible({ timeout: 2_000 });
 
-    // Now clear it.
+    // Now clear it — the real signed shape names the message (EMG-04: a
+    // clear removes only its own id; emergency.controller.ts clearMessage).
     await pushWs(page, {
       type: 'ALL_CLEAR_MESSAGE',
       timestamp: Date.now(),
       eventId: 'acm-evt-1',
       signature: 'fake-sig',
-      payload: {},
+      payload: { messageId: 'sos-2', clearedBy: 'u1' },
     });
 
     await expect(
@@ -1135,6 +1140,114 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       'P0-3 regression: ALL_CLEAR_MESSAGE did not clear pushedEmergencyMessage. ' +
         'The onmessage branch for ALL_CLEAR_MESSAGE was likely removed.',
     ).toBeHidden({ timeout: 2_000 });
+  });
+
+  /**
+   * 8b. EMG-04 (2026-11-21, launch audit) — the player used to hold ONE pushed
+   * message: an INFO banner sent while a CRITICAL SOS was up replaced the SOS,
+   * and ANY ALL_CLEAR_MESSAGE cleared whatever was shown. Now every push is
+   * held by its signed id, the glass shows the most severe (then newest), and
+   * a clear removes only the message it names. Real signed shapes throughout.
+   */
+  test('8b. EMG-04: an INFO broadcast after a CRITICAL SOS keeps the SOS on the glass; a clear removes only its own id', async ({ page }) => {
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+    const inMinutes = (m: number) => Math.floor(Date.now() / 1000) + m * 60;
+    let n = 0;
+    const send = (type: string, payload: Record<string, unknown>) =>
+      pushWs(page, { type, timestamp: Date.now(), eventId: `emg04-evt-${++n}`, signature: 'fake-sig', payload });
+    const sos = page.getByText('SOS — Room 12');
+    const banner = page.locator('[data-edu-emergency-root="banner"]');
+
+    expect(await send('SOS', { messageId: 'sos-emg04', severity: 'CRITICAL', textBlob: 'SOS — Room 12', expiresAt: inMinutes(30) })).toBe(true);
+    await expect(sos).toBeVisible({ timeout: 2_000 });
+
+    // A routine INFO banner arrives while the SOS is up: the SOS stays.
+    expect(await send('TEXT_BROADCAST', { messageId: 'bcast-emg04', severity: 'INFO', text: 'Early dismissal at 1 PM', expiresAt: inMinutes(5) })).toBe(true);
+    await page.waitForTimeout(750);
+    await expect(sos, 'EMG-04 regression: a newer INFO banner replaced a CRITICAL SOS on the glass').toBeVisible();
+    await expect(page.getByText('Early dismissal at 1 PM')).toHaveCount(0);
+    await expect(banner).toHaveCount(0);
+
+    // Clearing the banner, an unknown id, or a clear naming no id: the SOS stays.
+    expect(await send('ALL_CLEAR_MESSAGE', { messageId: 'bcast-emg04', clearedBy: 'u1' })).toBe(true);
+    expect(await send('ALL_CLEAR_MESSAGE', { messageId: 'bcast-other-school', clearedBy: 'u1' })).toBe(true);
+    expect(await send('ALL_CLEAR_MESSAGE', {})).toBe(true);
+    await page.waitForTimeout(750);
+    await expect(sos, 'EMG-04 regression: clearing a different message took the SOS off the glass').toBeVisible();
+
+    // Clearing the SOS by its own id ends it.
+    expect(await send('ALL_CLEAR_MESSAGE', { messageId: 'sos-emg04', clearedBy: 'u1' })).toBe(true);
+    await expect(sos).toBeHidden({ timeout: 2_000 });
+  });
+
+  test('8c. EMG-04: a CRITICAL SOS pushed over a held INFO banner takes the glass; clearing it brings the banner back', async ({ page }) => {
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+    const inMinutes = (m: number) => Math.floor(Date.now() / 1000) + m * 60;
+    let n = 0;
+    const send = (type: string, payload: Record<string, unknown>) =>
+      pushWs(page, { type, timestamp: Date.now(), eventId: `emg04c-evt-${++n}`, signature: 'fake-sig', payload });
+    const banner = page.locator('[data-edu-emergency-root="banner"]');
+
+    expect(await send('TEXT_BROADCAST', { messageId: 'bcast-emg04c', severity: 'INFO', text: 'Library closes early', expiresAt: inMinutes(5) })).toBe(true);
+    await expect(banner).toBeVisible({ timeout: 2_000 });
+    expect(await send('SOS', { messageId: 'sos-emg04c', severity: 'CRITICAL', textBlob: 'SOS — Gym', expiresAt: inMinutes(30) })).toBe(true);
+    await expect(page.getByText('SOS — Gym')).toBeVisible({ timeout: 2_000 });
+    await expect(banner).toHaveCount(0);
+
+    expect(await send('ALL_CLEAR_MESSAGE', { messageId: 'sos-emg04c', clearedBy: 'u1' })).toBe(true);
+    await expect(page.getByText('SOS — Gym')).toBeHidden({ timeout: 2_000 });
+    await expect(banner, 'EMG-04: the still-active banner must come back, not nothing').toBeVisible({ timeout: 2_000 });
+    await expect(banner).toContainText('Library closes early');
+  });
+
+  /**
+   * 8d. FLT-09 (2026-11-21, launch audit) — the durable REFRESH_WEB (the
+   * manifest's `refreshRequestedAt`: an operator Resync, the wedge detector)
+   * had no emergency deferral, so a screen showing a pushed broadcast / SOS
+   * reloaded it off the glass. It now waits, NOT acknowledged (the ack is the
+   * server's "it ran"), and runs on the first live manifest answer after the
+   * alert ends — once (value identity).
+   */
+  test('8d. FLT-09: a durable REFRESH_WEB waits while a pushed broadcast is on the glass and runs once after it', async ({ page }) => {
+    await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+    await waitForPlayerReady(page);
+    const REQ = 1_792_000_123_456;
+    const banner = page.locator('[data-edu-emergency-root="banner"]');
+    expect(await pushWs(page, {
+      type: 'TEXT_BROADCAST', timestamp: Date.now(), eventId: 'flt09-evt-1', signature: 'fake-sig',
+      payload: { messageId: 'bcast-flt09', severity: 'WARN', text: 'Buses are running late', expiresAt: Math.floor(Date.now() / 1000) + 300 },
+    })).toBe(true);
+    await expect(banner).toBeVisible({ timeout: 2_000 });
+    await page.evaluate(() => { (window as unknown as { __flt09Marker?: number }).__flt09Marker = 1; });
+
+    // The command arrives on a live manifest while the broadcast is up.
+    manifestRef.value = baselineManifest({ refreshRequestedAt: REQ, refreshRequestedBy: 'operator' });
+    const before = counters.manifestCalls;
+    expect(await pushWs(page, { type: 'SYNC', timestamp: Date.now(), eventId: 'flt09-evt-2', signature: 'fake-sig', payload: {} })).toBe(true);
+    await expect.poll(() => counters.manifestCalls, { timeout: 10_000 }).toBeGreaterThan(before);
+    await page.waitForTimeout(1_500);
+    expect(
+      await page.evaluate(() => (window as unknown as { __flt09Marker?: number }).__flt09Marker),
+      'FLT-09 regression: the durable REFRESH_WEB reloaded the page while a broadcast was on the glass',
+    ).toBe(1);
+    await expect(banner).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('edu_refresh_ack')), 'a deferred command must not be acknowledged').toBeNull();
+
+    // The broadcast ends: the next live manifest answer runs the command.
+    const reloaded = page.waitForURL(/[?&]_v=/, { timeout: 20_000 });
+    expect(await pushWs(page, {
+      type: 'ALL_CLEAR_MESSAGE', timestamp: Date.now(), eventId: 'flt09-evt-3', signature: 'fake-sig',
+      payload: { messageId: 'bcast-flt09', clearedBy: 'u1' },
+    })).toBe(true);
+    await reloaded;
+    await waitForPlayerReady(page);
+    expect(await page.evaluate(() => localStorage.getItem('edu_refresh_ack'))).toBe(String(REQ));
+    // Value identity: the same command never runs twice.
+    const url = page.url();
+    await page.waitForTimeout(2_000);
+    expect(page.url()).toBe(url);
   });
 
   test('9. power-cycle ride-through: cached emergency renders on first paint', async ({

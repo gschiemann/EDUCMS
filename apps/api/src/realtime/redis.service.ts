@@ -2,7 +2,11 @@ import { Injectable, OnModuleDestroy, OnModuleInit, Logger, Optional } from '@ne
 import { Redis } from 'ioredis';
 import { createHash, randomUUID } from 'crypto';
 import { deviceSecretKeyCandidates } from '../security/key-ring';
-import { bindWsSignatureToChannel, verifyWsHmac } from '../security/ws-signature';
+import {
+  WS_SIG_MAX_AGE_MS,
+  bindWsSignatureToChannel,
+  verifyWsHmac,
+} from '../security/ws-signature';
 import {
   RevocationIndeterminateError,
   type RevocationCertainty,
@@ -119,13 +123,158 @@ const RESTORE_PAGE_SIZE = 1_000;
  */
 const WS_SCOPE_CHANNEL_TYPES = new Set(['tenant', 'group', 'device']);
 
+/** `tenant:<id>` | `group:<id>` | `device:<id>` — exactly the shape the gate delivers. */
+function isScopeChannel(channel: string): boolean {
+  const parts = channel.split(':');
+  return (
+    parts.length === 2 &&
+    parts[1].length > 0 &&
+    WS_SCOPE_CHANNEL_TYPES.has(parts[0])
+  );
+}
+
+// ───────────────────────────────────────────────────────────────────
+// PUSH CHANNEL SURVIVES A REDIS OUTAGE (2026-11-21, EMG-03).
+//
+// THE DEFECT. `retryStrategy` returned null after 3 attempts, so ioredis ended
+// both connections for good after any outage longer than about a second, and
+// `connected` was written only at boot. After a Redis restart the subscriber
+// was gone (no screen got a WS/SSE push until the API was restarted) while
+// `connected` still read true, so `publish()` kept taking the Redis branch —
+// which rejected — and never reached the in-process fallback that would have
+// delivered to every screen connected to this (single) replica.
+//
+// THE RULES NOW:
+//   • Boot still waits at most REDIS_BOOT_CAP_MS (7 s, CLAUDE.md §10) — then it
+//     proceeds without Redis exactly as before.
+//   • After that both connections reconnect forever, backoff capped at
+//     REDIS_RECONNECT_MAX_DELAY_MS. A connection that reaches 'end' anyway
+//     (only a connector fault can do that now) is re-dialled.
+//   • `connected` is the truth: true only while the publisher is ready AND the
+//     subscriber has confirmed its psubscribe on its CURRENT connection; false
+//     the moment either closes. The subscriber re-subscribes itself on every
+//     'ready' (ioredis's own auto-resubscribe is off, so there is one owner).
+//   • While `connected` is false, `publish()` delivers to this process's own
+//     WS + SSE clients and sends nothing to Redis (the offline queue is off on
+//     both connections, so nothing is queued to be replayed later either).
+//   • While it is true, a scope publish Redis does not confirm — rejected,
+//     reached no subscriber at all, or still unanswered when the connection
+//     dropped or after PUBLISH_CONFIRM_MS — is delivered here at once. After a
+//     timeout, every later publish is delivered here FIRST and handed to Redis
+//     second, until Redis confirms one again — so a district fan-out over many
+//     schools pays the wait once, not once per school. In doubt, show.
+//   • ioredis re-sends a command that was in flight when a connection dropped
+//     (`autoResendUnfulfilledCommands`). So a publish this process already
+//     delivered locally can arrive back from Redis later. The gate remembers
+//     each (channel, eventId) it delivered for the signature's own freshness
+//     window and drops the byte-identical second copy — so a late copy can
+//     never re-raise an alert that has since been cleared.
+//   • Revocation continuity (F1 below): a revocation written while the
+//     publisher was away reached only the Postgres mirror, and the continuity
+//     marker survives an outage that did not wipe Redis. So after any lost
+//     connection — and after any revocation write that missed Redis — this
+//     process does not trust the marker again until a restore that STARTED
+//     after the loss has completed. Until then a Redis miss reads Postgres.
+//
+// FAILURE DIRECTION: toward delivery. Every unknown ends in a local delivery;
+// the only thing ever dropped is an exact copy of an envelope this process has
+// already delivered. Revocation lookups fail toward Postgres while Redis is
+// away and until the post-outage restore completes (commands fail fast
+// because the offline queue is off).
+// Kill switch: REDIS_DISABLED=true (existing) — Redis off, polling fallback.
+// ───────────────────────────────────────────────────────────────────
+
+/** CLAUDE.md §10: boot never waits longer than this for Redis. Never raise or remove it. */
+export const REDIS_BOOT_CAP_MS = 7_000;
+/** Reconnect backoff ceiling: never give up, never hammer a recovering Redis. */
+export const REDIS_RECONNECT_MAX_DELAY_MS = 5_000;
+/**
+ * How long `publish()` waits for Redis to confirm a scope publish before
+ * delivering it here. A healthy Redis answers in milliseconds; a false alarm
+ * only costs a local delivery whose Redis copy the gate then drops.
+ */
+export const PUBLISH_CONFIRM_MS = 1_000;
+/** The only channel families the fan-out subscriber listens on. */
+export const FANOUT_PATTERNS = ['tenant:*', 'group:*', 'device:*'] as const;
+/** Bound on the delivered-envelope memory (insertion-ordered, oldest evicted first). */
+const DELIVERED_MAX = 10_000;
+/** One log line per this interval while lookups ride the durable store. */
+const REDIS_FALLBACK_WARN_INTERVAL_MS = 60_000;
+
+/** Delay before reconnect attempt `times` (1-based): 200 ms, 400 ms, … capped. Always a number. */
+export function redisReconnectDelayMs(times: number): number {
+  const n = Number.isFinite(times) && times > 0 ? times : 1;
+  return Math.min(n * 200, REDIS_RECONNECT_MAX_DELAY_MS);
+}
+
+/** What `pushChannelState()` reports to the health probes. */
+export interface PushChannelState {
+  /** A Redis client exists (REDIS_URL set and not REDIS_DISABLED). */
+  configured: boolean;
+  /** Publisher ready, subscriber listening, publishes confirmed: pushes cross Redis. */
+  live: boolean;
+  publisher: string;
+  subscriber: string;
+  /** The subscriber confirmed its psubscribe on its current connection. */
+  subscribed: boolean;
+  /** When the channel was lost (ISO), null while live or unconfigured. */
+  downSince: string | null;
+  /** Plain-words reason while not live, null otherwise. Fixed wording: never an upstream error text. */
+  reason: string | null;
+}
+
+type PublishOutcome =
+  | 'delivered'
+  | 'no-subscriber'
+  | 'rejected'
+  | 'lost'
+  | 'timeout';
+
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   public publisher: Redis | null = null;
   public subscriber: Redis | null = null;
   private gateway: any;
+  /**
+   * The fan-out is up: publisher ready AND subscriber listening (EMG-03).
+   * Written only by `refreshFanoutState()` once `onModuleInit` has attached
+   * the connection watchers (tests that build the service by hand set it).
+   */
   private connected = false;
+  private publisherReady = false;
+  private subscriberListening = false;
+  /** Bumped on every subscriber close, so a late psubscribe reply from an old connection is ignored. */
+  private subscriberEpoch = 0;
+  private subscribing: Promise<void> | null = null;
+  private shuttingDown = false;
+  private watchersAttached = false;
+  private continuityChecked = false;
+  private fanoutDownSince: number | null = null;
+  private fanoutDownReason: string | null = null;
+  /** What the last transition log said (live or not), so each change logs once. */
+  private pushLiveLogged = false;
+  /**
+   * Redis accepted a scope publish and did not answer within
+   * PUBLISH_CONFIRM_MS. Until a publish is confirmed again (or the publisher
+   * reconnects), `publish()` delivers here first and hands Redis a copy second.
+   */
+  private publishUnconfirmed = false;
+  /**
+   * Revocation continuity across an outage (EMG-03). `revocationSkewGen` moves
+   * every time Redis may have missed a revocation (a lost publisher connection,
+   * a revocation write that did not land); `revocationTrustedGen` is the
+   * generation a completed restore STARTED at. The continuity marker is trusted
+   * only once the trusted generation has caught up — both stay 0 in a process
+   * that never lost Redis, which keeps the F1 hot path exactly as it was.
+   */
+  private revocationSkewGen = 0;
+  private revocationTrustedGen = 0;
+  /** Resolvers for publishes awaiting Redis; each is told when the publisher connection closes. */
+  private readonly publisherLossWaiters = new Set<() => void>();
+  /** (channel, eventId) → when this process delivered it. See the EMG-03 block above. */
+  private readonly deliveredEnvelopes = new Map<string, number>();
+  private lastRedisFallbackWarnAt = 0;
 
   // In-memory TTL cache for the Redis-DOWN fallback path only (never
   // consulted while Redis answers), so a sustained Redis outage doesn't
@@ -184,19 +333,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       const baseOpts = {
         maxRetriesPerRequest: 3,
         connectTimeout: 5000,
+        // OFF on both connections, deliberately: a command issued while a
+        // connection is down fails at once (callers fall back) instead of
+        // waiting in a queue to be sent — late — after the reconnect.
         enableOfflineQueue: false,
         lazyConnect: true,
-        retryStrategy: (times: number) => {
-          if (times > 3) {
-            this.logger.warn('Redis unavailable — running without realtime features');
-            return null; // Stop retrying
-          }
-          return Math.min(times * 200, 2000);
-        },
+        // EMG-03: reconnect forever. Returning null here (the old behaviour
+        // after 3 attempts) ends the connection for good.
+        retryStrategy: (times: number) => redisReconnectDelayMs(times),
         reconnectOnError: () => false,
       };
       this.publisher = new Redis(redisUrl, baseOpts);
-      this.subscriber = new Redis(redisUrl, baseOpts);
+      // The subscriber re-subscribes itself on every 'ready' (onSubscriberReady),
+      // so ioredis's own resubscribe is off: one owner, one psubscribe per connection.
+      this.subscriber = new Redis(redisUrl, {
+        ...baseOpts,
+        autoResubscribe: false,
+      });
 
       // Swallow error events — ioredis emits 'error' on every reconnect attempt,
       // and an unhandled 'error' event crashes the Node process.
@@ -233,53 +386,280 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * Read-only, synchronous, never throws. Callers use it to report delivery
    * HONESTLY; nobody should gate a publish on it (the local fallback is
    * still better than dropping the message).
+   *
+   * Since EMG-03 (2026-11-21) it follows the connections live: false from the
+   * moment either Redis connection drops until both are back and the
+   * subscriber has re-subscribed — it used to stay true after an outage.
    */
   isConnected(): boolean {
-    return this.connected === true && !!this.publisher;
+    return (
+      this.connected === true && !this.publishUnconfirmed && !!this.publisher
+    );
   }
 
   async onModuleInit() {
     if (!this.publisher || !this.subscriber) return;
+    // Every state change from here on is driven by the connections' own
+    // events, at boot and after it (EMG-03).
+    this.attachConnectionWatchers();
 
     // Absolute wall-clock cap on Redis bring-up. Boot must never hang
     // on Redis — we'd rather ship realtime over HTTP polling than
     // fail Railway's healthcheck window because ioredis is retrying.
-    const hardCap = new Promise<void>((resolve) => setTimeout(resolve, 7000));
+    let capTimer: ReturnType<typeof setTimeout> | undefined;
+    const hardCap = new Promise<void>((resolve) => {
+      capTimer = setTimeout(resolve, REDIS_BOOT_CAP_MS);
+    });
 
     const bringUp = (async () => {
-      try {
-        await this.publisher!.connect();
-        await this.subscriber!.connect();
-        this.connected = true;
-        this.logger.log('Redis connected successfully');
-        // F1 revocation continuity: restore the mirror into Redis if the
-        // marker is gone, and report an eviction policy that could drop
-        // revocations. Fire-and-forget — boot must never wait on it.
-        void this.checkRevocationContinuityAtBoot();
-
-        this.subscriber!.on('message', this.handleRedisMessage.bind(this));
-        await this.subscriber!.psubscribe('tenant:*', 'group:*', 'device:*');
-
-        this.subscriber!.on('pmessage', (_pattern, channel, message) => {
-          this.handleRedisMessage(channel, message);
-        });
-      } catch (e) {
-        this.logger.warn('Redis connection failed — running without realtime features');
-        this.connected = false;
-      }
-    })();
+      // Both dial in parallel: one failing must not leave the other un-dialled
+      // (the old code never dialled the subscriber when the publisher failed,
+      // so even a later reconnect of the publisher left screens without push).
+      const [, sub] = await Promise.allSettled([
+        this.publisher!.connect(),
+        this.subscriber!.connect(),
+      ]);
+      // The subscriber's 'ready' watcher has started the psubscribe; boot
+      // waits for it (inside the cap) so "connected" means screens get pushes.
+      if (sub.status === 'fulfilled' && this.subscribing)
+        await this.subscribing;
+    })().catch(() => undefined);
 
     await Promise.race([bringUp, hardCap]);
+    if (capTimer) clearTimeout(capTimer);
     if (!this.connected) {
-      this.logger.warn('Redis did not come up within 7s — proceeding with HTTP-polling fallback');
+      const bothUp = this.publisherReady && this.subscriber.status === 'ready';
+      this.markFanoutDown(
+        bothUp
+          ? (this.fanoutDownReason ??
+              "Redis did not confirm the API's push subscription in time")
+          : 'Redis was not reachable when the API started',
+      );
+      this.logger.warn(
+        'Redis is not connected after boot (at most 7 s) — proceeding with the HTTP-polling fallback; ' +
+          "reconnecting in the background (pushes are delivered to this replica's own screens meanwhile)",
+      );
     }
   }
 
   async onModuleDestroy() {
-    try {
-      if (this.publisher) await this.publisher.quit();
-      if (this.subscriber) await this.subscriber.quit();
-    } catch { /* ignore cleanup errors */ }
+    this.shuttingDown = true;
+    // A client that is not 'ready' cannot take QUIT (the offline queue is off,
+    // so ioredis rejects it and keeps its reconnect timer alive), and with
+    // retries that never give up that would hold the process open. Close
+    // those outright; QUIT the ready ones, and close them too if QUIT fails.
+    for (const client of [this.publisher, this.subscriber]) {
+      if (!client) continue;
+      try {
+        if (client.status === 'ready') await client.quit();
+        else client.disconnect();
+      } catch {
+        try {
+          client.disconnect();
+        } catch {
+          /* ignore cleanup errors */
+        }
+      }
+    }
+  }
+
+  // ── Connection state (EMG-03) ──────────────────────────────────────────
+
+  /**
+   * Attach the ready / close / end watchers to both connections, once. They
+   * are the only writers of `connected` from here on.
+   */
+  private attachConnectionWatchers(): void {
+    const pub = this.publisher;
+    const sub = this.subscriber;
+    if (!pub || !sub || this.watchersAttached) return;
+    this.watchersAttached = true;
+
+    pub.on('ready', () => {
+      this.publisherReady = true;
+      // A fresh connection: whatever the old one failed to confirm is moot.
+      this.publishUnconfirmed = false;
+      this.refreshFanoutState();
+      // F1 revocation continuity: restore the mirror into Redis if the marker
+      // is gone, and report an eviction policy that could drop revocations.
+      // Once per process, on the first connection (at boot or after it).
+      // Fire-and-forget — nothing waits on it.
+      if (!this.continuityChecked) {
+        this.continuityChecked = true;
+        void this.checkRevocationContinuityAtBoot();
+      }
+      // EMG-03: back after a loss. Revocations written meanwhile reached only
+      // the Postgres mirror; copy it back before the marker is trusted again.
+      if (!this.revocationContinuityTrusted()) {
+        this.startRevocationRestore('Redis reconnected after an outage');
+      }
+    });
+    pub.on('close', () =>
+      this.onPublisherDown(
+        'the API lost its Redis connection for sending pushes',
+      ),
+    );
+    pub.on('end', () => {
+      this.onPublisherDown(
+        'the API lost its Redis connection for sending pushes',
+      );
+      this.redialAfterEnd(pub);
+    });
+
+    sub.on('ready', () => this.onSubscriberReady());
+    sub.on('close', () =>
+      this.onSubscriberDown(
+        'the API lost its Redis connection for receiving pushes',
+      ),
+    );
+    sub.on('end', () => {
+      this.onSubscriberDown(
+        'the API lost its Redis connection for receiving pushes',
+      );
+      this.redialAfterEnd(sub);
+    });
+    // Attached once, here, so they survive every reconnect (same client object).
+    sub.on('message', (channel: string, message: string) => {
+      this.handleRedisMessage(channel, message);
+    });
+    sub.on('pmessage', (_pattern: string, channel: string, message: string) => {
+      this.handleRedisMessage(channel, message);
+    });
+  }
+
+  private onPublisherDown(reason: string): void {
+    this.publisherReady = false;
+    // Anything written while the publisher is away misses Redis (EMG-03).
+    this.revocationSkewGen++;
+    // A publish still waiting on this connection may be re-sent by ioredis
+    // after the reconnect — late. Deliver it here NOW instead (publishToRedis).
+    for (const lost of [...this.publisherLossWaiters]) lost();
+    this.refreshFanoutState(reason);
+  }
+
+  /** psubscribe on THIS connection; listening only once Redis confirmed it. */
+  private onSubscriberReady(): void {
+    const sub = this.subscriber;
+    if (!sub) return;
+    const epoch = ++this.subscriberEpoch;
+    this.subscribing = (async () => {
+      try {
+        await sub.psubscribe(...FANOUT_PATTERNS);
+      } catch (e) {
+        // The connection dropped mid-subscribe (its next 'ready' tries again)
+        // or Redis refused it. Either way we are not listening: pushes are
+        // delivered on this replica until a psubscribe is confirmed.
+        if (epoch === this.subscriberEpoch) {
+          this.logger.warn(
+            `Redis psubscribe failed (${e instanceof Error ? e.message : e}) — ` +
+              'pushes are delivered on this replica until the subscriber is back',
+          );
+          this.refreshFanoutState("Redis refused the API's push subscription");
+        }
+        return;
+      }
+      if (epoch !== this.subscriberEpoch) return; // a newer connection owns the state
+      this.subscriberListening = true;
+      this.refreshFanoutState();
+    })();
+  }
+
+  private onSubscriberDown(reason: string): void {
+    this.subscriberEpoch++;
+    this.subscriberListening = false;
+    this.refreshFanoutState(reason);
+  }
+
+  /**
+   * With a retryStrategy that always returns a number, ioredis ends a
+   * connection only on a connector fault (or our own quit at shutdown). Dial
+   * it again rather than let the push channel stay dead until a restart.
+   */
+  private redialAfterEnd(client: Redis): void {
+    if (this.shuttingDown) return;
+    const t = setTimeout(() => {
+      if (this.shuttingDown || client.status !== 'end') return;
+      client.connect().catch(() => {
+        /* its close / end watchers take it from here */
+      });
+    }, REDIS_RECONNECT_MAX_DELAY_MS);
+    t.unref?.();
+  }
+
+  /** Recompute `connected` from the two connections, then the logged state. */
+  private refreshFanoutState(reason?: string): void {
+    this.connected = this.publisherReady && this.subscriberListening;
+    this.updatePushLive(reason);
+  }
+
+  /**
+   * Log each change of "pushes cross Redis" once, and keep the plain-words
+   * reason and the since-when for the health probes.
+   */
+  private updatePushLive(reason?: string): void {
+    const live = this.connected && !this.publishUnconfirmed;
+    if (!live && reason && !this.shuttingDown) this.markFanoutDown(reason);
+    if (live === this.pushLiveLogged) return;
+    this.pushLiveLogged = live;
+    if (live) {
+      const downMs =
+        this.fanoutDownSince === null
+          ? null
+          : Date.now() - this.fanoutDownSince;
+      this.fanoutDownSince = null;
+      this.fanoutDownReason = null;
+      this.logger.log(
+        downMs === null
+          ? 'Redis connected successfully'
+          : `Redis push channel restored after ${Math.round(downMs / 1000)} s — pushes cross Redis again`,
+      );
+      return;
+    }
+    if (this.shuttingDown) return;
+    this.markFanoutDown(reason ?? 'a Redis connection is down');
+    this.logger.warn(
+      `Redis push channel lost (${this.fanoutDownReason}) — reconnecting; until it is back this ` +
+        'replica delivers pushes to its own screens directly and every screen polls as the backstop',
+    );
+  }
+
+  private markFanoutDown(reason: string): void {
+    if (this.fanoutDownSince === null) this.fanoutDownSince = Date.now();
+    this.fanoutDownReason = reason;
+  }
+
+  /**
+   * Plain facts about the push channel for the health probes
+   * (`/api/v1/health/emergency-path`, the platform-health email). Never throws.
+   * The reason is fixed wording — never an upstream error text, which could
+   * name an internal host on an unauthenticated endpoint.
+   */
+  pushChannelState(): PushChannelState {
+    const configured = !!this.publisher && !!this.subscriber;
+    const live = configured && this.connected && !this.publishUnconfirmed;
+    let reason: string | null = null;
+    if (configured && !live) {
+      const since =
+        this.fanoutDownSince === null
+          ? ''
+          : `, ${Math.max(0, Math.round((Date.now() - this.fanoutDownSince) / 1000))} s ago`;
+      reason =
+        `Instant push to screens is down: ${this.fanoutDownReason ?? 'Redis is not connected yet'}${since}. ` +
+        'The API reconnects by itself; meanwhile it delivers alerts to the screens connected to it, ' +
+        'and every screen still polls for alerts.';
+    }
+    return {
+      configured,
+      live,
+      publisher: this.publisher?.status ?? 'none',
+      subscriber: this.subscriber?.status ?? 'none',
+      subscribed: this.subscriberListening,
+      downSince:
+        configured && !live && this.fanoutDownSince !== null
+          ? new Date(this.fanoutDownSince).toISOString()
+          : null,
+      reason,
+    };
   }
 
   // Phase B SSE — secondary realtime fan-out. RedisService stays the
@@ -363,6 +743,20 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         signature: signed.signature,
       };
 
+      // EMG-03: at most once per (channel, eventId) on this process. A publish
+      // delivered here because Redis did not confirm it can still arrive back
+      // from Redis later (ioredis re-sends a command that was in flight when
+      // its connection dropped). That copy is byte-identical to one these
+      // screens already have — and, arriving late, it could otherwise re-raise
+      // an alert cleared in between. Checked AFTER the HMAC gate, so only a
+      // verified envelope is ever remembered.
+      if (!this.rememberDelivered(channel, envelope.eventId)) {
+        this.logger.debug(
+          `[WS] Dropped a second copy of ${envelope.eventId} on ${channel} (already delivered)`,
+        );
+        return;
+      }
+
       // Fan to BOTH transports. Either may be unset (e.g. WS gateway
       // not yet wired, or SSE service not present in test env).
       if (this.gateway) this.gateway.broadcastToScope(type, id, envelope);
@@ -380,15 +774,128 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     // already carry a valid signature (unsigned telemetry, test doubles) pass
     // through untouched; this never mints a signature for unsigned data.
     const framed = bindWsSignatureToChannel(payload, channel, this.deviceSecret);
+    const body = JSON.stringify(framed);
     if (this.connected && this.publisher) {
-      await this.publisher.publish(channel, JSON.stringify(framed));
-    } else {
-      // Fallback: If Redis is unavailable (local dev), pipe directly to the resident websocket gateway
-      if (this.gateway) {
-        this.logger.debug(`[Mock Redis] Publishing to channel ${channel}`);
-        this.handleRedisMessage(channel, JSON.stringify(framed));
+      if (!isScopeChannel(channel)) {
+        // Not a screen channel (e.g. `metrics:ack` telemetry, which nothing
+        // subscribes to): unchanged — one PUBLISH, its error to the caller.
+        await this.publisher.publish(channel, body);
+        return;
       }
+      if (this.publishUnconfirmed) {
+        // EMG-03: Redis took an earlier publish and never answered. Deliver
+        // here first, then still hand Redis a copy (it may be slow, not gone);
+        // that copy coming back is dropped by the gate as already delivered,
+        // and its confirmation ends this mode.
+        this.deliverLocally(channel, body);
+        void this.publishToRedis(channel, body);
+        return;
+      }
+      const outcome = await this.publishToRedis(channel, body);
+      if (outcome === 'delivered') return;
+      // EMG-03: Redis did not confirm this one. Deliver it to this process's
+      // own screens now rather than lose it (in doubt, show the alert); a copy
+      // Redis delivers later is dropped by the gate as already delivered.
+      this.logger.warn(
+        `[WS] Redis did not confirm the publish on ${channel} (${outcome}) — delivering on this replica`,
+      );
     }
+    // Fallback: Redis is unavailable (local dev, a Redis-less deploy, or an
+    // outage — EMG-03). Pipe straight to this process's WS gateway + SSE.
+    // Nothing is sent to Redis, so nothing can be replayed after a reconnect.
+    this.deliverLocally(channel, body);
+  }
+
+  /** The in-process delivery: the same gate a Redis message goes through. */
+  private deliverLocally(channel: string, body: string): void {
+    if (this.gateway || this.sse) {
+      this.logger.debug(`[Mock Redis] Publishing to channel ${channel}`);
+      this.handleRedisMessage(channel, body);
+    }
+  }
+
+  /**
+   * One PUBLISH, bounded. Resolves (never rejects) with how it ended:
+   *   delivered      Redis answered and at least one subscriber received it;
+   *   no-subscriber  Redis answered 0 receivers — no replica (not even this
+   *                  one) got it, so delivering here can only help;
+   *   rejected       the command failed (connection not writable, error reply);
+   *   lost           the publisher connection closed while it was in flight —
+   *                  ioredis may re-send it after the reconnect, late;
+   *   timeout        no answer within PUBLISH_CONFIRM_MS (sets
+   *                  `publishUnconfirmed`; a later confirmation clears it).
+   */
+  private publishToRedis(
+    channel: string,
+    body: string,
+  ): Promise<PublishOutcome> {
+    const pub = this.publisher!;
+    return new Promise<PublishOutcome>((resolve) => {
+      let done = false;
+      // Created first, so `finish` can always clear it; it only fires later.
+      const timer = setTimeout(() => {
+        if (done) return;
+        this.setPublishUnconfirmed(true);
+        finish('timeout');
+      }, PUBLISH_CONFIRM_MS);
+      timer.unref?.();
+      const finish = (outcome: PublishOutcome) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        this.publisherLossWaiters.delete(onLost);
+        resolve(outcome);
+      };
+      const onLost = () => finish('lost');
+      this.publisherLossWaiters.add(onLost);
+      let sent: Promise<unknown>;
+      try {
+        sent = Promise.resolve(pub.publish(channel, body));
+      } catch {
+        finish('rejected');
+        return;
+      }
+      sent.then(
+        (receivers) => {
+          // Even a late answer proves Redis is answering again.
+          if (receivers !== 0) this.setPublishUnconfirmed(false);
+          finish(receivers === 0 ? 'no-subscriber' : 'delivered');
+        },
+        () => finish('rejected'),
+      );
+    });
+  }
+
+  private setPublishUnconfirmed(value: boolean): void {
+    if (this.publishUnconfirmed === value) return;
+    this.publishUnconfirmed = value;
+    this.updatePushLive(value ? 'Redis stopped confirming pushes' : undefined);
+  }
+
+  /**
+   * Record that this process delivered (channel, eventId); false when it
+   * already did within the signature's freshness window (beyond that the HMAC
+   * gate drops the envelope as stale anyway). An envelope with no eventId is
+   * always delivered — there is nothing to recognise it by.
+   */
+  private rememberDelivered(channel: string, eventId: unknown): boolean {
+    if (typeof eventId !== 'string' || eventId.length === 0) return true;
+    const now = Date.now();
+    // Expired entries leave from the head (Map keeps insertion order = time order).
+    for (const [k, at] of this.deliveredEnvelopes) {
+      if (now - at < WS_SIG_MAX_AGE_MS) break;
+      this.deliveredEnvelopes.delete(k);
+    }
+    const key = `${channel}\u0000${eventId}`;
+    if (this.deliveredEnvelopes.has(key)) return false;
+    this.deliveredEnvelopes.set(key, now);
+    if (this.deliveredEnvelopes.size > DELIVERED_MAX) {
+      const oldest = this.deliveredEnvelopes.keys().next().value as
+        | string
+        | undefined;
+      if (oldest !== undefined) this.deliveredEnvelopes.delete(oldest);
+    }
+    return true;
   }
 
   /**
@@ -433,6 +940,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     opts?: { ttlSeconds?: number },
   ): Promise<boolean> {
     if (!this.connected || !this.publisher) {
+      this.noteRevocationMissedRedis(key);
       this.logger.warn(
         `Redis unavailable — '${key}' set write skipped; the durable Postgres mirror ` +
           'and the credential epoch remain authoritative',
@@ -442,6 +950,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.publisher.sadd(key, member);
     } catch (e) {
+      this.noteRevocationMissedRedis(key);
       this.logger.warn(
         `Redis set write failed for '${key}' (${e instanceof Error ? e.message : e}) — ` +
           'durable mirror remains authoritative',
@@ -597,16 +1106,32 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         );
         // A hit is a revocation whatever the marker says.
         if (inRaw === 1 || inRestored === 1) return 'revoked';
-        if (intact === 1) return 'clear';
-        // Marker absent: Redis lost data, so this miss proves nothing.
+        const trusted = this.revocationContinuityTrusted();
+        if (intact === 1 && trusted) return 'clear';
+        // Marker absent (Redis lost data), or this process lost Redis since
+        // the last restore (EMG-03): either way this miss proves nothing.
         this.startRevocationRestore(
-          'token lookup found the continuity marker absent',
+          trusted
+            ? 'token lookup found the continuity marker absent'
+            : 'token lookup after a Redis outage, before the restore',
         );
       } catch {
         // Redis answered with an error — fall through to the durable store.
       }
     } else {
-      this.logger.warn('Redis unavailable — token revocation check falling back to durable store');
+      // Every authenticated request lands here while Redis is away (EMG-03:
+      // `connected` now goes false during an outage, not only at boot), so
+      // one line a minute — not one per request.
+      const now = Date.now();
+      if (
+        now - this.lastRedisFallbackWarnAt >=
+        REDIS_FALLBACK_WARN_INTERVAL_MS
+      ) {
+        this.lastRedisFallbackWarnAt = now;
+        this.logger.warn(
+          'Redis unavailable — token revocation check falling back to durable store',
+        );
+      }
     }
     return this.isTokenRevokedInDurableStore(token);
   }
@@ -695,9 +1220,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const key = this.tokenInvalidBeforeKey(userId);
     // Monotonic: never move the marker backwards if two tightenings race
     // (or this runs on multiple replicas) — keep the latest cutoff.
-    const existing = await this.publisher.get(key);
-    const next = existing ? Math.max(parseInt(existing, 10) || 0, epoch) : epoch;
-    await this.publisher.set(key, String(next), 'EX', 60 * 60 * 24 * 30);
+    try {
+      const existing = await this.publisher.get(key);
+      const next = existing
+        ? Math.max(parseInt(existing, 10) || 0, epoch)
+        : epoch;
+      await this.publisher.set(key, String(next), 'EX', 60 * 60 * 24 * 30);
+    } catch (e) {
+      // Only the mirror has it now (EMG-03): stop trusting the marker until
+      // a restore has copied the mirror back. Still thrown, as before.
+      this.noteRevocationMissedRedis(key);
+      throw e;
+    }
   }
 
   /**
@@ -848,11 +1382,15 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
             invalidBefore: Number.isFinite(n) ? n : null,
           };
         }
-        if (intact === 1)
+        const trusted = this.revocationContinuityTrusted();
+        if (intact === 1 && trusted)
           return { certainty: 'confirmed', invalidBefore: null };
-        // Marker absent: Redis lost data, so "no marker" proves nothing.
+        // Marker absent (Redis lost data), or this process lost Redis since
+        // the last restore (EMG-03): either way "no marker" proves nothing.
         this.startRevocationRestore(
-          'invalid-before lookup found the continuity marker absent',
+          trusted
+            ? 'invalid-before lookup found the continuity marker absent'
+            : 'invalid-before lookup after a Redis outage, before the restore',
         );
       } catch {
         // Redis errored — fall through to the durable mirror.
@@ -896,6 +1434,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   // ── Revocation continuity (F1, 2026-11-14) ────────────────────────────
 
   /**
+   * EMG-03: may a Redis miss be trusted (given the marker)? Not after this
+   * process lost Redis, or saw a revocation write miss it, until a restore
+   * that started afterwards has completed. Always true in a process that never
+   * lost Redis — the F1 behaviour, unchanged.
+   */
+  private revocationContinuityTrusted(): boolean {
+    return this.revocationTrustedGen >= this.revocationSkewGen;
+  }
+
+  /** A revocation reached only the Postgres mirror: Redis lags it until a restore. */
+  private noteRevocationMissedRedis(key: string): void {
+    if (key === 'jwt_revoked_list' || key.startsWith('jwt_invalid_before:')) {
+      this.revocationSkewGen++;
+    }
+  }
+
+  /**
    * Run read commands in ONE round trip and return their results in order.
    * Throws if the pipeline or ANY command in it failed — the callers treat
    * that exactly like the Redis error they already handle (durable store).
@@ -922,7 +1477,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     if (now - this.lastRestoreAttemptAt < RedisService.RESTORE_RETRY_MS) return;
     this.lastRestoreAttemptAt = now;
     this.logger.warn(
-      `Revocation continuity marker absent (${reason}) — Redis lost revocation data; ` +
+      `Revocation continuity not proven (${reason}) — Redis may be missing revocations; ` +
         'lookups read the Postgres mirror until the restore completes',
     );
     this.restoreInFlight = this.restoreRevocationsFromDurable()
@@ -954,6 +1509,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    */
   async restoreRevocationsFromDurable(): Promise<boolean> {
     if (!this.publisher || !this.prismaService) return false;
+    // Everything Redis may have missed before this point is in the mirror
+    // this run copies; a miss AFTER it moves the generation on again.
+    const startedAtGen = this.revocationSkewGen;
     const runId = randomUUID();
     // Expires on its own if this process dies mid-run; a later run writes its own.
     await this.publisher.set(REVOCATION_RESTORE_RUN_KEY, runId, 'EX', 15 * 60);
@@ -1035,6 +1593,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       new Date().toISOString(),
     );
     if (marked === 1) {
+      this.revocationTrustedGen = Math.max(
+        this.revocationTrustedGen,
+        startedAtGen,
+      );
       this.logger.log(
         `Revocation continuity restored from the Postgres mirror ` +
           `(${restoredUsers} user markers, ${restoredTokens} revoked tokens)`,

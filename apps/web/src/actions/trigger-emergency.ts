@@ -14,6 +14,41 @@ import { emergencyAllClearBody, emergencyTriggerBody } from '@/lib/emergency-tar
 // life-safety moment indefinitely.
 const EMERGENCY_FETCH_TIMEOUT_MS = 12000;
 
+// EMG-01 review round 3 — the response BODY, bounded. `fetchWithTimeout`
+// bounds the request until the headers arrive and then clears its timer, so
+// an unbounded `res.json()` on a body that stalls would hold the operator's
+// trigger or all-clear pending — and a server-action timeout would then read
+// as "NOT sent" for a request the server had already accepted. The status
+// line is the verdict; the body only adds detail. A body that has not arrived
+// within this budget reads as "no JSON body", which every caller below
+// already handles (success stays success, a refusal stays a refusal).
+const EMERGENCY_BODY_READ_TIMEOUT_MS = 3000;
+
+/**
+ * The JSON object `res` carries, or `null` when the body is not a JSON object
+ * or does not arrive within the budget. Never throws.
+ */
+async function readJsonWithin(
+  res: Response,
+  ms: number = EMERGENCY_BODY_READ_TIMEOUT_MS,
+): Promise<Record<string, unknown> | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  try {
+    const value: unknown = await Promise.race([
+      Promise.resolve()
+        .then(() => res.json() as Promise<unknown>)
+        .catch(() => null),
+      late,
+    ]);
+    return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 interface EmergencyPayload {
   schoolId: string;
   type: string;
@@ -76,13 +111,10 @@ export async function broadcastEmergency(payload: EmergencyPayload): Promise<Bro
     // follows — a drill refused over a live alert (409) must say WHY.
     let serverMessage = '';
     let code: string | undefined;
-    try {
-      const body = await res.json();
-      if (body && typeof body.message === 'string') serverMessage = body.message;
-      if (body && typeof body.code === 'string') code = body.code;
-    } catch {
-      /* no JSON body */
-    }
+    // Bounded (review round 3): a stalled body never holds the operator.
+    const body = await readJsonWithin(res);
+    if (body && typeof body.message === 'string') serverMessage = body.message;
+    if (body && typeof body.code === 'string') code = body.code;
     return {
       success: false,
       error: `Emergency broadcast failed: ${res.status}${serverMessage ? ` — ${serverMessage}` : ''}`,
@@ -96,13 +128,12 @@ export async function broadcastEmergency(payload: EmergencyPayload): Promise<Bro
   let overrideId: string | undefined;
   // Group / one-screen alerts: how many screens the server says it took over.
   let affectedScreenCount: number | undefined;
-  try {
-    const data = await res.json();
-    if (data && typeof data.overrideId === 'string') overrideId = data.overrideId;
-    if (data && typeof data.affectedScreenCount === 'number') affectedScreenCount = data.affectedScreenCount;
-  } catch {
-    /* response body not JSON; ignore — overrideId stays undefined */
-  }
+  // Bounded (review round 3): the 2xx is the verdict. A body that is not
+  // JSON, or that stalls past the budget, leaves overrideId undefined — the
+  // all-clear then names no id and clears exactly as before alert identity.
+  const data = await readJsonWithin(res);
+  if (data && typeof data.overrideId === 'string') overrideId = data.overrideId;
+  if (data && typeof data.affectedScreenCount === 'number') affectedScreenCount = data.affectedScreenCount;
 
   // 2026-05-23 launch audit P2 #4 — removed the `revalidatePath`
   // call that passed a literal "[schoolId]" string. Server Actions
@@ -111,6 +142,43 @@ export async function broadcastEmergency(payload: EmergencyPayload): Promise<Bro
   // so removing the dead call has no behavior change.
 
   return { success: true, overrideId, ...(affectedScreenCount !== undefined ? { affectedScreenCount } : {}) };
+}
+
+/** What `allClearEmergency` resolves with. It never throws. */
+export interface AllClearEmergencyResult {
+  success: boolean;
+  /** Starts with "All clear failed: <status>" — the surfaces route on 401/403/network. */
+  error?: string;
+  /**
+   * The server's error code when it sent one. `ALERT_CHANGED` (EMG-01,
+   * 2026-11-21): the alert this all-clear named was replaced by a newer one,
+   * and NOTHING was cleared — the newer alert is still on every screen.
+   */
+  code?: string;
+  /** With `ALERT_CHANGED`: the incident type of the alert that is active now ("LOCKDOWN"). */
+  currentAlertType?: string | null;
+  /**
+   * With `ALERT_CHANGED` (review round 2): the alert that is active now, as
+   * the server described it — its id, the tenant it is on and whether it is
+   * a drill. The surfaces use it to aim the operator's NEXT, freshly
+   * confirmed all-clear at that alert, so a list that cannot be re-read does
+   * not resend the replaced id forever.
+   */
+  currentAlert?: { alertId: string; scopeId: string | null; type: string | null; isDrill: boolean } | null;
+  /**
+   * On success (review round 2): the child locations a district all-clear
+   * left alone because each holds its own, different alert. They are still
+   * in alert on their screens. Review round 3: one entry per kept ALERT (the
+   * server reports the topmost location holding each, the entry its alert
+   * list shows), so its length is the number of alerts kept.
+   */
+  keptTenantIds?: string[];
+  /**
+   * With `keptTenantIds` (review round 3): true only when the caller's own
+   * alert list (/panic, the overlay) shows those alerts. Absent or false =
+   * it does not, and the operator is told who can end them instead.
+   */
+  keptListedForCaller?: boolean;
 }
 
 export async function allClearEmergency(payload: {
@@ -126,7 +194,7 @@ export async function allClearEmergency(payload: {
   scopeId?: string;
   /** 2026-10-10 — "End Drill": the server may end drill state only, never a live alert. */
   isDrill?: boolean;
-}) {
+}): Promise<AllClearEmergencyResult> {
   const API_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
   // emergency-002 fix: previously this hardcoded the literal string
@@ -161,9 +229,67 @@ export async function allClearEmergency(payload: {
   }
 
   if (!res.ok) {
-    return { success: false, error: `All clear failed: ${res.status}` };
+    // EMG-01 (2026-11-21) — a 409 `ALERT_CHANGED` means the alert this
+    // all-clear named was replaced by a newer one and nothing was cleared.
+    // Pass the code and the newer alert's type through so the overlay and
+    // /panic can say so in the operator's language. The error string keeps
+    // its "All clear failed: <status>" head exactly as before.
+    let code: string | undefined;
+    let currentAlertType: string | null | undefined;
+    let currentAlert: AllClearEmergencyResult['currentAlert'];
+    const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+    // Bounded (review round 3): a refusal whose body stalls is still a refusal.
+    const body = await readJsonWithin(res);
+    if (body && typeof body.code === 'string') code = body.code;
+    // The API's method-scoped filter sends the newer alert both nested
+    // (`currentAlert.type`) and flat (`currentAlertType`); read either.
+    const nested =
+      body && body.currentAlert && typeof body.currentAlert === 'object'
+        ? (body.currentAlert as { alertId?: unknown; scopeId?: unknown; type?: unknown; isDrill?: unknown })
+        : null;
+    if (nested) currentAlertType = str(nested.type);
+    if (!currentAlertType && body && str(body.currentAlertType)) {
+      currentAlertType = str(body.currentAlertType);
+    }
+    // Review round 2 — the newer alert's own id, nested or flat. Only a 409
+    // ALERT_CHANGED carries it; without an id there is nothing to aim at.
+    const alertId = str(nested?.alertId) ?? str(body?.currentAlertId);
+    if (code === 'ALERT_CHANGED' && alertId) {
+      currentAlert = {
+        alertId,
+        scopeId: str(nested?.scopeId),
+        type: currentAlertType ?? null,
+        isDrill: nested ? nested.isDrill === true : body?.currentAlertIsDrill === true,
+      };
+    }
+    return {
+      success: false,
+      error: `All clear failed: ${res.status}`,
+      ...(code ? { code } : {}),
+      ...(currentAlertType !== undefined ? { currentAlertType } : {}),
+      ...(currentAlert ? { currentAlert } : {}),
+    };
   }
 
   // See above — same dead `revalidatePath` removed (audit P2 #4).
-  return { success: true };
+  // Review round 2 — a district all-clear reports the child locations it
+  // left alone (each holds its own, different alert), so the dashboard can
+  // say so before its lock comes down. Any other body is plain success.
+  //
+  // Review round 3 — the 2xx is the verdict, so the body read is BOUNDED
+  // (master never read this body; a stalled one must never leave the
+  // operator's all-clear pending, nor turn a landed all-clear into "NOT
+  // sent"). Past the budget it is plain success. The server reports one
+  // entry per kept ALERT, and whether this caller's alert list shows them.
+  const body = await readJsonWithin(res);
+  const keptTenantIds: string[] =
+    body && Array.isArray(body.keptTenantIds)
+      ? Array.from(
+          new Set<string>(
+            body.keptTenantIds.filter((v: unknown): v is string => typeof v === 'string' && v.length > 0),
+          ),
+        )
+      : [];
+  if (keptTenantIds.length === 0) return { success: true };
+  return { success: true, keptTenantIds, keptListedForCaller: body?.keptListedForCaller === true };
 }

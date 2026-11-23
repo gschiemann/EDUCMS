@@ -20,6 +20,12 @@
  * `playlistItem.count` read — empty by default, so the manifest still falls
  * back to the system-default board exactly as before) and `emergencyIsDrill`
  * on `tenant.updateMany`'s where-clause (the drill all-clear's compare-and-set).
+ *
+ * 2026-11-21 (EMG-01), inert for every suite that names only an id: the
+ * tenant writes honour `emergencyAlertId` / `emergencyStatus` / `OR` in their
+ * where-clause (the tenant all-clear's compare-and-set), and `tenant.update`
+ * on an existing row that the filter does not match throws P2025, as Prisma
+ * does.
  */
 import { EmergencyController } from './emergency.controller';
 import { ScreensController } from '../screens/screens.controller';
@@ -133,6 +139,16 @@ export function makeWorld() {
     return true;
   };
 
+  const tenantMatches = (t: Row, where: any): boolean => {
+    if (!where) return true;
+    if (where.id !== undefined && !idMatches(t.id, where.id)) return false;
+    if (where.emergencyIsDrill !== undefined && (t.emergencyIsDrill === true) !== where.emergencyIsDrill) return false;
+    if (where.emergencyAlertId !== undefined && !idMatches(t.emergencyAlertId ?? null, where.emergencyAlertId)) return false;
+    if (where.emergencyStatus !== undefined && !idMatches(t.emergencyStatus, where.emergencyStatus)) return false;
+    if (Array.isArray(where.OR) && !where.OR.some((c: any) => tenantMatches(t, c))) return false;
+    return true;
+  };
+
   const overrideMatches = (row: Row, where: any): boolean => {
     if (!where) return true;
     if (where.tenantId !== undefined && !idMatches(row.tenantId, where.tenantId)) return false;
@@ -165,15 +181,19 @@ export function makeWorld() {
       ),
       update: jest.fn(async ({ where, data }: any) => {
         const t = tenants.get(where.id);
+        // EMG-01 — a compare-and-set that matches no row is P2025, as in Prisma.
+        if (t && !tenantMatches(t, where)) {
+          throw Object.assign(new Error('Record to update not found.'), { code: 'P2025' });
+        }
         if (t) Object.assign(t, data);
         return t;
       }),
       updateMany: jest.fn(async ({ where, data }: any) => {
         let count = 0;
         for (const t of tenants.values()) {
-          if (!idMatches(t.id, where?.id)) continue;
-          // The drill all-clear's compare-and-set (2026-10-10).
-          if (where?.emergencyIsDrill !== undefined && (t.emergencyIsDrill === true) !== where.emergencyIsDrill) continue;
+          // The drill all-clear's compare-and-set (2026-10-10) and the tenant
+          // all-clear's alert-identity guard (EMG-01).
+          if (!tenantMatches(t, where)) continue;
           Object.assign(t, data);
           count++;
         }
