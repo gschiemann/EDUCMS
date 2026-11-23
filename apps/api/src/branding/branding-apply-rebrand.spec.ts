@@ -407,7 +407,7 @@ describe('applyBrandToTemplates — rebrand', () => {
   it('runs with a transaction timeout a large tenant does not hit', async () => {
     const { ctrl, client } = build([rebrandedBoard('t1', 'ten1')]);
     await ctrl.applyBrandToTemplates(req, {});
-    expect(client.$transaction.mock.calls[0][1]).toEqual({
+    expect((client.$transaction.mock.calls[0] as any[])[1]).toEqual({
       timeout: 30_000,
       maxWait: 10_000,
     });
