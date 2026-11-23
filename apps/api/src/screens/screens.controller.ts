@@ -4731,6 +4731,10 @@ export class ScreensController {
    *   5. Per-address ceiling: `@Throttle` keyed on the client address,
    *      4× a bridge's 5 Hz maximum. The route is deliberately NOT in
    *      `DEVICE_THROTTLE_ROUTES` (see `security/device-throttle-key.ts`).
+   * The order is deliberate: an oversize or malformed body is answered 413 or
+   * 400 before the credential is read, so a caller without one gets that
+   * answer rather than 401. It depends on the body alone and says nothing
+   * about the screen or its credential.
    */
   @Post(':id/game-state')
   @Throttle({
