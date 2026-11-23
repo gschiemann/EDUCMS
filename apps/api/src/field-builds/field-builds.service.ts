@@ -52,8 +52,11 @@
  *   - a window or push of more than one screen must be ONE hardware class;
  *   - a push of more than one screen goes out only 22:00–06:00 in every
  *     screen's own time zone;
- *   - a push goes only to a bench screen when PLAYER_FIELD_BENCH_SCREENS is
- *     set (the update check holds any other screen on its build as well).
+ *   - a push goes only to a bench screen listed in PLAYER_FIELD_BENCH_SCREENS;
+ *     with no list set no screen is one (fail closed since 2026-11-23, FLT-02;
+ *     PLAYER_FIELD_BENCH_FAIL_OPEN=1 restores the old reading of an unset
+ *     list). The update check never offers a field build to any other screen
+ *     either: it answers such a screen from the stable ladder.
  * The first two yield to `overrideMassPushRules: true` on the request — the
  * dashboard does not send it — and the arm and push rows record the override
  * and the rules it set aside. The bench list has no override.
@@ -74,7 +77,7 @@ import { evaluateReleaseForFleet } from '../player-ota/release-policy';
 import {
   evaluateHardwareClasses,
   evaluateOffHours,
-  isFieldBenchScreen,
+  fieldBenchVerdict,
   type MassPushRule,
 } from '../player-ota/fleet-push-policy';
 import { armScreenApkUpdate, cancelScreenApkUpdate, newCorrId } from '../screens/screen-commands';
@@ -981,9 +984,24 @@ export class FieldBuildsService {
     for (const s of inside) await assertSupportReach(user, s.tenantId);
     const targets = input.screenIds.map((sid) => inside.find((x) => x.id === sid)!);
     // A field build goes only to a bench screen (PLAYER_FIELD_BENCH_SCREENS;
-    // unset = every screen, as before). No override: the variable is the switch.
-    const offBench = targets.filter((s) => !isFieldBenchScreen(s.id));
-    if (offBench.length) throw refusal(benchRefusal(offBench.map((s) => ({ id: s.id, name: s.name ?? null }))));
+    // unset = no bench screen, FLT-02). No override on the request: the
+    // variables are the switch.
+    const offBench = targets
+      .map((s) => ({ s, bench: fieldBenchVerdict(s.id) }))
+      .filter((x) => !x.bench.bench);
+    if (offBench.length) {
+      const listConfigured = !offBench.some((x) => x.bench.reason === 'no-bench-list');
+      this.logger.warn(
+        `[field-builds] push refused window=${w.id} reason=${listConfigured ? 'not-a-bench-screen' : 'no-bench-list'} ` +
+          `screens=${offBench.map((x) => x.s.id).join(',')} by=${actorId(user) ?? '-'}`,
+      );
+      throw refusal(
+        benchRefusal(
+          offBench.map((x) => ({ id: x.s.id, name: x.s.name ?? null })),
+          { listConfigured },
+        ),
+      );
+    }
     // One hardware class, off-hours — for a push to more than one screen.
     const overridden = this.massPushRules('push', targets, { override, now });
 

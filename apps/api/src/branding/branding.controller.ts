@@ -33,6 +33,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
+import { hasTenantId } from '../auth/require-tenant';
 import { AppRole, Prisma } from '@cms/database';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
@@ -714,6 +715,7 @@ export class BrandingController {
   @UseGuards(JwtAuthGuard)
   async getMine(@Request() req: any) {
     const tenantId = req.user.tenantId;
+    if (!hasTenantId(tenantId)) return null; // SDW-01: no tenant, no branding row
     const b = await this.prisma.client.tenantBranding.findUnique({ where: { tenantId } });
     return b ?? null;
   }

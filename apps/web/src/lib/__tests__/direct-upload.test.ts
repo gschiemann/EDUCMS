@@ -37,6 +37,7 @@ import {
   type DirectUploadDeps,
   type XhrResult,
 } from '../direct-upload';
+import { hasUnsavedWork } from '../unsaved-work';
 
 const MB = 1024 * 1024;
 const PATH = 'tenant-1/0f6b1c2d-3e4f-4a5b-8c9d-0e1f2a3b4c5d.mp4';
@@ -488,5 +489,23 @@ describe('helpers', () => {
   });
   it('tusMetadata base64-encodes UTF-8 values', () => {
     expect(tusMetadata({ objectName: 'a/b.mp4', name: 'é' })).toBe(`objectName ${btoa('a/b.mp4')},name ${btoa('\xc3\xa9')}`);
+  });
+});
+
+describe('uploadAssetDirect and unsaved work', () => {
+  it('counts as unsaved work while a transfer is in flight, and not once it settles', async () => {
+    const answers: Array<{ resolve: (v: unknown) => void; reject: (e: unknown) => void }> = [];
+    const postJson = <T,>() => new Promise<T>((resolve, reject) => { answers.push({ resolve: resolve as (v: unknown) => void, reject }); });
+    expect(hasUnsavedWork()).toBe(false);
+    const first = uploadAssetDirect(file(1024, 'image/png', 'a.png'), { deps: { postJson } });
+    const second = uploadAssetDirect(file(1024, 'image/png', 'b.png'), { deps: { postJson } });
+    await Promise.resolve();
+    expect(hasUnsavedWork()).toBe(true);
+    answers[0].reject(new Error('offline'));
+    await expect(first).rejects.toBeDefined();
+    expect(hasUnsavedWork()).toBe(true); // the other one is still going
+    answers[1].reject(new Error('offline'));
+    await expect(second).rejects.toBeDefined();
+    expect(hasUnsavedWork()).toBe(false);
   });
 });

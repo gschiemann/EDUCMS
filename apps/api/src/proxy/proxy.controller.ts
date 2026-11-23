@@ -15,6 +15,7 @@ import type { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { safeFetch, SsrfError, FetchTooLargeError, assertPublicUrl } from '../branding/safe-fetch';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { hasTenantId } from '../auth/require-tenant';
 import { RendererService, type RenderGrant } from './renderer.service';
 import { mintRenderCapability, verifyRenderCapability } from './render-capability';
 import {
@@ -985,10 +986,20 @@ window.addEventListener('load',function(){
         HttpStatus.FORBIDDEN,
       );
     }
+    // SDW-01: a capability belongs to a tenant. Every person and API key has
+    // one, and a screen has one once it is paired; a principal without one
+    // (an unpaired screen's credential reaching here would be a bug upstream)
+    // gets no capability.
+    if (!hasTenantId(user.tenantId)) {
+      throw new HttpException(
+        { code: 'PROXY_CAPABILITY_NO_TENANT', message: 'Not permitted' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
 
     const minted = mintRenderCapability({
       url: raw,
-      tenantId: typeof user.tenantId === 'string' ? user.tenantId : null,
+      tenantId: user.tenantId,
       principalKind,
       principalId,
     });

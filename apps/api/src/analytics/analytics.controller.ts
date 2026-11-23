@@ -27,6 +27,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RbacGuard } from '../auth/rbac.guard';
 import { RequireRoles } from '../auth/roles.decorator';
+import { hasTenantId } from '../auth/require-tenant';
 import { AppRole } from '@cms/database';
 import {
   RollupCapableClient,
@@ -121,6 +122,11 @@ export class AnalyticsController {
     }
 
     const tenantId = user.tenantId;
+    // SDW-01: every row belongs to a tenant. A writer without one is refused
+    // here with a 403 instead of failing the insert.
+    if (!hasTenantId(tenantId)) {
+      throw new ForbiddenException({ code: 'ANALYTICS_TOUCH_EVENTS_NO_TENANT', message: 'Not allowed to write touch events.' });
+    }
     // Bind screenId to the JWT identity, NOT the request body. A
     // client-supplied screenId let a malicious player rotate it on
     // every batch to bypass the per-screen rate limit. Device tokens

@@ -1,4 +1,5 @@
 import { clearUploadJobs, enqueueUploadJob, updateUploadItems, useUploadJobStore, type UploadItem } from '../upload-job-store';
+import { hasUnsavedWork } from '@/lib/unsaved-work';
 import { useUIStore } from '@/store/ui-store';
 
 const identity = (tenantId = 'alpha', id = 'operator') => useUIStore.setState({ user: { id, tenantId } as never });
@@ -67,4 +68,17 @@ it('removing a row through Clear done also releases its runner', async () => {
   updateUploadItems(() => []);
   await settle();
   expect(run).not.toHaveBeenCalled();
+});
+
+it('an unfinished upload, queued, running or paused, counts as unsaved work; a finished one does not', () => {
+  const at = (phase: UploadItem['phase'], paused = false): UploadItem => ({ ...item('w'), phase, paused });
+  for (const [row, dirty] of [
+    [at('idle'), true], [at('idle', true), true], [at('uploading'), true], [at('processing'), true],
+    [at('success'), false], [at('pending-review'), false], [at('error'), false],
+  ] as const) {
+    updateUploadItems(() => [row]);
+    expect([row.phase, row.paused, hasUnsavedWork()]).toEqual([row.phase, row.paused, dirty]);
+  }
+  updateUploadItems(() => []);
+  expect(hasUnsavedWork()).toBe(false);
 });

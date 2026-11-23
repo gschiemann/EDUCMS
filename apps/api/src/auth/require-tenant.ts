@@ -2,6 +2,16 @@ import { ForbiddenException } from '@nestjs/common';
 import { AppRole } from '@cms/database';
 
 /**
+ * True when `value` is a usable tenant id: a non-empty string. The check every
+ * handler that a device principal can reach makes before it puts a tenant id
+ * into a Prisma `where` (SDW-01): without a usable tenant the handler answers
+ * before any query runs.
+ */
+export function hasTenantId(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
  * Resolve the caller's tenant scope, REJECTING a token that carries none.
  *
  * Why this exists (2026-07-25 audit): a device JWT (`kind:'device'`) has no
