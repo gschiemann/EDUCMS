@@ -96,6 +96,7 @@ import { HttpCode, NotFoundException, UnprocessableEntityException } from '@nest
 import { playlistEmergencyUse, type EmergencyUseDb } from '../emergency/emergency-content-use';
 import { DesignerJobsService, type DesignerJobStatus, type DesignerJobView } from './designer-jobs/designer-jobs.service';
 import { buildDesignerJobRequest, replayableRequest } from './designer-jobs/designer-job-request';
+import { brandKitSnapshot, patchZoneIdentity } from '../branding/brand-identity';
 // AI board HISTORY (2026-09-23) — the list of finished batches (GET generate-designer/jobs).
 import { DesignerJobHistoryQuerySchema, type DesignerJobHistoryQuery, type DesignerHistoryPage } from './designer-jobs/designer-job-history';
 
@@ -517,6 +518,8 @@ export class TemplatesController {
     // the tenant's actual school instead of the placeholder
     // "WESTRIDGE WILDCATS" defaults.
     displayName: string | null;
+    tagline: string | null;
+    logoUrl: string | null;
     palette: any | null;
   }> {
     const b = await this.prisma.client.tenantBranding.findUnique({
@@ -529,35 +532,34 @@ export class TemplatesController {
         logoSvgInline: true,
         faviconUrl: true,
         displayName: true,
+        tagline: true,
         sourceUrl: true,
         scrapedAt: true,
         fontHeadingUrl: true,
         fontBodyUrl: true,
       },
     }).catch(() => null);
-    if (!b) return { surface: null, ink: null, fontHeading: null, fontBody: null, brandKit: null, displayName: null, palette: null };
+    if (!b) return { surface: null, ink: null, fontHeading: null, fontBody: null, brandKit: null, displayName: null, tagline: null, logoUrl: null, palette: null };
     const palette = (b.palette as any) || {};
     const surface = palette.surface || palette.surfaceAlt || null;
     const ink = palette.ink || null;
     // Compose a Template.brandKit JSON identical in shape to what
     // BrandKitPanel writes via /branding/templates/:id/adopt, so the
     // editor's "this template's brand" preview lights up immediately.
-    const brandKit = {
-      palette,
-      logoUrl: b.logoUrl,
-      logoSvgInline: b.logoSvgInline,
-      faviconUrl: b.faviconUrl,
+    // The same snapshot apply-to-templates writes (brand-identity.ts),
+    // tagline included, so a later rebrand recognises what this one stamped.
+    const brandKit = brandKitSnapshot({ ...b, palette });
+    return {
+      surface,
+      ink,
       fontHeading: b.fontHeading,
       fontBody: b.fontBody,
-      fontHeadingUrl: b.fontHeadingUrl,
-      fontBodyUrl: b.fontBodyUrl,
+      brandKit,
       displayName: b.displayName,
-      sourceUrl: b.sourceUrl,
-      scrapedAt: b.scrapedAt ? new Date(b.scrapedAt).toISOString() : null,
-      inheritedAt: new Date().toISOString(),
-      inheritedFrom: 'tenant-branding',
+      tagline: b.tagline ?? null,
+      logoUrl: b.logoUrl ?? null,
+      palette,
     };
-    return { surface, ink, fontHeading: b.fontHeading, fontBody: b.fontBody, brandKit, displayName: b.displayName, palette };
   }
 
   /**
@@ -582,6 +584,8 @@ export class TemplatesController {
       ink: string | null;
       fontHeading: string | null;
       displayName?: string | null;
+      tagline?: string | null;
+      logoUrl?: string | null;
       palette?: any | null;
     },
     widgetType?: string,
@@ -616,17 +620,8 @@ export class TemplatesController {
     // schoolEst, department, greetingEyebrow). Pre-populate with the
     // tenant's brand so the demo doesn't open with placeholder text.
     if (widgetType?.startsWith('HS_') && brand.displayName) {
-      const upper = brand.displayName.toUpperCase();
-      const initials = brand.displayName
-        .split(/[\s\-_/]+/)
-        .filter(Boolean)
-        .filter((w) => !/^(the|of|at|and|for|in|a|an)$/i.test(w))
-        .slice(0, 3)
-        .map((w) => w[0])
-        .join('')
-        .toUpperCase();
-      if (cfg.schoolName === undefined) cfg.schoolName = upper;
-      if (cfg.schoolInitials === undefined && initials.length > 0) cfg.schoolInitials = initials;
+      // schoolName (uppercased) + schoolInitials are filled by the shared
+      // identity pass below (brand-identity.ts), same fill-blanks rule.
       // Mascot/team-name greeting eyebrow — best-guess from the
       // displayName. "Buena Park High School Bulldogs" → "BULLDOGS".
       // "Lincoln HS" → falls through (no extractable mascot).
@@ -646,7 +641,12 @@ export class TemplatesController {
       if (palette.accent && cfg.brandAccent === undefined) cfg.brandAccent = palette.accent;
     }
 
-    return cfg;
+    // Identity (2026-11-23): the organisation name, tagline, initials and
+    // logo into board text fields / logo slots, LOGO, HS_* and schoolName
+    // widgets. A new template has no previous brand, so this fills blanks
+    // only — a preset's or the request's own text always wins.
+    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return cfg;
+    return patchZoneIdentity({ widgetType: widgetType || '', cfg }, brand, null, 'fill-blanks').cfg;
   }
 
   // ───────────────────────────────────────────────────────
