@@ -9,22 +9,48 @@
  * the mocked TIME_PONG / /realtime/time responses — exactly the
  * production topology collapsed onto one machine).
  *
- * What is asserted (all read from the conductor's own server-time-stamped
- * flip log, window.__eduSyncFlips — so the assertions are IMMUNE to test-
- * process scheduling jitter; we compare what each screen says about the
- * same timeline boundary, not when Playwright happened to look):
+ * Everything is read from the conductor's own flip log,
+ * window.__eduSyncFlips (fields documented beside the push in
+ * player/page.tsx), so it is immune to when Playwright happens to look.
+ *
+ * What is asserted (2026-11-23 — measurement fixed; see below):
  *
  *   1. Both screens lock their clocks (uncertainty gate passes).
- *   2. EPOCH ANCHORING: every flip on both screens lands on the shared
- *      absolute boundary grid (itemStart ≡ 0 mod slotMs — anchor is the
- *      Unix epoch, so with equal slot durations every boundary is an
- *      exact multiple of the slot in server time).
- *   3. LOCKSTEP: for each boundary both screens crossed, their flip
- *      decisions agree within SKEW_BOUND_MS — generous for CI runners;
- *      physical hardware measures far tighter (see HUD ?synchud=1).
- *   4. LATE JOINER: screen B boots seconds after A yet its flips land on
- *      A's grid with no start-from-zero (inherent to the stateless
- *      timeline — the property that makes the whole feature bulletproof).
+ *   2. EVERY flip on both screens resolves the right slide for its slot on
+ *      the epoch grid: boundaryT is a multiple of SLOT_MS and
+ *      toIdx === (boundaryT / SLOT_MS) mod ITEM_COUNT. For B's engage this
+ *      is the late-joiner property — it boots seconds after A and lands on
+ *      A's timeline, with no start-from-zero.
+ *   3. EPOCH ANCHORING against the shared clock: paintWallT - boundaryT
+ *      (when the new slide was painted, on the machine's wall clock, versus
+ *      the boundary it belongs to) within GRID_TOLERANCE_MS.
+ *   4. LOCKSTEP: for each boundary both screens crossed while conducting,
+ *      |paintWallT_A - paintWallT_B| within the skew bound — what a viewer
+ *      sees, including each screen's clock-estimate error and its own
+ *      render lead.
+ *   5. THE JOIN WINDOW: B's first boundary crossing after its engage is
+ *      asserted on its own, with JOIN_SKEW_BOUND_MS, never folded into 4.
+ *
+ * Crossings are chosen by the log's `kind` ('boundary' — the screen was
+ * conducting when the boundary passed), not by a timing window. Until
+ * 2026-11-23 a window (decision - itemStart in [-200, 250) ms) did the
+ * choosing, and it let B's engage snap through whenever B locked within
+ * ~250 ms after a boundary: the snap was then compared with A's real
+ * crossing as if it were skew. Nov 2-23: 38 first-attempt failures in 347
+ * CI jobs, all passing on retry; every one whose data was still retained
+ * (4, at 112-205 ms) was this. The old grid check measured the render
+ * lead, because the log's itemStartT was the boundary minus it.
+ *
+ * Every run attaches per-boundary values (paint and decision skew, both
+ * anchors, leads, frame gaps) as test annotations, pass or fail, so CI
+ * builds the distribution the bounds are later tuned on.
+ *
+ * HARNESS LIMIT: each page answers its own TIME_PING with its own
+ * Date.now(), after a symmetric 2-6 ms delay, so clock-estimate error here
+ * is about 1-3 ms by construction. This spec catches regressions in the
+ * clock, lead and timeline math; it cannot see Wi-Fi round-trip asymmetry
+ * between physical screens. A claim about real glass needs the on-glass
+ * check (/player?synchud=1 on each screen, filmed).
  *
  * Per the repo Playwright config, EVERY request is intercepted (fake API
  * base http://api.invalid NXDOMAINs anything unmocked). No real ids or
@@ -34,8 +60,15 @@ import { test, expect, type Page, type Route, type BrowserContext } from '@playw
 
 const SLOT_MS = 2_500;
 const ITEM_COUNT = 3;
-/** CI-safe lockstep bound. Physical screens measure single-digit ms;
- *  shared CI runners add rAF/scheduling noise on top of the real skew. */
+/** CI-safe lockstep bound, on |paintWallT_A - paintWallT_B| for a shared
+ *  boundary crossed by two conducting screens. Physical screens measure
+ *  single-digit ms; shared CI runners add rAF/scheduling noise on top.
+ *
+ *  2026-11-23 — not tightened yet. Before the measurement was fixed, the
+ *  steady-state data (engage excluded, 50 attempts) was: decision skew max
+ *  35.5 ms WebKit / 18.1 ms Chromium. The WebKit bound below can come down
+ *  to this one only on about 20 annotated CI runs per engine of the NEW
+ *  measurement (paint, not decision). */
 const SKEW_BOUND_MS = 40;
 
 /**
@@ -59,36 +92,55 @@ const SKEW_BOUND_MS = 40;
  * worst observed sample was 57ms, so a genuine desync has real headroom before
  * it could hide. If WebKit ever needs to go past this, that is a signal to
  * investigate rather than to raise it again.
+ *
+ * 2026-11-23 — the "one shared renderer main thread" explanation above is
+ * unproven: CI data showed no rAF throttling of either page and contention
+ * only while B boots. Of the 11 WebKit first-attempt failures over 90 ms in
+ * Nov 2-23, the 2 whose data was still retained were B's engage snap
+ * compared as if it were a crossing (see the header); the other 9 are known
+ * only from their error line. Value kept until the new measurement has
+ * about 20 annotated CI runs per engine; tightening to 40 ms waits on that.
  */
 const WEBKIT_CI_SKEW_BOUND_MS = 90;
 /**
- * Boundary-grid tolerance (clock uncertainty + one rAF frame).
+ * Epoch-anchoring tolerance: |paintWallT - boundaryT| — how far from the
+ * shared boundary, on the machine's wall clock, each screen painted the new
+ * slide. It carries the screen's error in estimating server time (the
+ * TIME_PING/TIME_PONG offset), its render-lead error, and frame
+ * quantisation.
  *
- * This is the ABSOLUTE check: how far each flip boundary sits from a multiple
- * of SLOT_MS in server time. It is dominated by the player's error in
- * estimating server time (the TIME_PING/TIME_PONG offset), plus whatever a
- * single rAF frame costs.
+ * 2026-11-23 — the check now measures what this name says. Until then it
+ * read the log's itemStartT, which was the boundary minus the render lead,
+ * so it measured the lead: the CI values quoted when this was raised to
+ * 120 ms (64.3, 70.2 and 75.0 ms, 2026-08-04) were most likely leads
+ * inflated by a stalled sample. The values are unchanged; with a real
+ * measurement they can be re-derived from the annotations.
  *
- * 2026-08-04 — made CI-aware. The 60ms budget assumes "one rAF frame" is ~16ms,
- * which is true on a physical screen and on a developer machine. It is not true
- * on a shared CI runner driving TWO player pages in WebKit while a second
- * browser project runs alongside: frames there stretch well past 16ms, and the
- * clock-offset estimate gets noisier with them. Observed CI values were 64.3,
- * 70.2 and 75.0ms — a consistent small overshoot, not a blow-out.
- *
- * This does NOT weaken the guarantee that matters. What a viewer perceives is
- * whether the screens change TOGETHER, and that is SKEW_BOUND_MS above — still
- * 40ms, unchanged, everywhere. It passed in every one of those CI runs; only
- * this absolute-alignment check tripped. An offset shared by both screens moves
- * the whole wall by a few hundredths of a second and is invisible; the screens
- * disagreeing with each other is what is not allowed.
- *
- * 120ms still leaves the guard real: it is under 5% of a 2.5s slot, and the
- * worst CI sample was 75ms, so a genuine clock-sync regression has ~40% headroom
- * before it hides. Locally the strict 60ms bound is retained, because there the
- * measurement is meaningful.
+ * The guarantee a viewer perceives is the lockstep bound (screens changing
+ * TOGETHER); an offset shared by both screens moves the whole wall a little
+ * and is invisible. This check catches a screen whose clock or lead math
+ * has gone wrong on its own.
  */
 const GRID_TOLERANCE_MS = process.env.CI ? 120 : 60;
+
+/**
+ * The join window: B's FIRST boundary crossing after it engaged, asserted on
+ * its own (paint skew against A, and B's own anchor) rather than folded into
+ * the lockstep bound or silently dropped.
+ *
+ * A screen that has just booted is still settling: right after its engage
+ * commit the main thread can stall (131-181 ms, inferred from the lock wait,
+ * in 3 of the 50 CI attempts retained for 2026-11-16..23). When such a stall
+ * straddles the next boundary the screen decides that flip late by up to
+ * the stall. The worst real join sample in
+ * that data was 88.5 ms of decision skew (WebKit; B 83 ms late after a
+ * 181 ms post-engage stall). 250 ms covers a 181 ms stall plus a normal
+ * decision-to-paint and still catches a joiner that is on the wrong slide,
+ * a boundary off, or off by a clock offset the lock gate (80 ms uncertainty)
+ * should have refused. It is a first bound: revisit it with the
+ * 'sync-join' annotations.
+ */
+const JOIN_SKEW_BOUND_MS = 250;
 
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -300,11 +352,40 @@ async function installPlayerTestHarness(page: Page, ids: ReturnType<typeof fakeI
   );
 }
 
+/** One __eduSyncFlips entry (player/page.tsx, the sync conductor). */
 interface FlipEntry {
   toIdx: number;
+  /** 'engage': first locked tick or a resync jump; 'boundary': a real crossing (classifySyncFlip). */
+  kind: 'engage' | 'boundary';
+  /** Synced time of the decision (led by leadMs on purpose). */
   serverT: number;
+  /** The slot start this flip resolved, synced time (on the grid by construction). */
+  boundaryT: number;
+  /** Same as boundaryT (kept for older readers). */
   itemStartT: number;
+  /** The flip lead the decision used: 8 + render lead. */
+  leadMs: number;
+  /** Synced time of the previous locked tick; null at an engage. */
+  prevT: number | null;
+  /** Decision instant, performance.timeOrigin-based wall clock. */
+  wallT: number | null;
+  /** Paint (double-rAF after the decision), wall clock; null until painted. */
+  paintWallT: number | null;
+  /** Paint, synced time. */
+  paintT: number | null;
 }
+
+const r1 = (v: number | null | undefined) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
+const slotIndexOf = (boundaryT: number) => {
+  const k = Math.round(boundaryT / SLOT_MS);
+  return ((k % ITEM_COUNT) + ITEM_COUNT) % ITEM_COUNT;
+};
+const gridErrOf = (boundaryT: number) => {
+  const mod = ((boundaryT % SLOT_MS) + SLOT_MS) % SLOT_MS;
+  return Math.min(mod, SLOT_MS - mod);
+};
+const readFlips = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __eduSyncFlips?: FlipEntry[] }).__eduSyncFlips ?? []) as Promise<FlipEntry[]>;
 
 async function bootSyncedPlayer(ctx: BrowserContext, tag: string): Promise<Page> {
   const ids = fakeIds(tag);
@@ -350,70 +431,136 @@ test.describe('frame-locked multi-screen sync', () => {
         { timeout: 90_000 },
       );
 
-      // Let both record several boundary crossings (loop = 7.5s; the
-      // first log entry per page may be its mid-slot engage snap, so ask
-      // for 4 to guarantee ≥3 steady-state crossings each).
-      await pageA.waitForFunction(
-        () => ((window as unknown as { __eduSyncFlips?: unknown[] }).__eduSyncFlips?.length ?? 0) >= 4,
-        undefined,
-        { timeout: 45_000 },
-      );
+      // Wait until B has crossed its first boundary while conducting (the
+      // join window) plus STEADY_BOUNDARIES more, all painted.
+      const STEADY_BOUNDARIES = 3;
       await pageB.waitForFunction(
-        () => ((window as unknown as { __eduSyncFlips?: unknown[] }).__eduSyncFlips?.length ?? 0) >= 4,
-        undefined,
+        (need) => {
+          const f = (window as unknown as { __eduSyncFlips?: FlipEntry[] }).__eduSyncFlips ?? [];
+          return f.filter((e) => e.kind === 'boundary' && e.paintWallT !== null).length >= need;
+        },
+        STEADY_BOUNDARIES + 1,
         { timeout: 45_000 },
       );
+      // The last PAINTED crossing bounds the comparison (a newer one may have
+      // been decided but not painted yet when we read).
+      const lastB = (await readFlips(pageB)).filter((e) => e.kind === 'boundary' && e.paintWallT !== null).pop()!;
+      // A crosses the same boundaries within a frame or two; wait for its paint.
+      await pageA.waitForFunction(
+        (bt) => {
+          const f = (window as unknown as { __eduSyncFlips?: FlipEntry[] }).__eduSyncFlips ?? [];
+          return f.some((e) => e.boundaryT >= bt - 1 && e.paintWallT !== null);
+        },
+        lastB.boundaryT,
+        { timeout: 15_000 },
+      );
 
-      const flipsA = (await pageA.evaluate(() => (window as unknown as { __eduSyncFlips: FlipEntry[] }).__eduSyncFlips)) as FlipEntry[];
-      const flipsB = (await pageB.evaluate(() => (window as unknown as { __eduSyncFlips: FlipEntry[] }).__eduSyncFlips)) as FlipEntry[];
+      const flipsA = await readFlips(pageA);
+      const flipsB = await readFlips(pageB);
+      // Wall-clock basis check (annotated, not asserted): paintWallT/wallT
+      // come from performance.timeOrigin + performance.now(); the mocked
+      // server clock is Date.now(). Their difference on each page is the
+      // basis error of the wall-clock measurements below.
+      const wallBasis = async (page: Page) =>
+        page.evaluate(() => {
+          const a = Date.now();
+          const b = performance.timeOrigin + performance.now();
+          const c = Date.now();
+          return (a + c) / 2 - b;
+        });
+      const basisA = await wallBasis(pageA);
+      const basisB = await wallBasis(pageB);
 
-      // ── 2. Epoch anchoring: every boundary is a multiple of SLOT_MS in
-      // server time (anchor = Unix epoch, equal slots) on BOTH screens.
-      // This includes each page's very first "engage" flip — when the
-      // conductor takes over from the free-running heartbeat it snaps to
-      // the correct current item MID-slot (by design, once) — its target
-      // boundary still sits on the grid even though the decision instant
-      // is mid-item.
-      for (const flips of [flipsA, flipsB]) {
+      const ann = (type: string, value: unknown) =>
+        test.info().annotations.push({ type, description: JSON.stringify(value) });
+      ann('sync-clock-basis', { browserName, dateNowMinusPerfWallA: r1(basisA), dateNowMinusPerfWallB: r1(basisB) });
+      const describeFlip = (f: FlipEntry) => ({
+        kind: f.kind,
+        toIdx: f.toIdx,
+        boundaryT: f.boundaryT,
+        decisionToBoundaryMs: r1(f.serverT - f.boundaryT),
+        leadMs: r1(f.leadMs),
+        frameGapMs: f.prevT === null ? null : r1(f.serverT - f.prevT),
+        anchorMs: f.paintWallT === null ? null : r1(f.paintWallT - f.boundaryT),
+        decisionToPaintMs: f.paintWallT === null || f.wallT === null ? null : r1(f.paintWallT - f.wallT),
+      });
+
+      const boundaryB = flipsB.filter((f) => f.kind === 'boundary' && f.boundaryT <= lastB.boundaryT);
+      const boundaryA = flipsA.filter((f) => f.kind === 'boundary' && f.boundaryT <= lastB.boundaryT);
+      const partnerA = (fb: FlipEntry) =>
+        boundaryA.find((fa) => fa.toIdx === fb.toIdx && Math.abs(fa.boundaryT - fb.boundaryT) < SLOT_MS / 2);
+      const pairOf = (fb: FlipEntry) => {
+        const fa = partnerA(fb);
+        return {
+          fa,
+          fb,
+          row: {
+            toIdx: fb.toIdx,
+            boundaryT: fb.boundaryT,
+            paintSkewMs: fa && fa.paintWallT !== null && fb.paintWallT !== null ? r1(Math.abs(fa.paintWallT - fb.paintWallT)) : null,
+            decisionSkewMs: fa && fa.wallT !== null && fb.wallT !== null ? r1(Math.abs(fa.wallT - fb.wallT)) : null,
+            A: fa ? describeFlip(fa) : null,
+            B: describeFlip(fb),
+          },
+        };
+      };
+      // B's first crossing while conducting is the join window; the rest are
+      // steady state (both screens conducting).
+      const join = boundaryB.length ? pairOf(boundaryB[0]) : null;
+      const steady = boundaryB.slice(1).map(pairOf);
+
+      // Annotate everything BEFORE asserting, so a failing run carries it too.
+      for (const [tag, flips] of [['A', flipsA], ['B', flipsB]] as const) {
+        for (const f of flips) if (f.kind === 'engage') ann('sync-engage', { screen: tag, ...describeFlip(f) });
+      }
+      if (join) {
+        ann('sync-join', join.row);
+        for (const fa of boundaryA.filter((f) => f.boundaryT < join.fb.boundaryT)) ann('sync-a-before-join', describeFlip(fa));
+      }
+      for (const p of steady) ann('sync-boundary', p.row);
+
+      // ── 2. Every flip resolves the right slide for its slot on the epoch
+      // grid (anchor = Unix epoch, equal slots). For an engage this is the
+      // late-joiner property: B lands on A's timeline mid-slot, no
+      // start-from-zero.
+      for (const [tag, flips] of [['A', flipsA], ['B', flipsB]] as const) {
         for (const f of flips) {
-          const mod = ((f.itemStartT % SLOT_MS) + SLOT_MS) % SLOT_MS;
-          const gridErr = Math.min(mod, SLOT_MS - mod);
-          expect(gridErr, `boundary off epoch grid: ${JSON.stringify(f)}`).toBeLessThan(GRID_TOLERANCE_MS);
+          expect(gridErrOf(f.boundaryT), `[${tag}] boundary off the epoch grid: ${JSON.stringify(f)}`).toBeLessThan(1);
+          expect(f.toIdx, `[${tag}] wrong slide for its slot on the epoch grid: ${JSON.stringify(f)}`).toBe(slotIndexOf(f.boundaryT));
         }
       }
 
-      // Steady-state boundary crossings = flips whose decision landed
-      // NEAR their boundary. Excludes the engage snap; these are the
-      // flips a viewer perceives as "the screens changed together" and
-      // the only fair basis for the lockstep comparison. The lower bound
-      // is negative because the tier-1 render-lead deliberately decides
-      // flips up to ~150ms BEFORE the boundary so the painted frame
-      // lands on it.
-      const boundaryFlips = (flips: FlipEntry[]) =>
-        flips.filter((f) => f.serverT - f.itemStartT >= -200 && f.serverT - f.itemStartT < 250);
-      const bfA = boundaryFlips(flipsA);
-      const bfB = boundaryFlips(flipsB);
-      expect(bfA.length, 'screen A recorded no steady-state boundary flips').toBeGreaterThanOrEqual(2);
-      expect(bfB.length, 'screen B recorded no steady-state boundary flips').toBeGreaterThanOrEqual(2);
+      expect(join, 'screen B recorded no boundary crossing').not.toBeNull();
+      const joinB = join!.fb;
 
-      // ── 3+4. Lockstep across screens: match flips that crossed the SAME
-      // boundary (same target index, boundary instants within half a slot)
-      // and require their flip decisions to agree tightly.
-      let matched = 0;
-      for (const fa of bfA) {
-        const fb = bfB.find(
-          (f) => f.toIdx === fa.toIdx && Math.abs(f.itemStartT - fa.itemStartT) < SLOT_MS / 2,
-        );
-        if (!fb) continue; // B wasn't up yet for A's early flips (late joiner)
-        matched++;
+      // ── 5. The join window, on its own bound.
+      expect(join!.fa, `A has no crossing for B's first boundary: ${JSON.stringify(join!.row)}`).toBeTruthy();
+      expect(join!.row.paintSkewMs, `join window: paint skew not measurable: ${JSON.stringify(join!.row)}`).not.toBeNull();
+      expect(
+        join!.row.paintSkewMs!,
+        `join-window paint skew, B's first boundary after engage (bound ${JOIN_SKEW_BOUND_MS}ms, ${browserName}): ${JSON.stringify(join!.row)}`,
+      ).toBeLessThan(JOIN_SKEW_BOUND_MS);
+      expect(
+        Math.abs(joinB.paintWallT! - joinB.boundaryT),
+        `join-window anchor, B (bound ${JOIN_SKEW_BOUND_MS}ms, ${browserName}): ${JSON.stringify(join!.row)}`,
+      ).toBeLessThan(JOIN_SKEW_BOUND_MS);
+
+      // ── 3+4. Steady state: both screens conducting.
+      expect(steady.length, 'too few steady-state boundaries after the join').toBeGreaterThanOrEqual(STEADY_BOUNDARIES);
+      for (const { fa, fb, row } of steady) {
+        expect(fa, `A has no crossing for B's boundary: ${JSON.stringify(row)}`).toBeTruthy();
+        expect(row.paintSkewMs, `paint skew not measurable: ${JSON.stringify(row)}`).not.toBeNull();
         expect(
-          Math.abs(fb.serverT - fa.serverT),
-          `lockstep skew for boundary idx=${fa.toIdx} @${fa.itemStartT} (bound ${skewBound}ms, ${browserName})`,
+          row.paintSkewMs!,
+          `lockstep paint skew for boundary idx=${row.toIdx} @${row.boundaryT} (bound ${skewBound}ms, ${browserName}): ${JSON.stringify(row)}`,
         ).toBeLessThan(skewBound);
-        // Same boundary identity — grid instants effectively identical.
-        expect(Math.abs(fb.itemStartT - fa.itemStartT)).toBeLessThan(GRID_TOLERANCE_MS);
+        for (const f of [fa!, fb]) {
+          expect(
+            Math.abs(f.paintWallT! - f.boundaryT),
+            `epoch anchoring (paint vs boundary, bound ${GRID_TOLERANCE_MS}ms, ${browserName}): ${JSON.stringify(row)}`,
+          ).toBeLessThan(GRID_TOLERANCE_MS);
+        }
       }
-      expect(matched, 'screens never crossed a shared boundary — no overlap window').toBeGreaterThanOrEqual(2);
 
       // ── Sanity: the visible slide agrees when sampled back-to-back.
       const stateA = (await pageA.evaluate(() => (window as unknown as { __eduSyncState: { idx: number; serverNow: number } }).__eduSyncState));
