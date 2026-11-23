@@ -167,11 +167,19 @@ const UNPAIRED_ALLOWED: Record<string, UnpairedDecision> = {
     callSite: 'apps/web/src/components/player/EmergencyOverlay.tsx',
     needle: '`${apiUrl}/emergency/messages`',
   },
+  // No call site, on purpose. Kept DELIBERATELY, not on evidence of a caller:
+  // no client, current or cached, sends this route a device credential. The
+  // overlay sends its device token to /emergency/messages and reaches
+  // /emergency/status only with the session cookie (no Authorization header,
+  // which JwtAuthGuard answers before any interceptor); the bundles from
+  // before the device poll existed sent the cookie too; the APK never calls
+  // it. Removing the marker would change an emergency route's answer, which
+  // is life-safety CHANGE class, for a caller that does not exist.
   'GET /api/v1/emergency/status': {
     why:
       'life-safety read; answers `{ active: [], tenantId: null }` before any query when the principal has no ' +
-      'tenant. No current client sends it a device credential, so either answer is invisible; it is left ' +
-      'unchanged so this fix does not alter the emergency path.',
+      'tenant. Kept deliberately so the emergency controller answers every principal exactly as it did; no ' +
+      'client, current or service-worker-cached, sends it a device credential (see the comment above).',
   },
 };
 

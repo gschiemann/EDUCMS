@@ -162,6 +162,9 @@ export class GoogleReviewsController {
     // Charge the per-tenant cap ONLY when we are about to actually spend. A
     // warm cache is free, and a fleet polling a warm cache must never trip a
     // limit that exists to bound Google spend.
+    // The tenant check runs BEFORE the warm-cache read, on purpose: every
+    // answer from this route, cached or not, goes to a caller with a tenant.
+    // Do not move it below the cache read.
     const tenantId = this.capTenantId(req.user);
     const warm = await getCachedReviews(this.redis.publisher, id);
     if (!warm) {
