@@ -373,7 +373,8 @@ import { UnpairPinPad, usePinPad } from './UnpairPinPad';
 import { RemoteOptions } from './RemoteOptions';
 import { nativeStoreDiscoveryAllowed } from './nativeStoreDiscovery';
 // 2026-05-29 — Sentry crash reporting for the player / renderer. Sentry is
-// initialized in apps/web/sentry.client.config.ts and is GATED on
+// initialized in src/instrumentation-client.ts (2026-11-23; the screen profile
+// is in src/lib/sentry-client-options.ts) and is GATED on
 // NEXT_PUBLIC_SENTRY_DSN: when the DSN env is unset, Sentry.init() never runs
 // and captureException() is a harmless no-op — so wiring it here costs nothing
 // on a deploy without Sentry. When the DSN IS set (free tier is plenty), a
@@ -2785,7 +2786,7 @@ class PlayerErrorBoundary extends Component<{ children: ReactNode; drillBanner?:
     console.error('[Player] FATAL render error', err, info);
     // 2026-05-29 — report the player/renderer crash to Sentry. No-op unless
     // NEXT_PUBLIC_SENTRY_DSN is configured (Sentry.init gates on it in
-    // sentry.client.config.ts), so this is free on a deploy without Sentry.
+    // src/instrumentation-client.ts), so this is free on a deploy without Sentry.
     // We tag it as a player renderer crash + attach the React component
     // stack so a kiosk that crash-loops in the field is diagnosable remotely
     // (closes the "Sentry UNCHECKED" item in apps/player/README.md). Wrapped
