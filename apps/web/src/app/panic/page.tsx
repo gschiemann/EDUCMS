@@ -64,6 +64,7 @@ import { LiveDrillSwitch } from '@/components/emergency/LiveDrillSwitch';
 import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
 import { PanicActiveAlertsSheet } from '@/components/emergency/PanicActiveAlertsSheet';
 import { appConfirm } from '@/components/ui/app-dialog';
+import { useShortPanicScreen } from '@/hooks/use-short-panic-screen';
 
 // 2026-05-03 BUG FIX (cycle 1 emergency BUG-001) — was 1500ms, but
 // apps/api/src/emergency/CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
@@ -488,6 +489,11 @@ export default function MobilePanicPage() {
     setEnrollState('idle');
     void auth.resolve();
   };
+  // 2026-11-23 — on a short screen (under 800 px tall: a phone browser with
+  // its toolbars, an installed app on a small phone, a short laptop window)
+  // the six trigger buttons own the space and the panic-phone row moves
+  // below them. See the idle return and @/hooks/use-short-panic-screen.
+  const shortScreen = useShortPanicScreen();
   const announcedReadyRef = useRef(false);
   useEffect(() => {
     if (authState.status !== 'ready' || announcedReadyRef.current) return;
@@ -949,11 +955,69 @@ export default function MobilePanicPage() {
     );
   }
 
+  // 2026-11-14 — panic phones: what this phone holds, in one line.
+  const phoneReadyRow = credential?.kind === 'device' && (
+    <div data-testid="panic-phone-ready" className="mx-5 mb-1 flex items-center justify-between gap-2 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-400/30 px-3 py-1.5 text-[11px] font-semibold text-emerald-100">
+      <span className="min-w-0 truncate">{t('emergency.panic.phoneReady', { label: credential.deviceLabel })}</span>
+      <button type="button" onClick={() => void turnOffThisPhone()} className="shrink-0 min-h-[36px] px-2 rounded-lg text-emerald-200 underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60" data-testid="panic-phone-turn-off">
+        {t('emergency.panic.turnOff')}
+      </button>
+    </div>
+  );
+  const keepReadyRow = credential?.kind === 'session' && hasPanicAuthority(verifiedUser) && !phoneReady && enrollState !== 'dismissed' && phase === 'idle' && (
+    <div data-testid="panic-keep-ready" className="mx-5 mb-1 rounded-xl bg-white/[0.05] ring-1 ring-white/15 px-3 py-2 text-[12px] text-white/85">
+      {enrollState === 'stale' ? (
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0">{t('emergency.panic.keepReadyStale')}</span>
+          <button type="button" onClick={() => router.push(PANIC_ENROLL_SIGN_IN_URL)} className="shrink-0 min-h-[36px] px-3 rounded-lg bg-white/10 font-bold">{t('emergency.panic.signInButton')}</button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <span className="min-w-0">
+            {enrollState === 'unavailable'
+              ? t('emergency.panic.keepReadyUnavailable')
+              : enrollState === 'failed'
+                ? t('emergency.panic.keepReadyFailed')
+                : t('emergency.panic.keepReadyBody')}
+          </span>
+          <span className="shrink-0 flex items-center">
+            <button
+              type="button"
+              onClick={() => void keepPhoneReady()}
+              disabled={enrollState === 'working'}
+              data-testid="panic-keep-ready-button"
+              className="min-h-[36px] px-3 rounded-lg bg-red-600 text-white font-bold disabled:opacity-60"
+            >
+              {enrollState === 'working' ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : t('emergency.panic.keepReadyButton')}
+            </button>
+            <button type="button" onClick={() => setEnrollState('dismissed')} aria-label={t('emergency.panic.keepReadyDismiss')} className="ml-1 min-h-[36px] px-2 text-white/60">×</button>
+          </span>
+        </div>
+      )}
+    </div>
+  );
+
   // Main grid — 6 dark-glass controls, 2 rows × 3 columns, each press-and-hold
   // triggers. Premium-dark VenueOS board: each control keeps its semantic SRP
   // color as a glow accent at rest, then fully ignites to a solid fill on hold.
+  //
+  // 2026-11-23 — SHORT SCREENS: THE BUTTONS OWN THE SPACE. The grid is
+  // `flex-1 min-h-0` and each button is sized by its row, so a row placed
+  // above the grid is paid for by the buttons: at 390 × 664 the keep-ready
+  // card cut them from 89 px to 65 px (the 2026-11-16 train, red in
+  // emergency-targeting.spec.ts ever since). Under 800 px tall the phone row
+  // is rendered AFTER the grid, positioned at the bottom edge of the screen
+  // (`top-full`), out of the flex column: the header-to-grid panel is laid
+  // out exactly as if the row were not there, and the row is one short scroll
+  // away (the root scrolls; DOM, reading and focus order follow). There is no
+  // size floor: on a shorter screen the buttons shrink with their rows, as
+  // they always did, and never move below the fold.
+  //   The grid keeps the SAME place in the tree in both layouts, so a layout
+  // change during a hold (a rotation crossing 800 px) updates the pressed
+  // button in place and never remounts it under the finger.
+  //   800 px and taller: the DOM and classes are exactly what they were.
   return (
-    <div className={PAGE_CLS} style={PAGE_STYLE}>
+    <div className={shortScreen ? `${PAGE_CLS} overflow-y-auto` : PAGE_CLS} style={PAGE_STYLE}>
       {LiveRegion}
       {/* Header — brand mark + authorized identity pill */}
       {/* `gap-3` + a non-shrinking brand block: at 390px the three header
@@ -1075,47 +1139,9 @@ export default function MobilePanicPage() {
         />
       </div>
 
-      {/* 2026-11-14 — panic phones: what this phone holds, in one line. */}
-      {credential?.kind === 'device' && (
-        <div data-testid="panic-phone-ready" className="mx-5 mb-1 flex items-center justify-between gap-2 rounded-xl bg-emerald-500/10 ring-1 ring-emerald-400/30 px-3 py-1.5 text-[11px] font-semibold text-emerald-100">
-          <span className="min-w-0 truncate">{t('emergency.panic.phoneReady', { label: credential.deviceLabel })}</span>
-          <button type="button" onClick={() => void turnOffThisPhone()} className="shrink-0 min-h-[36px] px-2 rounded-lg text-emerald-200 underline underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60" data-testid="panic-phone-turn-off">
-            {t('emergency.panic.turnOff')}
-          </button>
-        </div>
-      )}
-      {credential?.kind === 'session' && hasPanicAuthority(verifiedUser) && !phoneReady && enrollState !== 'dismissed' && phase === 'idle' && (
-        <div data-testid="panic-keep-ready" className="mx-5 mb-1 rounded-xl bg-white/[0.05] ring-1 ring-white/15 px-3 py-2 text-[12px] text-white/85">
-          {enrollState === 'stale' ? (
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0">{t('emergency.panic.keepReadyStale')}</span>
-              <button type="button" onClick={() => router.push(PANIC_ENROLL_SIGN_IN_URL)} className="shrink-0 min-h-[36px] px-3 rounded-lg bg-white/10 font-bold">{t('emergency.panic.signInButton')}</button>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0">
-                {enrollState === 'unavailable'
-                  ? t('emergency.panic.keepReadyUnavailable')
-                  : enrollState === 'failed'
-                    ? t('emergency.panic.keepReadyFailed')
-                    : t('emergency.panic.keepReadyBody')}
-              </span>
-              <span className="shrink-0 flex items-center">
-                <button
-                  type="button"
-                  onClick={() => void keepPhoneReady()}
-                  disabled={enrollState === 'working'}
-                  data-testid="panic-keep-ready-button"
-                  className="min-h-[36px] px-3 rounded-lg bg-red-600 text-white font-bold disabled:opacity-60"
-                >
-                  {enrollState === 'working' ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden /> : t('emergency.panic.keepReadyButton')}
-                </button>
-                <button type="button" onClick={() => setEnrollState('dismissed')} aria-label={t('emergency.panic.keepReadyDismiss')} className="ml-1 min-h-[36px] px-2 text-white/60">×</button>
-              </span>
-            </div>
-          )}
-        </div>
-      )}
+      {/* 800 px and taller: the panic-phone row above the grid, as before. */}
+      {!shortScreen && phoneReadyRow}
+      {!shortScreen && keepReadyRow}
       {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}
       <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-x-5 gap-y-4 px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] place-items-center">
         {TYPES.map((type) => {
@@ -1219,6 +1245,14 @@ export default function MobilePanicPage() {
           );
         })}
       </div>
+      {/* Under 800 px: the panic-phone row, below the buttons (rendered only
+          when a row will show, so it never takes space for nothing). */}
+      {shortScreen && (phoneReadyRow || keepReadyRow) && (
+        <div className="absolute top-full left-0 right-0 pb-[max(1rem,env(safe-area-inset-bottom))]" data-testid="panic-phone-row-below">
+          {phoneReadyRow}
+          {keepReadyRow}
+        </div>
+      )}
 
       <EmergencyTargetPicker
         open={pickerOpen}
