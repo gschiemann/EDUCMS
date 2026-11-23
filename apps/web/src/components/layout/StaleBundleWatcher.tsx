@@ -38,6 +38,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/lib/store';
 import { hasUnsavedWork } from '@/lib/unsaved-work';
 import { useUploadActivityVisible } from '@/components/assets/UploadActivity';
@@ -229,24 +230,27 @@ export function StaleBundleWatcher() {
     >
       <RefreshCw className="w-3.5 h-3.5 text-indigo-600 shrink-0" aria-hidden />
       <span className="min-w-0 truncate text-[12px] font-semibold text-slate-800">{t('available')}</span>
-      <button
+      <Button
         type="button"
+        size="sm"
         onClick={() => void freshReload()}
-        className="shrink-0 px-3 py-1 text-[12px] font-bold rounded-full text-white"
+        className="text-[12px] font-bold text-white"
         style={{ background: 'var(--brand-primary, #4f46e5)' }}
       >
         {t('reload')}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
+        size="sm"
+        variant="ghost"
         onClick={() => {
           snoozedRef.current = pendingSha;
           setSnoozedSha(pendingSha);
         }}
-        className="shrink-0 px-2.5 py-1 text-[12px] font-semibold rounded-full text-slate-600 hover:bg-slate-100"
+        className="text-[12px] font-semibold text-slate-600"
       >
         {t('later')}
-      </button>
+      </Button>
     </div>
   );
 }
