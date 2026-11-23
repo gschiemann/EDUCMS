@@ -55,6 +55,36 @@ export function bannerForSend(hex: string | null, mode: BannerMode, speed: Banne
   return { ...(hex ? { color: hex } : {}), mode, speed, ...(size === 'small' || size === 'large' ? { size } : {}) };
 }
 
+/**
+ * Deploy order (2026-11-23): true when a 400 answer is an API build from
+ * before text sizes refusing the `size` key - and nothing else. Its strict
+ * banner schema answers `{ issues: [{ path: 'banner', code:
+ * 'unrecognized_keys', message: 'Unrecognized key: "size"' }] }` from the
+ * validation pipe, before the handler runs, so nothing was written or sent
+ * and the composer may resend once without `size` (the screens then draw
+ * Medium, which is what that API build's players draw anyway). Any other
+ * refusal - a bad colour, a bad size value on a current API, a missing
+ * field - is not this, and is shown to the sender as before.
+ */
+export function refusedOnlyBannerSize(body: unknown): boolean {
+  const issues = (body as { issues?: unknown } | null)?.issues;
+  if (!Array.isArray(issues) || issues.length === 0) return false;
+  return issues.every((i) => {
+    const issue = i as { path?: unknown; code?: unknown; message?: unknown } | null;
+    if (issue?.path !== 'banner' || issue.code !== 'unrecognized_keys') return false;
+    // The keys it names, quoted ("size" today, 'size' in older zod): only `size`.
+    const keys = Array.from(String(issue.message ?? '').matchAll(/["']([^"']*)["']/g), (m) => m[1]);
+    return keys.length > 0 && keys.every((k) => k === 'size');
+  });
+}
+
+/** The same banner without its text size (Medium): the one resend `refusedOnlyBannerSize` allows. */
+export function bannerWithoutSize<T extends { size?: unknown }>(banner: T): Omit<T, 'size'> {
+  const rest: T = { ...banner };
+  delete rest.size;
+  return rest;
+}
+
 export type DurationPreset = 'custom' | '15m' | '1h' | '4h' | 'eod' | 'manual';
 
 /** A whole-minute length for a preset; `custom` uses the typed minutes. */

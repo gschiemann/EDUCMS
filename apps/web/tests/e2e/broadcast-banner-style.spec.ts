@@ -114,10 +114,9 @@ test('a screen that missed the push renders the same banner from the poll', asyn
 /**
  * Text size and the real marquee speed (2026-11-23), at the two stage sizes
  * the fleet runs: 1920x1080 and 3840x2160. Measures, on the glass, the font
- * per size, the bar height a 2-line static message reaches at each size, the
- * height the longest message the API accepts (2,000 characters) reaches, and
+ * per size, the bar height a 2-line static message reaches at each size, and
  * the speed the track actually moves at for a SHORT message (the case that
- * used to run 2-3x the chosen speed).
+ * used to run 2-3x the chosen speed). The longest messages are the next test.
  */
 for (const [w, h] of [[1920, 1080], [3840, 2160]] as const) {
   test(`text size, bar height and real scroll speed on a ${w}x${h} stage`, async ({ page }) => {
@@ -131,7 +130,6 @@ for (const [w, h] of [[1920, 1080], [3840, 2160]] as const) {
     } });
     const measured: Record<string, unknown> = { stage: `${w}x${h}` };
     const two = 'Buses are running fifteen minutes late today because of the snow, so please allow extra time this morning and use the south entrance.';
-    const max = `${'Please remember that the north parking lot is closed for resurfacing until Friday. '.repeat(24)}`.slice(0, 2000);
     const expectFont = { small: Math.round(w * 0.017), medium: Math.round(w * 0.022), large: Math.round(w * 0.03) };
     let n = 0;
     const held: string[] = [];
@@ -162,12 +160,6 @@ for (const [w, h] of [[1920, 1080], [3840, 2160]] as const) {
       expect(r.bar).toBeLessThanOrEqual(h * 0.2); // a 2-line banner never takes more than a fifth of the screen
       measured[`static-2line-${size}`] = r;
 
-      // The longest message the API accepts: shrinks to its floor, then the overlay's 40% cap holds.
-      await show({ mode: 'static', size }, max);
-      const m = await banner(page).evaluate((el) => (el as HTMLElement).offsetHeight);
-      expect(m).toBeLessThanOrEqual(Math.round(h * 0.4) + 1);
-      measured[`static-2000ch-${size}`] = m;
-
       // Scrolling: one line at the full size.
       await show({ mode: 'scroll', speed: 'slow', size }, 'Early dismissal at 1 pm');
       const sc = banner(page).locator('[data-banner-text="scroll"]');
@@ -195,6 +187,77 @@ for (const [w, h] of [[1920, 1080], [3840, 2160]] as const) {
       expect(v.pxPerSecond).toBeLessThan(expected * 1.2);
     }
     console.log(`BANNER-MEASURE ${JSON.stringify(measured)}`);
+    for (const id of held) await push(page, 'ALL_CLEAR_MESSAGE', { messageId: id, clearedBy: 'u1' });
+    await expect(banner(page)).toHaveCount(0);
+  });
+}
+
+/**
+ * The longest static messages are shown WHOLE at every size (2026-11-23
+ * review). The overlay caps the bar at 40% of the canvas and centres the text
+ * column in an overflow-hidden bar, so text taller than the cap lost its first
+ * AND last lines; Large at its own floor did that from about 1,300 characters
+ * on a 1920 stage. Each message starts with START and ends with END; the text
+ * column must sit wholly inside the bar's clip box (no line cut off at either
+ * end), up to the 2,000 characters the API accepts, on 1280x720, 1920x1080
+ * and 3840x2160 - and a message that fits is not shrunk for nothing (Large
+ * stays larger than Medium at 400 characters).
+ */
+for (const [w, h] of [[1280, 720], [1920, 1080], [3840, 2160]] as const) {
+  test(`a long static message is never clipped, at any size, on a ${w}x${h} stage`, async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width: w, height: h });
+    const tag = `broadcast-banner-clip-${w}`;
+    const manifest = playerManifest(playerIds(tag).screenId, 'website');
+    await bootMockPlayer(page, { tag, kind: 'images', manifest, extraRoutes: async p => {
+      await p.route('**/api/v1/proxy/web*', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><html><body>content</body></html>' }));
+      await p.route('**/api/v1/emergency/messages*', r => ok(r, { active: [] }));
+    } });
+    const core = 'Please remember that the north parking lot is closed for resurfacing until Friday. '.repeat(30);
+    const message = (n: number) => `${`START ${core}`.slice(0, n - 4)} END`;
+    const measured: Record<string, unknown> = { stage: `${w}x${h}`, cap: Math.round(h * 0.4) };
+    const fonts: Record<string, number> = {};
+    let n = 0;
+    const held: string[] = [];
+    for (const length of [400, 1500, 2000]) {
+      for (const size of ['small', 'medium', 'large'] as const) {
+        for (const id of held.splice(0)) await push(page, 'ALL_CLEAR_MESSAGE', { messageId: id, clearedBy: 'u1' });
+        const id = `clip-${w}-${++n}`;
+        held.push(id);
+        const text = message(length);
+        expect(text.length).toBe(length);
+        await push(page, 'TEXT_BROADCAST', { messageId: id, severity: 'INFO', text, banner: { mode: 'static', size } });
+        const s = banner(page).locator(`[data-banner-text="static"][data-banner-size="${size}"]`);
+        await expect(s).toBeVisible();
+        await expect(s).toContainText(text.slice(0, 40));
+        const r = await banner(page).evaluate((el) => {
+          const bar = el as HTMLElement;
+          const t = bar.querySelector('[data-banner-text="static"]') as HTMLElement;
+          const b = bar.getBoundingClientRect();
+          const tr = t.getBoundingClientRect();
+          // overflow clips at the padding box: inside the border.
+          const clipTop = b.top + bar.clientTop;
+          const clipBottom = clipTop + bar.clientHeight;
+          const fs = parseFloat(getComputedStyle(t).fontSize);
+          return {
+            bar: bar.offsetHeight,
+            font: fs,
+            lines: Math.round(t.scrollHeight / (fs * 1.25)),
+            cutTop: Math.round(Math.max(0, clipTop - tr.top)),
+            cutBottom: Math.round(Math.max(0, tr.bottom - clipBottom)),
+          };
+        });
+        measured[`${length}ch-${size}`] = r;
+        expect(r.cutTop, `${length} characters at ${size}: lines cut off the top`).toBeLessThanOrEqual(1);
+        expect(r.cutBottom, `${length} characters at ${size}: lines cut off the bottom`).toBeLessThanOrEqual(1);
+        expect(r.bar).toBeLessThanOrEqual(Math.round(h * 0.4) + 1);
+        if (length === 400) fonts[size] = r.font;
+      }
+    }
+    // A message that fits is not shrunk for nothing: Large still reads larger.
+    expect(fonts.large).toBeGreaterThan(fonts.medium);
+    expect(fonts.medium).toBeGreaterThan(fonts.small);
+    console.log(`BANNER-CLIP ${JSON.stringify(measured)}`);
     for (const id of held) await push(page, 'ALL_CLEAR_MESSAGE', { messageId: id, clearedBy: 'u1' });
     await expect(banner(page)).toHaveCount(0);
   });

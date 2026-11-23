@@ -19,7 +19,7 @@ import type { BroadcastInput, MediaAlertInput } from '@cms/api-types';
 import { BroadcastBannerBar } from '@/components/player/BroadcastBannerBar';
 import { BANNER_PRESET_COLORS, BANNER_SIZES, BANNER_SPEEDS, normalizeHex, type BannerMode, type BannerSize, type BannerSpeed } from '@cms/api-types';
 import {
-  bannerForSend, contrastReport, durationMinutesFor, resolveColorChoice,
+  bannerForSend, bannerWithoutSize, contrastReport, durationMinutesFor, refusedOnlyBannerSize, resolveColorChoice,
   type BrandColors, type ColorChoice, type DurationPreset,
 } from '@/lib/broadcast-banner';
 import { ColorPickerField } from '@/components/ui/color-picker';
@@ -283,11 +283,24 @@ export default function BroadcastPage() {
         : { scopeType: sendScope.scopeType, scopeId: sendScope.scopeId, ...(screenIds ? { screenIds } : {}), text: text.trim(), severity,
             durationMs: minutesToSend() * 60 * 1000,
             ...(isBannerSend ? { banner: bannerForSend(bannerHex, bannerMode, bannerSpeed, bannerSize) } : {}) };
-      const res = await fetchWithTimeout(`${API_URL}/emergency/${withMedia ? 'media-alert' : 'broadcast'}`, {
+      const post = (payload: BroadcastInput | MediaAlertInput) => fetchWithTimeout(`${API_URL}/emergency/${withMedia ? 'media-alert' : 'broadcast'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(body), credentials: 'include',
+        body: JSON.stringify(payload), credentials: 'include',
       }, 12000);
+      let res = await post(body);
+      // Deploy order (2026-11-23): while the API still runs a build from before
+      // text sizes, it refuses a Small / Large `size` with a 400 before anything
+      // is written or sent. Resend ONCE without it, so the broadcast goes out
+      // at Medium instead of not at all. Medium sends carry no `size` and never
+      // take this path; any other refusal is shown as before.
+      if (res.status === 400 && 'banner' in body && body.banner?.size) {
+        const refusal: unknown = await res.json().catch(() => null);
+        if (refusedOnlyBannerSize(refusal)) {
+          console.warn('[broadcast] the API does not know banner text sizes yet; resending at Medium');
+          res = await post({ ...body, banner: bannerWithoutSize(body.banner) });
+        }
+      }
       if (!res.ok) throw new Error(t('errSendFailed', { status: res.status }));
       if (!mounted.current) return;
       setPhase('sent');

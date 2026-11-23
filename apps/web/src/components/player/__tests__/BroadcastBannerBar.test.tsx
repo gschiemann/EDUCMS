@@ -14,8 +14,11 @@ import { BroadcastBannerBar } from '../BroadcastBannerBar';
 
 let stage = 1920;
 let copyShare = 0.5;
+/** The overlay's height cap on the bar (its padding box, px); null = not capped / not measured. */
+let barCap: number | null = null;
 const originalOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
 const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
 beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
     configurable: true,
@@ -36,10 +39,22 @@ beforeAll(() => {
       return lines * px * 1.25;
     },
   });
+  // The bar: content-sized up to the cap, as in the browser (jsdom applies no
+  // Tailwind padding, so its whole client height is the text's room).
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+    configurable: true,
+    get(this: HTMLElement) {
+      const text = Array.from(this.children).find((c) => c.getAttribute('data-banner-text') === 'static') as HTMLElement | undefined;
+      if (!text || barCap === null) return 0;
+      return Math.min(barCap, text.scrollHeight);
+    },
+  });
 });
+afterEach(() => { barCap = null; });
 afterAll(() => {
   if (originalOffsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', originalOffsetWidth);
   if (originalScrollHeight) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', originalScrollHeight);
+  if (originalClientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', originalClientHeight);
 });
 
 function draw(options: unknown, stageWidth: number, text = 'Early dismissal at 1 pm', share = 0.5) {
@@ -99,6 +114,59 @@ describe('text size', () => {
       // Nothing makes it smaller than the floor.
       expect(parseFloat(staticText(draw({ mode: 'static', size: 'large' }, w, huge)).style.fontSize)).toBe(floor);
     }
+  });
+});
+
+describe('static text is never clipped by the overlay cap (2026-11-23 review)', () => {
+  // The overlay caps the bar at 40% of the canvas; a 1080 canvas gives 432 px.
+  const cap = (h: number) => Math.round(h * 0.4) - 4; // less the 4 px bottom border
+  const message = (n: number) => 'Please remember that the north parking lot is closed for resurfacing until Friday. '.repeat(30).slice(0, n);
+
+  it('Large, too long for the cap at its own floor, keeps shrinking until it fits', () => {
+    for (const [w, h] of [[1280, 720], [1920, 1080], [3840, 2160]] as const) {
+      barCap = cap(h);
+      const large = bannerFontPx('large', w);
+      const small = bannerFontPx('small', w);
+      const el = staticText(draw({ mode: 'static', size: 'large' }, w, message(2000)));
+      const px = parseFloat(el.style.fontSize);
+      expect(px).toBeLessThan(large.floor); // past its own floor
+      expect(px).toBeGreaterThanOrEqual(small.floor); // never below the smallest floor
+      expect(el.scrollHeight).toBeLessThanOrEqual(barCap + 1); // the whole message is inside the bar
+    }
+  });
+
+  it('no size ever shows less of a message than Medium does, at any length the API accepts', () => {
+    for (const [w, h] of [[1280, 720], [1920, 1080], [3840, 2160]] as const) {
+      for (let n = 100; n <= 2000; n += 100) {
+        barCap = cap(h);
+        const medium = staticText(draw({ mode: 'static', size: 'medium' }, w, message(n)));
+        const mediumFits = medium.scrollHeight <= barCap + 1;
+        for (const size of ['small', 'large'] as const) {
+          const el = staticText(draw({ mode: 'static', size }, w, message(n)));
+          if (mediumFits) expect(el.scrollHeight).toBeLessThanOrEqual(barCap + 1);
+        }
+      }
+    }
+  });
+
+  it('a message that already fits is left alone: Large stays large, Medium is unchanged', () => {
+    barCap = cap(1080);
+    // ~400 characters: past 2 lines at Large, well inside the cap at its floor.
+    const el = staticText(draw({ mode: 'static', size: 'large' }, 1920, message(400)));
+    expect(el.style.fontSize).toBe(`${bannerFontPx('large', 1920).floor}px`);
+    // Medium at 2,000 characters fits the cap at its floor: exactly as before.
+    expect(staticText(draw({ mode: 'static', size: 'medium' }, 1920, message(2000))).style.fontSize).toBe(`${bannerFontPx('medium', 1920).floor}px`);
+  });
+
+  it('on a cap too small for anything it stops at the smallest floor, never below', () => {
+    barCap = 60;
+    const el = staticText(draw({ mode: 'static', size: 'large' }, 1920, message(2000)));
+    expect(el.style.fontSize).toBe(`${bannerFontPx('small', 1920).floor}px`);
+  });
+
+  it('a bar that is not height-capped never shrinks past the size floor', () => {
+    barCap = 100000;
+    expect(staticText(draw({ mode: 'static', size: 'large' }, 1920, message(2000))).style.fontSize).toBe(`${bannerFontPx('large', 1920).floor}px`);
   });
 });
 

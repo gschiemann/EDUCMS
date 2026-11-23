@@ -7,7 +7,9 @@
  *
  * Sender options (`BannerOptions`, @cms/api-types):
  *   - colour: any hex; the text colour is chosen for WCAG contrast.
- *   - static: centred text, at most 2 lines, shrunk to a floor to fit.
+ *   - static: centred text, at most 2 lines, shrunk to a floor to fit; a
+ *     message too long for that keeps shrinking rather than be clipped by
+ *     the overlay's height cap (`StaticText`).
  *   - scroll: a seamless marquee (the text repeated end to end until it
  *     fills the bar twice; the track slides half its copies, then loops),
  *     slow / normal / fast — one stage width every 48 s / 30 s / 20 s
@@ -67,10 +69,38 @@ export function bannerPaint(options: BannerOptions | null): { background: string
 const KEYFRAMES =
   '@keyframes edu-banner-marquee{from{transform:translate3d(0,0,0)}to{transform:translate3d(-50%,0,0)}}';
 
-/** Static: centred, at most 2 lines, shrunk (never below `floor`) to fit. */
+/**
+ * The height the bar gives its text column, in CSS px: the bar's padding box
+ * less its vertical padding. Infinity when it cannot be measured (no parent,
+ * no layout - jsdom), so the never-clip pass below changes nothing there.
+ */
+function textRoom(el: HTMLElement): number {
+  const bar = el.parentElement;
+  if (!bar) return Infinity;
+  const cs = getComputedStyle(bar);
+  const room = bar.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+  return room > 0 ? room : Infinity;
+}
+
+/**
+ * Static: centred, at most 2 lines, shrunk (never below the size's `floor`)
+ * to fit - and then NEVER CLIPPED.
+ *
+ * 2026-11-23 (review): the overlay caps the bar at 40% of the canvas and the
+ * bar centres its text column with overflow hidden, so text taller than the
+ * cap lost its FIRST and LAST lines equally. Medium and Small never reach the
+ * cap at any length the API accepts (2,000 characters) on a 1280, 1920 or
+ * 3840 stage, but Large at its own floor did from about 1,300 characters at
+ * 1920 (measured: 2,000 characters lost ~3 lines at each end). So after the
+ * 2-line pass, while the text is still taller than the room the bar gives it,
+ * it keeps shrinking - past its own floor, down to the smallest floor of any
+ * size (small's) - so no size ever shows less of a message than Medium does.
+ * On a bar that is not height-capped the room IS the text, and nothing moves.
+ */
 function StaticText({ text, stageWidth, size }: { text: string; stageWidth: number; size: BannerSize }) {
   const ref = useRef<HTMLDivElement>(null);
   const { base, floor } = bannerFontPx(size, stageWidth);
+  const lastFloor = Math.min(floor, bannerFontPx('small', stageWidth).floor);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -81,7 +111,13 @@ function StaticText({ text, stageWidth, size }: { text: string; stageWidth: numb
       px = Math.max(floor, px - 2);
       el.style.fontSize = `${px}px`;
     }
-  }, [text, base, floor]);
+    // Never clipped: a hair of slack for sub-pixel rounding.
+    const room = textRoom(el);
+    while (px > lastFloor && el.scrollHeight > room + 1) {
+      px = Math.max(lastFloor, px - 1);
+      el.style.fontSize = `${px}px`;
+    }
+  }, [text, base, floor, lastFloor]);
   return (
     <div
       ref={ref}

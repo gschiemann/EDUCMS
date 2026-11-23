@@ -24,8 +24,11 @@
  *   - a newer player given an older message (no `size`) draws medium.
  * Deploy order: the strict input schema of an API from before this change
  * refuses a `size` key, so a Small / Large send that reaches the previous API
- * build is answered 400 before anything is written or sent. A Medium send
- * carries no `size` and is accepted by both builds.
+ * build is answered 400 before anything is written or sent; the composer
+ * recognises exactly that refusal and resends once without `size`, so the
+ * broadcast goes out at Medium rather than not at all
+ * (`refusedOnlyBannerSize`, apps/web/src/lib/broadcast-banner.ts). A Medium
+ * send carries no `size` and is accepted by both builds.
  *
  * SPEED (2026-11-23): slowed after the owner found even "slow" too fast —
  * one stage width every 48 s / 30 s / 20 s (was 20 s / 12 s / 7.5 s), and the
@@ -93,7 +96,10 @@ export type BannerSize = (typeof BANNER_SIZES)[number];
 /**
  * Banner text size as a fraction of the stage width, with px clamps.
  * `base` is the size the text starts at (static and scrolling); `floor` is the
- * smallest a long static message may shrink to while fitting 2 lines. MEDIUM
+ * smallest a long static message may shrink to while fitting 2 lines (the bar
+ * goes below it, down to small's floor, only for a message so long it would
+ * otherwise be clipped by the overlay's height cap - so Large never shows
+ * less of a message than Medium; see `StaticText` in the web bar). MEDIUM
  * is the size every banner with options has drawn since 2026-11-01 (0.022 /
  * 0.0115, 20-120 / 14-60 px) — unchanged. Small and large scale it by
  * 0.017/0.022 and 0.030/0.022, clamps included (small's lower clamps are held

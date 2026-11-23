@@ -190,6 +190,65 @@ describe('Broadcast text size (2026-11-23)', () => {
     expect(body.banner).toEqual({ mode: 'scroll', speed: 'slow', size: 'large' });
   });
 
+  it('an API from before text sizes: one resend without the size, so the broadcast still goes out', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    let sends = 0;
+    fetchWithTimeout.mockImplementation(async (url: string) =>
+      url.includes('/branding/me') ? jsonResponse({ palette: { primary: '#0a6cff', accent: '#e11d48' } })
+        : url.includes('/emergency/targets') ? jsonResponse({ tenantId: TENANT_UUID, tenantName: 'School', allScreensCount: 2, groups: [], screens: [] })
+        : url.includes('/emergency/status') ? jsonResponse({ active: [] })
+        : ++sends === 1
+          ? jsonResponse({ error: 'ValidationError', message: 'Please check banner: Unrecognized key: "size"', issues: [{ path: 'banner', code: 'unrecognized_keys', message: 'Unrecognized key: "size"' }] }, 400)
+          : jsonResponse({ success: true, messageId: 'bcast_1' }, 201),
+    );
+    await mount();
+    write();
+    fireEvent.click(screen.getByTestId('banner-mode-scroll'));
+    fireEvent.click(screen.getByTestId('banner-speed-slow'));
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'emergency.broadcast.sendAria' }));
+    await act(async () => { jest.advanceTimersByTime(3_100); });
+    await waitFor(() => expect(sendCalls()).toHaveLength(2));
+    const bodies = sendCalls().map((c) => JSON.parse(String((c[1] as RequestInit).body)));
+    expect(bodies[0].banner).toEqual({ mode: 'scroll', speed: 'slow', size: 'large' });
+    expect(bodies[1].banner).toEqual({ mode: 'scroll', speed: 'slow' });
+    expect({ ...bodies[1], banner: undefined }).toEqual({ ...bodies[0], banner: undefined }); // nothing else changes
+    expect(screen.queryByText(/emergency\.broadcast\.errSendFailed/)).toBeNull();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('any other 400 is shown, never resent', async () => {
+    fetchWithTimeout.mockImplementation(async (url: string) =>
+      url.includes('/branding/me') ? jsonResponse({ palette: { primary: '#0a6cff', accent: '#e11d48' } })
+        : url.includes('/emergency/targets') ? jsonResponse({ tenantId: TENANT_UUID, tenantName: 'School', allScreensCount: 2, groups: [], screens: [] })
+        : url.includes('/emergency/status') ? jsonResponse({ active: [] })
+        : jsonResponse({ error: 'ValidationError', message: 'Please check text: Too big', issues: [{ path: 'text', code: 'too_big', message: 'Too big' }] }, 400),
+    );
+    await mount();
+    write();
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'emergency.broadcast.sendAria' }));
+    await act(async () => { jest.advanceTimersByTime(3_100); });
+    await waitFor(() => expect(screen.getByText(/emergency\.broadcast\.errSendFailed/)).toBeTruthy());
+    expect(sendCalls()).toHaveLength(1);
+  });
+
+  it('a Medium send that is refused is never resent (it carries no size)', async () => {
+    fetchWithTimeout.mockImplementation(async (url: string) =>
+      url.includes('/branding/me') ? jsonResponse({ palette: { primary: '#0a6cff', accent: '#e11d48' } })
+        : url.includes('/emergency/targets') ? jsonResponse({ tenantId: TENANT_UUID, tenantName: 'School', allScreensCount: 2, groups: [], screens: [] })
+        : url.includes('/emergency/status') ? jsonResponse({ active: [] })
+        : jsonResponse({ error: 'ValidationError', issues: [{ path: 'banner', code: 'unrecognized_keys', message: 'Unrecognized key: "size"' }] }, 400),
+    );
+    await mount();
+    write();
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'emergency.broadcast.sendAria' }));
+    await act(async () => { jest.advanceTimersByTime(3_100); });
+    await waitFor(() => expect(screen.getByText(/emergency\.broadcast\.errSendFailed/)).toBeTruthy());
+    expect(sendCalls()).toHaveLength(1);
+  });
+
   it('Critical hides the size control and sends no banner', async () => {
     await mount();
     write();
