@@ -3,8 +3,9 @@
  *
  * A real scoreboard snapshot body is 311-579 bytes (measurements in
  * `game-state.ts`), and every accepted one is signed and published on the
- * Redis bus that also carries alerts. Without a parser of its own the route
- * inherited the global 5 MB JSON limit the bug reporter needs.
+ * Redis bus that also carries alerts, so the route has its own 16 KB parser
+ * (`GAME_STATE_MAX_BODY_BYTES`) ahead of the global 5 MB JSON one, which the
+ * bug reporter needs.
  *
  * ORDER: call it BEFORE the global `json()` / `urlencoded()` in main.ts, like
  * the telemetry, play-log and player-logs mounts there. Whichever parser reads

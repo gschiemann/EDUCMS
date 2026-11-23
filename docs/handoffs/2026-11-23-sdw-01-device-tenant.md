@@ -1,6 +1,6 @@
 # A device principal belongs to a tenant on the guard surface (SDW-01, 2026-11-23)
 
-**Status.** Branch `claude/fix-sdw-01`: the change and one review-round commit. Not pushed, no pull request, **not merged**, so unverified on the fleet. It touches `apps/api/src/emergency/emergency.controller.ts` (two metadata decorators and their comments, with no behaviour change), so it needs a different vendor's review and the owner's written go before it merges.
+**Status.** Integrated on `claude/launch-fixes-6-10` with launch fixes 6-10 (the `claude/fix-sdw-01` change, its review-round commit and the integration follow-ups). The owner gave the go and waived the different-vendor review in writing on 2026-11-23. It is not on `master` or deployed yet, so it is unverified on the fleet until it is deployed and the checks under "After deploy" pass. It touches `apps/api/src/emergency/emergency.controller.ts` (two metadata decorators and their comments, with no behaviour change), so the on-glass drill in step 4 of "After deploy" is required evidence before it is called done.
 
 Model: Claude Opus 5.5, Claude Code cloud session, dispatched by a workflow script as the author. The independent review ran in a separate session.
 
@@ -19,7 +19,7 @@ Model: Claude Opus 5.5, Claude Code cloud session, dispatched by a workflow scri
 - `apps/api/src/security/device-identity.interceptor.spec.ts`: refusal, opt-in admission, the live row wins over a stale claim, paired unchanged, user principals untouched.
 - `apps/api/src/tenant-isolation/tenantless-device-principal.spec.ts` (runs in the required two-tenant matrix job): each defence-in-depth handler against the Prisma double that evaluates `where` the way Prisma does.
 
-## Follow-ups (not done)
+## Follow-ups
 
 1. Extend the tenant-isolation static gate (tracked privately). The baseline was not raised.
 2. Evaluate Prisma `strictUndefinedChecks` across the API (needs an audit of call sites first).
@@ -30,4 +30,4 @@ Model: Claude Opus 5.5, Claude Code cloud session, dispatched by a workflow scri
 1. `/api/v1/health` reports `commit` equal to the merge SHA.
 2. Clear a bench screen's player storage so it registers fresh. The pairing code shows. Pair it, and it leaves the splash within one heartbeat. Repeat on one old-APK bench unit and on a browser player with a cached bundle.
 3. While a bench screen is unpaired, the API logs show no `DEVICE_SCREEN_UNPAIRED` for the manifest, `emergency/messages` or the pairing routes.
-4. On a paired bench screen, a drill paints and clears as before.
+4. On a paired bench screen, a drill paints and clears as before (required: the change touches the emergency controller).
