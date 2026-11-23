@@ -97,3 +97,49 @@ for (const width of [1440, 390]) {
     expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client);
   });
 }
+
+// Text size (2026-11-23): Small / Medium / Large beside the other banner
+// controls, operated from the keyboard, drawn in the preview and sent.
+for (const width of [1440, 390]) {
+  test(`banner text size and slow scrolling, by keyboard, at ${width}px`, async ({ page }) => {
+    test.setTimeout(180000);
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 1050 });
+    const calls = await setup(page);
+    await page.goto(`/${SLUG}/emergency/broadcast`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: 'Create a broadcast' })).toBeVisible({ timeout: 120000 });
+    const main = page.getByTestId('broadcast-page');
+    await page.getByLabel('Message', { exact: true }).fill('Early dismissal at 1 pm');
+    const sizes = page.getByRole('radiogroup', { name: 'Text size' });
+    await expect(sizes.getByRole('radio')).toHaveText(['Small', 'Medium', 'Large']);
+    await expect(sizes.getByRole('radio', { name: 'Medium' })).toHaveAttribute('aria-checked', 'true');
+    for (const r of await sizes.getByRole('radio').all()) {
+      expect((await r.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    const previewText = page.getByTestId('broadcast-preview-bar').locator('[data-banner-text]');
+    await expect(previewText).toHaveCSS('font-size', '42px'); // medium on the 1920 preview stage
+
+    // Keyboard only: focus a radio, press the key a remote's OK sends.
+    await page.getByTestId('banner-mode-scroll').focus();
+    await page.keyboard.press('Enter');
+    await page.getByTestId('banner-speed-slow').focus();
+    await page.keyboard.press('Enter');
+    await page.getByTestId('banner-size-large').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('banner-size-large')).toHaveAttribute('aria-checked', 'true');
+    const scroll = page.getByTestId('broadcast-preview-bar').locator('[data-banner-text="scroll"]');
+    await expect(scroll).toHaveAttribute('data-banner-size', 'large');
+    await expect(scroll).toHaveAttribute('data-banner-speed', 'slow');
+    await expect(scroll).toHaveCSS('font-size', '58px');
+    if (process.env.BROADCAST_SHOTS) await page.screenshot({ path: `${process.env.BROADCAST_SHOTS}/broadcast-size-${width}.png`, animations: 'disabled' });
+
+    const send = page.getByRole('button', { name: /Broadcast emergency message/ });
+    await send.focus();
+    await page.keyboard.down('Space');
+    await expect.poll(() => calls.length, { timeout: 6000 }).toBe(1);
+    await page.keyboard.up('Space');
+    expect(calls[0].path).toBe('/emergency/broadcast');
+    expect(calls[0].body.banner).toEqual({ mode: 'scroll', speed: 'slow', size: 'large' });
+    const dimensions = await main.evaluate(el => ({ client: el.clientWidth, scroll: el.scrollWidth }));
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client);
+  });
+}
