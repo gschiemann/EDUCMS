@@ -1323,7 +1323,7 @@
         "templatesTitle": "Templates",
         "templatesDesc": "Push this brand into screen templates, or clear the brand entirely.",
         "applyTemplates": "Apply brand to templates",
-        "applyTemplatesHelp": "Fills brand colors into template zones that are still on stock defaults. Zones you styled yourself are left alone.",
+        "applyTemplatesHelp": "Puts your logo, name, tagline, colors and fonts into your templates wherever a spot is blank or still shows your previous brand. Anything you changed by hand is left alone.",
         "applying": "Applying…",
         "applyDone": "Applied to {count} templates · {zones} zones updated.",
         "applyFailed": "Apply failed — nothing was changed. {message}",

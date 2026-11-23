@@ -1323,7 +1323,7 @@
         "templatesTitle": "Plantillas",
         "templatesDesc": "Lleva esta marca a las plantillas de pantalla o elimina la marca por completo.",
         "applyTemplates": "Aplicar la marca a las plantillas",
-        "applyTemplatesHelp": "Rellena los colores de marca en las zonas de plantilla que siguen con los valores predeterminados. Las zonas que ya personalizaste no se tocan.",
+        "applyTemplatesHelp": "Coloca tu logotipo, nombre, lema, colores y fuentes en tus plantillas donde un espacio esté vacío o aún muestre tu marca anterior. Lo que cambiaste a mano no se toca.",
         "applying": "Aplicando…",
         "applyDone": "Aplicado a {count} plantillas · {zones} zonas actualizadas.",
         "applyFailed": "Error al aplicar: no se cambió nada. {message}",
