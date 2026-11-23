@@ -159,6 +159,16 @@ function expectSixOnScreenApart(boxes: Box[], viewportHeight: number) {
   }
 }
 
+/** The idle panel's own scroll box: the `fixed` root around the trigger grid. */
+async function panelScroll(page: Page): Promise<{ top: number; height: number; client: number }> {
+  return page.getByRole('button', { name: /Trigger Lockdown emergency/ }).evaluate((el) => {
+    let n: HTMLElement | null = el as HTMLElement;
+    while (n && getComputedStyle(n).position !== 'fixed') n = n.parentElement;
+    if (!n) throw new Error('no fixed panel root around the trigger buttons');
+    return { top: n.scrollTop, height: n.scrollHeight, client: n.clientHeight };
+  });
+}
+
 /** …and each one still a big round thumb target. */
 function expectSixRoundThumbTargets(boxes: Box[], viewportHeight: number) {
   expectSixOnScreenApart(boxes, viewportHeight);
@@ -372,6 +382,10 @@ test.describe('/panic — all screens, a group, or one screen', () => {
     expectSixOnScreenApart(withCard, 560);
     const bottomRow = Math.max(...withCard.map((b) => b.y + b.h));
     expect(await card.evaluate((el) => el.getBoundingClientRect().top)).toBeGreaterThanOrEqual(bottomRow);
+    // The card is reached by scrolling the panel (so the probe below reads
+    // the right box).
+    const scrollWithCard = await panelScroll(page);
+    expect(scrollWithCard.height).toBeGreaterThan(scrollWithCard.client);
 
     // Dismiss the card ("Not now"): the buttons are exactly the same size.
     await page.getByRole('button', { name: 'Not now' }).click();
@@ -383,6 +397,38 @@ test.describe('/panic — all screens, a group, or one screen', () => {
       expect(Math.abs(b.w - withCard[i].w)).toBeLessThan(0.5);
       expect(Math.abs(b.h - withCard[i].h)).toBeLessThan(0.5);
     });
+    // …and with no row to show, the panel has nothing to scroll.
+    const scrollWithoutCard = await panelScroll(page);
+    expect(scrollWithoutCard.height).toBeLessThanOrEqual(scrollWithoutCard.client);
+  });
+
+  test('scrolled down to the keep-ready card (390×664), a short press still sends nothing and the full hold still sends', async ({ page }) => {
+    // On a short screen the panel scrolls to reach the card. The 3-second
+    // safeguard must hold there too: a 1.2 s press sends nothing, a full hold
+    // sends exactly the pre-targeting arguments.
+    const world = await setUp(page);
+    world.active = [MEDICAL_ON_LOBBY];
+    await page.setViewportSize({ width: 390, height: 664 });
+    await page.goto('/panic');
+    await expect(page.getByTestId('panic-active-alerts')).toBeVisible();
+    await expect(page.getByTestId('emergency-target-label')).toHaveText('All screens (24)');
+    const card = page.getByTestId('panic-keep-ready');
+    await expect(card).toBeAttached();
+    await card.scrollIntoViewIfNeeded();
+    await expect(card).toBeInViewport({ ratio: 1 });
+    expect((await panelScroll(page)).top).toBeGreaterThan(0);
+    // Scrolled all the way to the card, the six buttons are still fully on screen.
+    expectSixOnScreenApart(await triggerBoxes(page), 664);
+
+    const lockdown = page.getByRole('button', { name: /Trigger Lockdown emergency/ });
+    await hold(page, lockdown, 1200);
+    await page.waitForTimeout(2500);
+    expect(world.triggers).toHaveLength(0);
+
+    await hold(page, lockdown);
+    await expect(page.getByTestId('panic-sent-summary')).toHaveText('Lockdown on all 24 screens');
+    expect(world.triggers).toHaveLength(1);
+    expect(world.triggers[0]).toEqual({ schoolId: TENANT, type: 'lockdown', triggeredBy: 'u1', token: 'e2e-token' });
   });
 
   test('a short press does nothing — the 3-second hold is unchanged', async ({ page }) => {
