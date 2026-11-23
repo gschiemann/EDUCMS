@@ -673,6 +673,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
+                spellCheck={false}
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder={urlPlaceholder}
@@ -821,6 +822,7 @@ export function BrandingWizard({ mode, initial, onAdopted, vertical }: BrandingW
                 <div className="relative flex-1 min-w-[180px]">
                   <Link2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
                   <Input
+                    spellCheck={false}
                     value={manualLogoUrl}
                     onChange={(e) => { setManualLogoUrl(e.target.value); if (e.target.value) setUploadedLogo(null); }}
                     placeholder={t('logos.pastePlaceholder')}
@@ -1193,6 +1195,7 @@ function PaletteRow({ label, colorLabel, value, onChange }: { label: string; col
         aria-label={colorLabel}
       />
       <input
+        spellCheck={false}
         type="text"
         value={value}
         onChange={(e) => {

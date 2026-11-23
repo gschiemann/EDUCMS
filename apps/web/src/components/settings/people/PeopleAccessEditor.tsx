@@ -533,6 +533,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
               <div className="mt-2 flex flex-col sm:flex-row gap-2">
                 <label htmlFor="people-accept-url" className="sr-only">{t('settings.cc.people.acceptLinkLabel')}</label>
                 <input
+                  spellCheck={false}
                   id="people-accept-url"
                   readOnly
                   value={inviteStatus.acceptUrl}
@@ -612,7 +613,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
               {inviteMode === 'password' && (
                 <div className="md:col-span-2">
                   <label htmlFor="people-password" className="block text-[12px] font-medium text-slate-700 mb-1">{t('settings.cc.people.temporaryPassword')}</label>
-                  <input id="people-password" type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                  <input spellCheck={false} id="people-password" type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                     autoComplete="new-password" aria-describedby="people-password-help"
                     className="w-full min-h-[42px] px-3 rounded-[9px] border border-slate-300 bg-white text-[13px] font-mono" />
                   <p id="people-password-help" className="mt-1 text-[12px] text-slate-500">{t('settings.cc.people.passwordHelp')}</p>
@@ -1154,6 +1155,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                                   {t('settings.cc.people.codeLabel')}
                                 </label>
                                 <input
+                                  spellCheck={false}
                                   id={`people-email-code-${user.id}`}
                                   type="text"
                                   inputMode="numeric"
@@ -1214,6 +1216,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                               <div className="mt-2 flex flex-col sm:flex-row gap-2">
                                 <label htmlFor={`people-link-url-${user.id}`} className="sr-only">{t('settings.cc.people.setupLinkLabel')}</label>
                                 <input
+                                  spellCheck={false}
                                   id={`people-link-url-${user.id}`}
                                   readOnly
                                   value={linkResult.url}
@@ -1329,6 +1332,7 @@ export function PeopleAccessEditor({ ssoManageable, ssoHref, securityHref }: {
                         <div className="mt-2 flex flex-col sm:flex-row gap-2">
                           <label htmlFor={`people-resent-url-${u.id}`} className="sr-only">{t('settings.cc.people.acceptLinkLabel')}</label>
                           <input
+                            spellCheck={false}
                             id={`people-resent-url-${u.id}`}
                             readOnly
                             value={resent.acceptUrl}

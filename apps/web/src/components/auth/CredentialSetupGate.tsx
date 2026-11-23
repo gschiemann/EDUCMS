@@ -468,6 +468,7 @@ export function CredentialSetupGate() {
                     {t('codeLabel')}
                   </label>
                   <input
+                    spellCheck={false}
                     id="setup-email-code"
                     ref={codeRef}
                     name="email-code"

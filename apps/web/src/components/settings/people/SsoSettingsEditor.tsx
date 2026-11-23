@@ -143,6 +143,7 @@ function Field({ id, label, value, onChange, placeholder, type = 'text' }: {
     <div>
       <label htmlFor={id} className="block text-[12px] font-medium text-slate-700 mb-1">{label}</label>
       <input
+        spellCheck={false}
         id={id}
         type={type}
         value={value}
@@ -479,6 +480,7 @@ export function SsoSettingsEditor() {
                     )}
                   </label>
                   <textarea
+                    spellCheck={false}
                     id="sso-x509"
                     value={form.x509Cert}
                     onChange={(e) => set('x509Cert', e.target.value)}
