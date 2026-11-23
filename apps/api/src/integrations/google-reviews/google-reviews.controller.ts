@@ -50,6 +50,7 @@ import {
 import { Throttle } from '@nestjs/throttler';
 
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
+import { hasTenantId } from '../../auth/require-tenant';
 import { RedisService } from '../../realtime/redis.service';
 import {
   GoogleReviewsProviderError,
@@ -114,23 +115,21 @@ export class GoogleReviewsController {
     }
     if (!this.reviews.enabled()) return { enabled: false, candidates: [] };
 
-    const tenantId = String(user.tenantId || '');
-    if (tenantId) {
-      const used = await reviewsSearchWindowCount(this.redis.publisher, tenantId);
-      if (used >= reviewsSearchHourlyCap()) {
-        throw new HttpException(
-          {
-            code: 'GOOGLE_REVIEWS_SEARCH_CAP',
-            message: 'That’s a lot of business searches this hour. Try again shortly.',
-          },
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
+    const tenantId = this.capTenantId(user);
+    const used = await reviewsSearchWindowCount(this.redis.publisher, tenantId);
+    if (used >= reviewsSearchHourlyCap()) {
+      throw new HttpException(
+        {
+          code: 'GOOGLE_REVIEWS_SEARCH_CAP',
+          message: 'That’s a lot of business searches this hour. Try again shortly.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
 
     try {
       const candidates = await this.reviews.searchPlaces(String(body?.query ?? ''));
-      if (tenantId) await reviewsSearchRecordEvent(this.redis.publisher, tenantId);
+      await reviewsSearchRecordEvent(this.redis.publisher, tenantId);
       return { enabled: true, candidates };
     } catch (err) {
       throw this.mapError(err);
@@ -163,26 +162,27 @@ export class GoogleReviewsController {
     // Charge the per-tenant cap ONLY when we are about to actually spend. A
     // warm cache is free, and a fleet polling a warm cache must never trip a
     // limit that exists to bound Google spend.
-    const tenantId = String(req.user?.tenantId || '');
-    if (tenantId) {
-      const warm = await getCachedReviews(this.redis.publisher, id);
-      if (!warm) {
-        const used = await reviewsFetchWindowCount(this.redis.publisher, tenantId);
-        if (used >= reviewsFetchHourlyCap()) {
-          throw new HttpException(
-            {
-              code: 'GOOGLE_REVIEWS_FETCH_CAP',
-              message: 'Google reviews are refreshing too often for this account. They’ll be back shortly.',
-            },
-            HttpStatus.TOO_MANY_REQUESTS,
-          );
-        }
+    // The tenant check runs BEFORE the warm-cache read, on purpose: every
+    // answer from this route, cached or not, goes to a caller with a tenant.
+    // Do not move it below the cache read.
+    const tenantId = this.capTenantId(req.user);
+    const warm = await getCachedReviews(this.redis.publisher, id);
+    if (!warm) {
+      const used = await reviewsFetchWindowCount(this.redis.publisher, tenantId);
+      if (used >= reviewsFetchHourlyCap()) {
+        throw new HttpException(
+          {
+            code: 'GOOGLE_REVIEWS_FETCH_CAP',
+            message: 'Google reviews are refreshing too often for this account. They’ll be back shortly.',
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
       }
     }
 
     try {
       const { payload, cached } = await this.reviews.getReviews(id);
-      if (tenantId && !cached) await reviewsFetchRecordEvent(this.redis.publisher, tenantId);
+      if (!cached) await reviewsFetchRecordEvent(this.redis.publisher, tenantId);
       return {
         enabled: true,
         place: payload.place,
@@ -193,6 +193,25 @@ export class GoogleReviewsController {
     } catch (err) {
       throw this.mapError(err);
     }
+  }
+
+  /**
+   * The tenant the per-tenant hourly cap is charged to (SDW-01). Every route
+   * that can reach Google needs one, so the cap always runs: a caller with no
+   * tenant has no budget to charge and is refused here.
+   * Every person and API key belongs to a tenant, and an unpaired screen is
+   * already refused by `DeviceIdentityInterceptor`, so a real caller never
+   * lands here.
+   */
+  private capTenantId(user: any): string {
+    const tenantId = user?.tenantId;
+    if (!hasTenantId(tenantId)) {
+      throw new ForbiddenException({
+        code: 'GOOGLE_REVIEWS_NO_TENANT',
+        message: 'Google reviews need an account to charge the lookup to.',
+      });
+    }
+    return tenantId;
   }
 
   /**

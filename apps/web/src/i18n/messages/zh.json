@@ -286,6 +286,10 @@
       "speedSlow": "慢",
       "speedNormal": "正常",
       "speedFast": "快",
+      "textSize": "文字大小",
+      "sizeSmall": "小",
+      "sizeMedium": "中",
+      "sizeLarge": "大",
       "autoClear": "自动结束",
       "d15m": "15 分钟",
       "d1h": "1 小时",
@@ -8777,5 +8781,10 @@
       "DRILL_APPROVALS_UNREADABLE": "服务器无法读取批准记录，因此未作任何更改。请重试。",
       "generic": "操作未成功，未作任何更改。请重试。"
     }
+  },
+  "appUpdate": {
+    "available": "有新版本可用",
+    "reload": "重新加载",
+    "later": "稍后"
   }
 }

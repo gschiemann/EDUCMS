@@ -79,7 +79,7 @@ import {
 // the rollout/cohort/hold gates, and the device-side verification.
 import { apkAssetName, legacyApkAssetName, resolveApkDelivery, type ApkDelivery, type ApkKind as StorageApkKind } from './apk-storage';
 import { isFieldCandidateTarget, configuredFieldRelease, mintFieldTicket, verifyFieldTicket, verifiedFieldBytes } from './field-candidate';
-import { isFieldBenchScreen } from './fleet-push-policy';
+import { fieldBenchVerdict, isFieldBenchScreen } from './fleet-push-policy';
 import { signDownloadTag, verifyDownloadTag, DOWNLOAD_TAG_PARAM } from './download-tag';
 import {
   heldForEmergencyAnswer,
@@ -804,7 +804,25 @@ export class PlayerOtaController {
           lookupScreenId = screen.id;
           lookupTenantId = screen.tenantId;
           holdScreen = otaHoldScreenFrom(screen as OtaEmergencyHoldScreenRow);
-          fieldTarget = isFieldCandidateTarget(screen.id,screen.tenantId);
+          // FLT-02 (2026-11-23) — a field window reaches ONLY a bench screen
+          // (fleet-push-policy.ts rule 2; unset list = no bench screen). Any
+          // other screen inside the window is not a field target at all: it is
+          // never offered the field build, and every gate below answers it from
+          // the stable ladder exactly as outside a window — an operator's
+          // "Send update" gets the stable build its confirm sheet names, and a
+          // screen already on a field build is still offered stable when stable
+          // is newer.
+          if (isFieldCandidateTarget(screen.id, screen.tenantId)) {
+            const bench = fieldBenchVerdict(screen.id);
+            fieldTarget = bench.bench;
+            if (!bench.bench) {
+              this.logger.log(
+                `[ota] field-window-not-bench screen=${screen.id} tenant=${screen.tenantId} fp=${fpShort} ` +
+                `reason=${bench.reason} — inside a field window but not a bench screen: no field build offered, ` +
+                `answered from the stable ladder`,
+              );
+            }
+          }
           // Phase B canary — pull the tenant's current rollout %.
           // Missing/null defaults to 100 (full rollout, no change in
           // behavior for tenants that haven't opted into canary).
@@ -1113,15 +1131,15 @@ export class PlayerOtaController {
       // "UP_TO_DATE … no newer release offered", the push sat at 0 offers, and
       // nothing anywhere said why (the sideloaded Android 9 units, 2026-10-20).
       //
-      // 2026-10-31 — a field build goes only to a BENCH screen once
-      // PLAYER_FIELD_BENCH_SCREENS is set (fleet-push-policy.ts: field builds
-      // 1.1.42 / 1.1.47 / 1.1.50 reached customer screens). Any other screen
-      // inside a window is HELD on its current build — never handed the
-      // stable build in its place. Unset, every screen passes, as before.
+      // A field build goes only to a BENCH screen (fleet-push-policy.ts: field
+      // builds 1.1.42 / 1.1.47 / 1.1.50 reached customer screens). Since
+      // 2026-11-23 (FLT-02) a screen that is not one never gets here — it is
+      // not a field target and the stable ladder answers it (above). This
+      // re-check is a backstop only.
       const fieldRefusal =
         !deviceAuthenticated ? 'device-not-authenticated' // no / stale device token on the check (an anonymous check is never offered private bytes)
         : !lookupScreenId || !lookupTenantId ? 'no-screen-row'
-        : !isFieldBenchScreen(lookupScreenId) ? 'not-a-bench-screen' // PLAYER_FIELD_BENCH_SCREENS is set and does not list this screen
+        : !isFieldBenchScreen(lookupScreenId) ? 'not-a-bench-screen' // not on PLAYER_FIELD_BENCH_SCREENS (or no list is set)
         : forcedPendingScreenId !== lookupScreenId ? 'no-push-admitted-for-this-screen' // gated above: window / canary / not pushed — see the [ota] line before this one
         : !release ? 'no-configured-field-release'
         : null;

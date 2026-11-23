@@ -286,6 +286,10 @@
       "speedSlow": "Lenta",
       "speedNormal": "Normal",
       "speedFast": "Rápida",
+      "textSize": "Tamaño del texto",
+      "sizeSmall": "Pequeño",
+      "sizeMedium": "Mediano",
+      "sizeLarge": "Grande",
       "autoClear": "Borrar automáticamente",
       "d15m": "15 min",
       "d1h": "1 hora",
@@ -8777,5 +8781,10 @@
       "DRILL_APPROVALS_UNREADABLE": "El servidor no pudo leer las aprobaciones, así que no se cambió nada. Inténtelo de nuevo.",
       "generic": "No funcionó y no se cambió nada. Inténtelo de nuevo."
     }
+  },
+  "appUpdate": {
+    "available": "Hay una versión nueva disponible",
+    "reload": "Recargar",
+    "later": "Más tarde"
   }
 }

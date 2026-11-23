@@ -250,12 +250,23 @@ describe('the refusals the panel answers with (the web words each code in en / e
       status: 422,
       code: 'FIELD_BUILD_SCREEN_NOT_BENCH',
       message: 'Field builds go only to the bench screens listed in PLAYER_FIELD_BENCH_SCREENS, and Gym is not on that list.',
-      extra: { screens: [{ id: S2, name: 'Gym' }] },
+      extra: { screens: [{ id: S2, name: 'Gym' }], benchListConfigured: true },
     });
     const two = benchRefusal([
       { id: S1, name: 'A' },
       { id: S2, name: 'B' },
     ]);
     expect(two.message).toMatch(/A and B are not on that list\.$/);
+  });
+
+  it('bench, with no list set (FLT-02): the same code, and the words say no bench screens are listed', () => {
+    expect(benchRefusal([{ id: S2, name: 'Gym' }], { listConfigured: false })).toEqual({
+      status: 422,
+      code: 'FIELD_BUILD_SCREEN_NOT_BENCH',
+      message:
+        'Field builds go only to the bench screens listed in PLAYER_FIELD_BENCH_SCREENS, and no bench screens are listed, ' +
+        'so Gym is not one. List the bench screens first.',
+      extra: { screens: [{ id: S2, name: 'Gym' }], benchListConfigured: false },
+    });
   });
 });

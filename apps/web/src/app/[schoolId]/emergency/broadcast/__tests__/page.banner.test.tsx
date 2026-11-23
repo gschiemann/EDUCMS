@@ -142,6 +142,124 @@ describe('Broadcast scrolling or static', () => {
   });
 });
 
+describe('Broadcast text size (2026-11-23)', () => {
+  const textEl = () => bar().querySelector('[data-banner-text]') as HTMLElement;
+
+  it('Small / Medium / Large sit with the other controls, Medium chosen, as 44 px radios', async () => {
+    await mount();
+    const group = screen.getByRole('radiogroup', { name: 'emergency.broadcast.textSize' });
+    const radios = Array.from(group.querySelectorAll('[role="radio"]')) as HTMLElement[];
+    expect(radios.map((r) => r.getAttribute('data-testid'))).toEqual(['banner-size-small', 'banner-size-medium', 'banner-size-large']);
+    expect(radios.map((r) => r.textContent)).toEqual(['emergency.broadcast.sizeSmall', 'emergency.broadcast.sizeMedium', 'emergency.broadcast.sizeLarge']);
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false']);
+    for (const r of radios) {
+      expect(r.tagName).toBe('BUTTON'); // focusable and Enter / Space operable (keyboard, remote)
+      expect(r.className).toContain('min-h-11');
+    }
+    // Shown for static text too, not only when scrolling.
+    expect(screen.getByTestId('banner-mode-static').getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('the preview follows the size, and a default send carries no size (byte for byte as before)', async () => {
+    await mount();
+    write();
+    expect(textEl().style.fontSize).toBe('42px'); // medium on the 1920 preview stage
+    fireEvent.click(screen.getByTestId('banner-size-small'));
+    expect(textEl().style.fontSize).toBe('33px');
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    expect(textEl().style.fontSize).toBe('58px');
+    expect(screen.getByTestId('banner-size-large').getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(screen.getByTestId('banner-size-medium'));
+    expect(textEl().style.fontSize).toBe('42px');
+    const body = await holdSend();
+    expect(body.banner).toEqual({ mode: 'static', speed: 'normal' });
+    expect('size' in body.banner).toBe(false);
+  });
+
+  it('Large + Slow scrolling: the preview draws it and the request carries both', async () => {
+    await mount();
+    write();
+    fireEvent.click(screen.getByTestId('banner-mode-scroll'));
+    fireEvent.click(screen.getByTestId('banner-speed-slow'));
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    const scroll = bar().querySelector('[data-banner-text="scroll"]') as HTMLElement;
+    expect(scroll.getAttribute('data-banner-speed')).toBe('slow');
+    expect(scroll.getAttribute('data-banner-size')).toBe('large');
+    expect(scroll.style.fontSize).toBe('58px');
+    const body = await holdSend();
+    expect(body.banner).toEqual({ mode: 'scroll', speed: 'slow', size: 'large' });
+  });
+
+  it('an API from before text sizes: one resend without the size, so the broadcast still goes out', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    let sends = 0;
+    fetchWithTimeout.mockImplementation(async (url: string) =>
+      url.includes('/branding/me') ? jsonResponse({ palette: { primary: '#0a6cff', accent: '#e11d48' } })
+        : url.includes('/emergency/targets') ? jsonResponse({ tenantId: TENANT_UUID, tenantName: 'School', allScreensCount: 2, groups: [], screens: [] })
+        : url.includes('/emergency/status') ? jsonResponse({ active: [] })
+        : ++sends === 1
+          ? jsonResponse({ error: 'ValidationError', message: 'Please check banner: Unrecognized key: "size"', issues: [{ path: 'banner', code: 'unrecognized_keys', message: 'Unrecognized key: "size"' }] }, 400)
+          : jsonResponse({ success: true, messageId: 'bcast_1' }, 201),
+    );
+    await mount();
+    write();
+    fireEvent.click(screen.getByTestId('banner-mode-scroll'));
+    fireEvent.click(screen.getByTestId('banner-speed-slow'));
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'emergency.broadcast.sendAria' }));
+    await act(async () => { jest.advanceTimersByTime(3_100); });
+    await waitFor(() => expect(sendCalls()).toHaveLength(2));
+    const bodies = sendCalls().map((c) => JSON.parse(String((c[1] as RequestInit).body)));
+    expect(bodies[0].banner).toEqual({ mode: 'scroll', speed: 'slow', size: 'large' });
+    expect(bodies[1].banner).toEqual({ mode: 'scroll', speed: 'slow' });
+    expect({ ...bodies[1], banner: undefined }).toEqual({ ...bodies[0], banner: undefined }); // nothing else changes
+    expect(screen.queryByText(/emergency\.broadcast\.errSendFailed/)).toBeNull();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('any other 400 is shown, never resent', async () => {
+    fetchWithTimeout.mockImplementation(async (url: string) =>
+      url.includes('/branding/me') ? jsonResponse({ palette: { primary: '#0a6cff', accent: '#e11d48' } })
+        : url.includes('/emergency/targets') ? jsonResponse({ tenantId: TENANT_UUID, tenantName: 'School', allScreensCount: 2, groups: [], screens: [] })
+        : url.includes('/emergency/status') ? jsonResponse({ active: [] })
+        : jsonResponse({ error: 'ValidationError', message: 'Please check text: Too big', issues: [{ path: 'text', code: 'too_big', message: 'Too big' }] }, 400),
+    );
+    await mount();
+    write();
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'emergency.broadcast.sendAria' }));
+    await act(async () => { jest.advanceTimersByTime(3_100); });
+    await waitFor(() => expect(screen.getByText(/emergency\.broadcast\.errSendFailed/)).toBeTruthy());
+    expect(sendCalls()).toHaveLength(1);
+  });
+
+  it('a Medium send that is refused is never resent (it carries no size)', async () => {
+    fetchWithTimeout.mockImplementation(async (url: string) =>
+      url.includes('/branding/me') ? jsonResponse({ palette: { primary: '#0a6cff', accent: '#e11d48' } })
+        : url.includes('/emergency/targets') ? jsonResponse({ tenantId: TENANT_UUID, tenantName: 'School', allScreensCount: 2, groups: [], screens: [] })
+        : url.includes('/emergency/status') ? jsonResponse({ active: [] })
+        : jsonResponse({ error: 'ValidationError', issues: [{ path: 'banner', code: 'unrecognized_keys', message: 'Unrecognized key: "size"' }] }, 400),
+    );
+    await mount();
+    write();
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'emergency.broadcast.sendAria' }));
+    await act(async () => { jest.advanceTimersByTime(3_100); });
+    await waitFor(() => expect(screen.getByText(/emergency\.broadcast\.errSendFailed/)).toBeTruthy());
+    expect(sendCalls()).toHaveLength(1);
+  });
+
+  it('Critical hides the size control and sends no banner', async () => {
+    await mount();
+    write();
+    fireEvent.click(screen.getByTestId('banner-size-large'));
+    fireEvent.click(screen.getByLabelText('emergency.broadcast.sevCritical'));
+    expect(screen.queryByTestId('banner-size-large')).toBeNull();
+    const body = await holdSend();
+    expect(body.banner).toBeUndefined();
+  });
+});
+
 describe('Broadcast auto-clear', () => {
   it.each([
     ['15m', 15 * 60_000],

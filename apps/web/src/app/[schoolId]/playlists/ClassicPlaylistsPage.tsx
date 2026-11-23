@@ -50,6 +50,7 @@ import { imageShape, type ImageShape } from '@/lib/image-shape';
 import { uploadAssetDirect } from '@/lib/direct-upload';
 import { useUploadErrorText, useUploadTooLargeText } from '@/lib/use-upload-error-text';
 import { LIBRARY_ACCEPT, uploadProblemFor, useUploadProblemText } from '@/lib/upload-accept';
+import { registerUnsavedWork } from '@/lib/unsaved-work';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1').replace('/api/v1', '');
@@ -1739,7 +1740,12 @@ export default function ClassicPlaylistsPage({
       }
     };
     window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
+    // Same answer for the unsaved-work registry (StaleBundleWatcher).
+    const unregister = registerUnsavedWork(() => hasChanges);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+      unregister();
+    };
   }, [hasChanges]);
 
   // 2026-05-04 — operator: "when i edit a playlist and add a new

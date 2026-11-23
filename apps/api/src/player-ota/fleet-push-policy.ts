@@ -28,12 +28,17 @@
  *    shown to be one class: refused, exactly as a screen with no time zone
  *    is refused below.
  * 2. BENCH SCREENS ONLY for a field candidate — PLAYER_FIELD_BENCH_SCREENS,
- *    comma-separated screen ids. Unset or blank = no restriction, the
- *    behaviour before the variable existed. Set = only the listed screens are
- *    offered, sent or pushed a field build. A token that is not a screen id is
- *    ignored and there is no wildcard, so a typo can only shrink the list: a
- *    list with no valid id admits no screen at all (the safe direction for a
- *    restriction — it never re-opens customer screens).
+ *    comma-separated screen ids. Only the listed screens are offered, sent or
+ *    pushed a field build. Unset or blank = NO bench screen (fail closed,
+ *    owner-approved default change 2026-11-23, FLT-02; until then unset meant
+ *    no restriction). A token that is not a screen id is ignored and there is
+ *    no wildcard, so a typo can only shrink the list: a list with no valid id
+ *    admits no screen at all (the safe direction for a restriction — it never
+ *    re-opens customer screens). PLAYER_FIELD_BENCH_FAIL_OPEN=1 (the lead's
+ *    escape) restores the old reading of an UNSET list — every screen passes —
+ *    and never widens a list that is set. A screen that is not a bench screen
+ *    is never offered a field build; the update check answers it from the
+ *    stable ladder like any screen outside a field window.
  * 3. OFF-HOURS. A push to more than one screen goes out only between 22:00
  *    and 06:00 in EVERY target screen's own time zone — the zone the screen
  *    itself shows (screens/screen-time-zone.ts). A screen whose zone does not
@@ -43,7 +48,7 @@
  * Rules 1 and 3 bind a set of MORE THAN ONE screen — one screen is one class
  * and one clock, which is how bench testing works — and yield to one explicit
  * override on the request, which the caller writes to the audit log. Rule 2
- * has no override: the variable itself is the switch.
+ * has no override on a request: the variables themselves are the switch.
  */
 import { reportedDeviceClass } from '../screens/native-video';
 import { isInsideWindowStrict, isValidTimeZone } from './auto-update-policy';
@@ -74,9 +79,16 @@ export function listScreenNames(screens: ReadonlyArray<NamedScreen>, max = 3): s
 // ─── 2. Bench screens ──────────────────────────────────────────────────────
 
 export const FIELD_BENCH_ENV = 'PLAYER_FIELD_BENCH_SCREENS';
+/**
+ * The lead's escape (2026-11-23): `1` / `true` / `yes`, any case, restores the
+ * pre-2026-11-23 reading of an UNSET bench list (every screen passes). It
+ * never widens a list that is set. Anything else, or unset, is the default:
+ * an unset list admits no screen.
+ */
+export const FIELD_BENCH_FAIL_OPEN_ENV = 'PLAYER_FIELD_BENCH_FAIL_OPEN';
 
 export interface FieldBenchList {
-  /** false = the variable is unset or blank: no restriction. */
+  /** false = the variable is unset or blank: no bench screen (unless the escape is set). */
   configured: boolean;
   /** The listed screen ids, lower-cased. Empty while configured = no bench screen at all. */
   ids: ReadonlySet<string>;
@@ -93,14 +105,58 @@ export function parseFieldBenchScreens(env: Record<string, string | undefined> =
   return { configured: true, ids };
 }
 
-/** May a field candidate reach this screen? Always yes while the variable is unset. */
+/** Is the escape set? Exactly `1`, `true` or `yes` (trimmed, any case). */
+export function fieldBenchFailOpen(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env[FIELD_BENCH_FAIL_OPEN_ENV];
+  return (
+    typeof raw === 'string' &&
+    ['1', 'true', 'yes'].includes(raw.trim().toLowerCase())
+  );
+}
+
+/**
+ * Why a screen is, or is not, a bench screen — the plain reason the update
+ * check and the field push log.
+ *   listed            on the configured list
+ *   not-listed        a list is configured and does not name this screen
+ *   no-bench-list     no list is configured, so no screen is a bench screen
+ *   fail-open-escape  no list is configured and PLAYER_FIELD_BENCH_FAIL_OPEN
+ *                     restores the old reading: every screen passes
+ */
+export type FieldBenchReason =
+  | 'listed'
+  | 'not-listed'
+  | 'no-bench-list'
+  | 'fail-open-escape';
+
+export interface FieldBenchVerdict {
+  bench: boolean;
+  reason: FieldBenchReason;
+}
+
+export function fieldBenchVerdict(
+  screenId: string | null | undefined,
+  env: Record<string, string | undefined> = process.env,
+): FieldBenchVerdict {
+  const list = parseFieldBenchScreens(env);
+  if (!list.configured) {
+    return fieldBenchFailOpen(env)
+      ? { bench: true, reason: 'fail-open-escape' }
+      : { bench: false, reason: 'no-bench-list' };
+  }
+  const listed =
+    typeof screenId === 'string' && list.ids.has(screenId.trim().toLowerCase());
+  return { bench: listed, reason: listed ? 'listed' : 'not-listed' };
+}
+
+/** May a field candidate reach this screen? Only a listed bench screen (or any screen under the escape while no list is set). */
 export function isFieldBenchScreen(
   screenId: string | null | undefined,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  const bench = parseFieldBenchScreens(env);
-  if (!bench.configured) return true;
-  return typeof screenId === 'string' && bench.ids.has(screenId.trim().toLowerCase());
+  return fieldBenchVerdict(screenId, env).bench;
 }
 
 // ─── 1. One hardware class ─────────────────────────────────────────────────

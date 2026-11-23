@@ -21,6 +21,7 @@
  */
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { hasTenantId } from '../../auth/require-tenant';
 import { sealCredentials, openCredentials } from '../../streaming/creds-cipher';
 import {
   MetaHttpError,
@@ -305,6 +306,9 @@ export class SocialService {
     tenantId: string,
     opts: { connectionId?: string; limit?: number },
   ): Promise<SocialPostDto[]> {
+    // SDW-01: posts require a tenant scope; without one the read ends here,
+    // before any query.
+    if (!hasTenantId(tenantId)) return [];
     const take = Math.max(
       1,
       Math.min(50, Math.floor(Number(opts.limit)) || 12),
@@ -346,6 +350,7 @@ export class SocialService {
     tenantId: string,
     connectionId: string,
   ): Promise<SocialConnectionDto | null> {
+    if (!hasTenantId(tenantId)) return null; // SDW-01: see listPosts
     const row = await (
       this.prisma.client as any
     ).socialProviderConnection.findFirst({

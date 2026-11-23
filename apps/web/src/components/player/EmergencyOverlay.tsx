@@ -311,7 +311,7 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
     bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('resize', measure);
     return () => { observer?.disconnect(); bodyObserver.disconnect(); window.removeEventListener('resize', measure); onBannerLayoutChange?.(null); updateBroadcastBannerInset(0); };
-  }, [bannerVisible, displayed?.textBlob, displayed?.banner?.mode, displayed?.banner?.speed, canvas.h, canvas.w, faceStage?.height, faceStage?.width, onBannerLayoutChange]);
+  }, [bannerVisible, displayed?.textBlob, displayed?.banner?.mode, displayed?.banner?.speed, displayed?.banner?.size, canvas.h, canvas.w, faceStage?.height, faceStage?.width, onBannerLayoutChange]);
 
   useEffect(() => {
     if (message) {
