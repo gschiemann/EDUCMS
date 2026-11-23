@@ -232,3 +232,82 @@ test.describe('bulk deleting your templates', () => {
     await expect(dock).toHaveCount(0);
   });
 });
+
+/**
+ * The owner, later: "I can't check multiple templates to delete all at once,
+ * all I have is a select all but not individual selection... add that just
+ * how we have the assets so I can pick multiple templates and delete".
+ */
+test.describe('picking several templates by their own boxes', () => {
+  test('hovering a tile reveals its box; pick 3 by their own boxes; exactly those 3 are deleted', async ({ page }, info) => {
+    test.setTimeout(150_000);
+    const { calls } = await open(page);
+    const chip = page.getByTestId('templates-select-tpl-05-chip');
+    // Out of the way until the pointer is on the tile (a device that can hover)...
+    await expect(chip).toHaveCSS('opacity', '0');
+    await page.getByRole('button', { name: 'Preview of Board 05 template' }).hover();
+    // ...and there as soon as it is, exactly as on an Assets tile.
+    await expect(chip).toHaveCSS('opacity', '1');
+
+    for (const n of ['05', '02', '08']) {
+      await page.getByRole('checkbox', { name: `Select Board ${n}`, exact: true }).check();
+    }
+    const bar = page.getByTestId('templates-bulk-bar');
+    await expect(bar).toContainText('3 selected');
+    // A selected tile wears the shared selected ring.
+    await expect(page.locator('[data-selected] > .ring-2.border-indigo-500')).toHaveCount(3);
+    // Once anything is selected every tile shows its box, so the next pick is one click.
+    await expect(page.getByTestId('templates-select-tpl-11-chip')).toHaveCSS('opacity', '1');
+    await page.screenshot({ path: info.outputPath('multi-select-3.png'), fullPage: false });
+
+    await bar.getByRole('button', { name: 'Delete', exact: true }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText('Delete 3 templates?');
+    await dialog.getByRole('button', { name: 'Delete 3 templates' }).click();
+    await expect(page.getByText('3 templates deleted')).toBeVisible({ timeout: 20_000 });
+    expect([...calls.deletes].sort()).toEqual(['tpl-02', 'tpl-05', 'tpl-08']);
+    for (const n of ['02', '05', '08']) {
+      await expect(page.getByRole('button', { name: new RegExp(`more actions for board ${n}`, 'i') })).toHaveCount(0);
+    }
+    await expect(page.getByRole('button', { name: /more actions for board 01/i }).first()).toBeVisible();
+    await expect(bar).toHaveCount(0);
+  });
+
+  test('list view: pick 2 rows (one by keyboard); a grid/list toggle keeps them; exactly those 2 are deleted', async ({ page }, info) => {
+    test.setTimeout(150_000);
+    const { calls } = await open(page);
+    await page.getByRole('radio', { name: 'List view' }).click();
+    const rowBox = (n: string) => page.getByRole('checkbox', { name: `Select Board ${n}`, exact: true });
+    await rowBox('04').check();
+    // A real control: Tab reaches it, Space ticks it (keyboard and remote).
+    await rowBox('10').focus();
+    await page.keyboard.press('Space');
+    await expect(rowBox('10')).toBeChecked();
+    const bar = page.getByTestId('templates-bulk-bar');
+    await expect(bar).toContainText('2 selected');
+    await page.screenshot({ path: info.outputPath('multi-select-list-2.png'), fullPage: false });
+
+    // The view switch stays in the selection row; switching keeps the selection.
+    await page.getByRole('radio', { name: 'Grid view' }).click();
+    // (The card's own menu exists only on a grid tile.)
+    await expect(page.getByRole('button', { name: /more actions for board 04/i }).first()).toBeVisible();
+    await expect(rowBox('04')).toBeChecked();
+    await expect(rowBox('10')).toBeChecked();
+    await expect(rowBox('05')).not.toBeChecked();
+    await expect(bar).toContainText('2 selected');
+    await page.getByRole('radio', { name: 'List view' }).click();
+    await expect(rowBox('04')).toBeChecked();
+    await expect(rowBox('10')).toBeChecked();
+    await expect(bar).toContainText('2 selected');
+
+    await bar.getByRole('button', { name: 'Delete', exact: true }).click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText('Delete 2 templates?');
+    await dialog.getByRole('button', { name: 'Delete 2 templates' }).click();
+    await expect(page.getByText('2 templates deleted')).toBeVisible({ timeout: 20_000 });
+    expect([...calls.deletes].sort()).toEqual(['tpl-04', 'tpl-10']);
+    await expect(rowBox('04')).toHaveCount(0);
+    await expect(rowBox('10')).toHaveCount(0);
+    await expect(rowBox('01')).toBeVisible();
+  });
+});

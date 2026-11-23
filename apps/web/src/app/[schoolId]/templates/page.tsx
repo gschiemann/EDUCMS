@@ -143,7 +143,7 @@ import { PageToolbar } from '@/components/ui/page-toolbar';
 import { StatusPill } from '@/components/ui/status-pill';
 import { Segmented } from '@/components/ui/segmented';
 import { ActionDock, SelectionToolbar, type SelectionBarProps } from '@/components/ui/selection-toolbar';
-import { SelectionCheckbox, SelectionTileCheckbox, selectionState, selectAllTitle } from '@/components/common/SelectionCheckbox';
+import { SelectionCheckbox, SelectionTileCheckbox, SELECTED_TILE_CLASS, selectionState, selectAllTitle } from '@/components/common/SelectionCheckbox';
 import { transformedImageUrl } from '@/lib/asset-image';
 
 // ─────────────────────────────────────────────────────
@@ -2410,8 +2410,11 @@ export default function TemplatesPage() {
   // stop at the first page, so the rest were never deleted). The bar's
   // "N selected" and the dialog's "Delete N templates?" state the true number.
   // Never a preset (customTemplates has none), never one the filter hides.
+  // Grid and list select the same set (owner, 2026-11-23: "pick multiple
+  // templates and delete" — a box on every tile and every row, as Assets
+  // has), so the selection is independent of the view and survives a toggle.
   const matchedTplIds = isViewer ? [] : customTemplates.map((t: Template) => t.id);
-  const canSelectTpls = !isViewer && viewMode === 'grid';
+  const canSelectTpls = !isViewer;
   const selectableTplIds = canSelectTpls ? matchedTplIds : [];
   const selectedTpls = canSelectTpls ? customTemplates.filter((t: Template) => tplSelected.has(t.id)) : [];
   const tplSelState = selectionState(selectedTpls.length, selectableTplIds.length);
@@ -3428,12 +3431,32 @@ export default function TemplatesPage() {
           });
         }
         const selecting = !isPhone && selectedTpls.length > 0;
+        // The grid/list switch stays at the row's right end while the row is
+        // the selection bar: grid and list share one selection (2026-11-23),
+        // so switching views mid-selection is a thing an operator does.
+        const viewSwitch = isPhone ? undefined : (
+          <Segmented
+            value={viewMode}
+            onChange={setViewMode}
+            ariaLabel={tUi('view')}
+            iconOnly
+            options={[
+              { value: 'grid', label: tUi('gridView'), icon: Grid3X3 },
+              { value: 'list', label: tUi('listView'), icon: AlignLeft },
+            ] as const}
+          />
+        );
         return (
           <>
             <PageToolbar
               testId="templates-toolbar"
               compact={isPhone}
-              selection={selecting ? <SelectionToolbar {...tplBarProps} /> : undefined}
+              selection={selecting ? (
+                <div className="flex h-full min-w-0 items-center gap-3">
+                  <div className="h-full min-w-0 flex-1"><SelectionToolbar {...tplBarProps} /></div>
+                  {viewSwitch}
+                </div>
+              ) : undefined}
               tabs={
                 <TabRow
                   value={activeCategory}
@@ -3511,18 +3534,7 @@ export default function TemplatesPage() {
                   </>
                 )
               }
-              trailing={isPhone ? undefined : (
-                <Segmented
-                  value={viewMode}
-                  onChange={setViewMode}
-                  ariaLabel={tUi('view')}
-                  iconOnly
-                  options={[
-                    { value: 'grid', label: tUi('gridView'), icon: Grid3X3 },
-                    { value: 'list', label: tUi('listView'), icon: AlignLeft },
-                  ] as const}
-                />
-              )}
+              trailing={viewSwitch}
             />
             {isPhone && <ActionDock {...tplBarProps} />}
           </>
@@ -3689,11 +3701,20 @@ export default function TemplatesPage() {
                 onPreview={(t) => setPreviewTemplate(t)}
                 onPrimary={isViewer ? undefined : (t) => openTemplate(t)}
                 primaryLabel={isViewer ? 'Preview' : 'Edit'}
+                // Your templates only — the ready-made list below passes none.
+                selection={canSelectTpls ? {
+                  selected: tplSelected,
+                  onToggle: toggleTpl,
+                  labelFor: (t) => tTpl('selectTemplate', { name: t.name }),
+                } : undefined}
               />
             ) : (
               <div className={GALLERY_GRID_CLASS}>
                 {visibleCustom.map((t: Template) => (
-                  <div key={t.id} className="relative" data-selected={tplSelected.has(t.id) || undefined}>
+                  // `group`: SelectionTileCheckbox reveals on hover of this
+                  // wrapper (its sibling card's own `group` is not an ancestor
+                  // of the box), exactly as an Assets tile does.
+                  <div key={t.id} className="group relative" data-selected={tplSelected.has(t.id) || undefined}>
                     {canSelectTpls && (
                       <SelectionTileCheckbox
                         checked={tplSelected.has(t.id)}
@@ -3705,6 +3726,7 @@ export default function TemplatesPage() {
                     )}
                   <GalleryCard
                     template={t}
+                    selected={tplSelected.has(t.id)}
                     portraitSibling={portraitSiblingFor(t)}
                     onEdit={() => openTemplate(t)}
                     onPutOnScreen={() => putOnScreen(t)}
@@ -3930,9 +3952,20 @@ export default function TemplatesPage() {
  * is a cached image, not a mounted board.
  */
 export function TemplateListView({
-  templates, categoryLabelFor, usageFor, onPreview, onPrimary, primaryLabel,
+  templates, categoryLabelFor, usageFor, onPreview, onPrimary, primaryLabel, selection,
 }: {
   templates: Template[];
+  /**
+   * A box on every row (owner, 2026-11-23: "pick multiple templates and
+   * delete", as on Assets). The same selection the grid's tiles use, so a
+   * grid/list toggle keeps it; select-all is the box on the heading line,
+   * which serves both views. Omitted for presets, which are never selected.
+   */
+  selection?: {
+    selected: ReadonlySet<string>;
+    onToggle: (id: string) => void;
+    labelFor: (t: Template) => string;
+  };
   categoryLabelFor: (key: string) => string;
   /** Omitted for presets, which have no playlists or screens to report. */
   usageFor?: (t: Template) => TemplateUsageState;
@@ -3949,8 +3982,25 @@ export function TemplateListView({
           const reach = usage ? usageReachLabel(usage) : null;
           const pill = usage ? usagePillLabel(usage) : null;
           const edited = t.isSystem ? null : lastEditedLabel(t.updatedAt);
+          const isSelected = !!selection && !t.isSystem && selection.selected.has(t.id);
           return (
-            <li key={t.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50/70">
+            <li
+              key={t.id}
+              data-selected={isSelected || undefined}
+              className={`flex items-center gap-3 px-3 py-2.5 ${isSelected ? 'bg-indigo-50/60' : 'hover:bg-slate-50/70'}`}
+            >
+              {/* The row's own box — the shared one, as an Assets table row has.
+                  24 px for a mouse, 44 px on a touch screen (negative margin,
+                  so the row does not grow). Never on a preset. */}
+              {selection && !t.isSystem && (
+                <SelectionCheckbox
+                  compact
+                  checked={isSelected}
+                  label={selection.labelFor(t)}
+                  onChange={() => selection.onToggle(t.id)}
+                  testId={`templates-list-select-${t.id}`}
+                />
+              )}
               {/* 2026-09-24 — a REAL thumbnail: the same still frame the grid
                   card draws (an EXTERNAL_HTML board's poster PNG, a zone
                   template's frozen scaled render). This row used to paint only
@@ -5081,9 +5131,11 @@ function sportsSurfaceForCategory(category: string): 'scoreboard' | 'ribbon' | '
 export function GalleryCard({
   template, portraitSibling, onEdit, onPutOnScreen, putOnScreenBusy = false,
   onDuplicate, onExport, onAdaptForLED, onDelete, onPreview, onUseForGame,
-  isViewerDisabled = false, usage, needsAttention = false, categoryLabel,
+  isViewerDisabled = false, usage, needsAttention = false, categoryLabel, selected = false,
 }: {
   template: Template;
+  /** In the gallery's selection: the shared selected-tile ring (SELECTED_TILE_CLASS), as on an Assets tile. */
+  selected?: boolean;
   /** If this template has a portrait sibling preset, pass it here. The
    *  card shows a single canvas badge; the LANDSCAPE / PORTRAIT switch
    *  itself lives in the full-screen preview (§4.4) so it stops competing
@@ -5248,7 +5300,9 @@ export function GalleryCard({
     // template" entirely: the operator could see the menu open and simply
     // could not reach half of it. The clip belongs on the preview band
     // (which is the only thing that needs it), never here.
-    <div className="group flex flex-col rounded-xl border border-slate-200 bg-white transition-shadow duration-200 hover:border-slate-300 hover:shadow-md motion-reduce:transition-none">
+    <div className={`group flex flex-col rounded-xl border bg-white transition-shadow duration-200 motion-reduce:transition-none ${
+      selected ? SELECTED_TILE_CLASS : 'border-slate-200 hover:border-slate-300 hover:shadow-md'
+    }`}>
       {/* ── Preview (§6.2) ──────────────────────────────────────────────
           A real button, not a div with a click handler: Enter and Space
           work for free, the focus ring is the browser's own, and screen
