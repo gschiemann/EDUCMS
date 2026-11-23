@@ -428,3 +428,97 @@ describe('§9.1 — sort modes', () => {
     expect(sortTemplates(withGap, 'recent').map((r) => r.name)).toEqual(['Dated', 'No date']);
   });
 });
+
+/**
+ * Picking several of your templates (owner, 2026-11-23: "I can't check
+ * multiple templates to delete all at once, all I have is a select all but
+ * not individual selection... add that just how we have the assets").
+ *
+ * A box on every tile AND every list row, one selection for both views (a
+ * grid/list toggle keeps it), the box on the heading line selects every one
+ * of your templates in either view, and a preset never gets a box.
+ */
+describe('multi-select — tiles and list rows share one selection', () => {
+  const mine = [
+    tpl({ id: 't-a', name: 'Alpha Board' }),
+    tpl({ id: 't-b', name: 'Bravo Board' }),
+    tpl({ id: 't-c', name: 'Charlie Board' }),
+  ];
+  const preset = tpl({ id: 'p-1', name: 'Front Desk Welcome', isSystem: true });
+  const bar = () => screen.getAllByTestId('templates-bulk-bar')[0];
+  const toList = () => fireEvent.click(screen.getByRole('radio', { name: 'List view' }));
+  const toGrid = () => fireEvent.click(screen.getByRole('radio', { name: 'Grid view' }));
+
+  beforeEach(() => {
+    mockRole = 'SCHOOL_ADMIN';
+    stage([...mine, preset]);
+  });
+
+  it('each tile has its own box inside a `group` wrapper (so hover reveals it) and the selected ring', () => {
+    render(<TemplatesPage />);
+    const box = screen.getByRole('checkbox', { name: 'Select Bravo Board' });
+    const chip = screen.getByTestId('templates-select-t-b-chip');
+    // REVEAL_ON_HOVER needs a `group` ancestor; the tile wrapper is it.
+    expect(chip.parentElement).toHaveClass('group');
+    fireEvent.click(box);
+    expect(box).toBeChecked();
+    expect(within(bar()).getByText('1 selected')).toBeInTheDocument();
+    // The shared selected-tile look, the one an Assets tile wears.
+    expect(chip.parentElement?.querySelector('.ring-2.border-indigo-500')).not.toBeNull();
+    // Never a box on a preset tile.
+    expect(screen.queryByRole('checkbox', { name: 'Select Front Desk Welcome' })).not.toBeInTheDocument();
+  });
+
+  it('list view: a box per row of yours, none on a preset row; picking rows builds the selection', () => {
+    render(<TemplatesPage />);
+    toList();
+    expect(screen.getByTestId('templates-list-select-t-a')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Select Front Desk Welcome' })).not.toBeInTheDocument();
+    const a = screen.getByRole('checkbox', { name: 'Select Alpha Board' });
+    const c = screen.getByRole('checkbox', { name: 'Select Charlie Board' });
+    fireEvent.click(a);
+    fireEvent.click(c);
+    expect(within(bar()).getByText('2 selected')).toBeInTheDocument();
+    expect(a.closest('li')).toHaveAttribute('data-selected', 'true');
+    expect(screen.getByRole('checkbox', { name: 'Select Bravo Board' }).closest('li')).not.toHaveAttribute('data-selected');
+    // A real, focusable control (keyboard / remote reach it with Tab).
+    a.focus();
+    expect(document.activeElement).toBe(a);
+  });
+
+  it('a grid/list/grid toggle keeps the selection', () => {
+    render(<TemplatesPage />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Alpha Board' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Charlie Board' }));
+    toList();
+    expect(screen.getByRole('checkbox', { name: 'Select Alpha Board' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select Bravo Board' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Select Charlie Board' })).toBeChecked();
+    expect(within(bar()).getByText('2 selected')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Bravo Board' }));
+    toGrid();
+    for (const n of ['Alpha', 'Bravo', 'Charlie']) {
+      expect(screen.getByRole('checkbox', { name: `Select ${n} Board` })).toBeChecked();
+    }
+    expect(within(bar()).getByText('3 selected')).toBeInTheDocument();
+  });
+
+  it('in list view the heading box selects every one of yours (never the preset) and clears them again', () => {
+    render(<TemplatesPage />);
+    toList();
+    const all = screen.getByRole('checkbox', { name: 'Select all 3 of your templates' });
+    fireEvent.click(all);
+    expect(within(bar()).getByText('3 selected')).toBeInTheDocument();
+    expect(all).toBeChecked();
+    fireEvent.click(all);
+    expect(screen.queryAllByTestId('templates-bulk-bar')).toHaveLength(0);
+  });
+
+  it('a restricted viewer gets no boxes in either view', () => {
+    mockRole = 'RESTRICTED_VIEWER';
+    render(<TemplatesPage />);
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+    toList();
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+});
