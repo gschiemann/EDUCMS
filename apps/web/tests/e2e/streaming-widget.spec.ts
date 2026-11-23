@@ -9,7 +9,9 @@
  *      ADVANCES across a 3 s window, the engine reports `isLive`, and the LIVE
  *      badge is on the glass;
  *   2. two streams on one board (Mux VOD + Apple bipbop multi-bitrate) both
- *      advance — the low-end budget path (`capLevelToPlayerSize`) still plays;
+ *      advance — the low-end budget path (`capLevelToPlayerSize`) still plays,
+ *      and each half-screen zone stays at or under the rendition its CSS size
+ *      needs (never × devicePixelRatio; the proof says which level played);
  *   3. a dead stream host → the honest offline card, never a black box.
  *
  * Builder: paste → auto-detect chip → Test stream → frames counted.
@@ -101,13 +103,68 @@ async function frameCounts(page: Page): Promise<number[]> {
   return page.$$eval('video[data-stream-video]', (els) => els.map((e) => Number(e.getAttribute('data-stream-frames') || 0)));
 }
 
+interface ProofLevel { width: number; height: number; fps: number | null; bitrate: number }
+/** One stream's `window.__eduStreams` entry (LiveVideoStream.tsx), as the watchdog tick last wrote it. */
+interface StreamProof {
+  url: string; phase: string; frames: number; engine: string; isLive: boolean | null;
+  currentTime?: number; readyState?: number; dropped?: number | null; decoded?: number | null;
+  level?: ProofLevel | null; loadLevel?: ProofLevel | null; capLevel?: ProofLevel | null; levels?: ProofLevel[];
+  hlsErrors?: Array<{ t: number; details: string }>; levelSwitches?: Array<{ t: number; height: number | null }>;
+}
+
+/** Every stream video on the page, in DOM order: its frame count, its CSS box and its proof (by `data-stream-proof-id`). */
+async function streamsOnPage(page: Page): Promise<Array<{ frames: number; box: { w: number; h: number }; proof: StreamProof | null }>> {
+  return page.$$eval('video[data-stream-video]', (els) => els.map((e) => {
+    const reg = ((window as unknown as { __eduStreams?: Record<string, unknown> }).__eduStreams || {}) as Record<string, unknown>;
+    const r = e.getBoundingClientRect();
+    return {
+      frames: Number(e.getAttribute('data-stream-frames') || 0),
+      box: { w: r.width, h: r.height },
+      proof: (reg[e.getAttribute('data-stream-proof-id') || ''] ?? null) as StreamProof | null,
+    };
+  }));
+}
+
+/** What a failure needs to be read: did the playhead stop, were frames dropped, which rendition, which errors. */
+function describeProof(p: StreamProof | null | undefined): string {
+  if (!p) return 'no proof';
+  const lv = (l: ProofLevel | null | undefined) => (l ? `${l.width}x${l.height}@${l.fps ?? '?'}fps/${Math.round(l.bitrate / 1000)}kbps` : 'none');
+  return [
+    `engine ${p.engine}`, `phase ${p.phase}`, `currentTime ${p.currentTime}`, `readyState ${p.readyState}`,
+    `dropped ${p.dropped}/${p.decoded}`, `level ${lv(p.level)}`, `loading ${lv(p.loadLevel)}`, `cap ${lv(p.capLevel)}`,
+    `switches ${JSON.stringify(p.levelSwitches ?? [])}`, `non-fatal errors ${JSON.stringify(p.hlsErrors ?? [])}`,
+  ].join(', ');
+}
+
 async function expectFramesAdvance(page: Page, count: number) {
   // First frames (connect + first segment) — generous for a cold CDN.
   await expect.poll(async () => (await frameCounts(page)).filter((n) => n > 0).length, { timeout: 45_000, intervals: [500] }).toBe(count);
   const before = await frameCounts(page);
   await page.waitForTimeout(3_000);
   const after = await frameCounts(page);
-  for (let i = 0; i < count; i++) expect(after[i], `stream ${i} frames advanced (${before[i]} → ${after[i]})`).toBeGreaterThan(before[i]);
+  const streams = await streamsOnPage(page);
+  for (let i = 0; i < count; i++) {
+    expect(after[i], `stream ${i} frames advanced (${before[i]} → ${after[i]}); proof: ${streams[i]?.proof?.url ?? '?'}: ${describeProof(streams[i]?.proof)}`).toBeGreaterThan(before[i]);
+  }
+}
+
+/**
+ * The rendition hls.js's `capLevelToPlayerSize` must stop at for a zone of
+ * `cssW` x `cssH` CSS px — the promise LiveVideoStream makes (a half-screen
+ * zone never decodes the 1080p rendition), computed here from the zone's CSS
+ * size alone, never multiplied by devicePixelRatio: the smallest rendition, in
+ * hls.js's own order, whose width or height covers the zone's longer side.
+ */
+function cssSizeCap(levels: ProofLevel[], cssW: number, cssH: number): ProofLevel | null {
+  if (!levels.length) return null;
+  const square = Math.max(cssW, cssH);
+  for (let i = 0; i < levels.length; i++) {
+    const l = levels[i];
+    const next = levels[i + 1];
+    const greatestOfItsSize = !next || next.width !== l.width || next.height !== l.height;
+    if ((l.width >= square || l.height >= square) && greatestOfItsSize) return l;
+  }
+  return levels[levels.length - 1];
 }
 
 test.describe('STREAMING widget on the player', () => {
@@ -147,6 +204,29 @@ test.describe('STREAMING widget on the player', () => {
       ]),
     });
     await expectFramesAdvance(page, 2);
+    // The low-end budget: each half-screen zone plays, fetches and is capped at
+    // no more than the rendition its CSS size needs — in every engine and at
+    // every devicePixelRatio (Desktop Safari runs at 2; the APK's ROMs report
+    // 2-3 while one CSS px is one physical px).
+    const streams = await streamsOnPage(page);
+    // Kept with the run (the HTML report on CI): which renditions each zone got, and why.
+    await test.info().attach('stream-proofs.json', { body: JSON.stringify(streams, null, 2), contentType: 'application/json' });
+    expect(streams.map((s) => s.proof?.url).sort(), 'one proof per stream').toEqual([BIPBOP, MUX_VOD].sort());
+    for (const [i, { box, proof: p }] of streams.entries()) {
+      if (!p || p.engine !== 'hlsjs') {
+        // The browser's own HLS (real Safari) picks its renditions; hls.js's cap is not in play.
+        test.info().annotations.push({ type: 'stream-engine', description: `stream ${i}: ${p?.engine ?? 'none'}, no hls.js cap to check` });
+        continue;
+      }
+      const cap = cssSizeCap(p.levels ?? [], box.w, box.h);
+      const why = `stream ${i} (${p.url}) in a ${Math.round(box.w)}x${Math.round(box.h)} CSS-px zone, CSS-size cap ${cap ? `${cap.width}x${cap.height}` : 'none'}; proof: ${describeProof(p)}`;
+      expect(cap, why).toBeTruthy();
+      expect(p.level, `the rendition playing is known — ${why}`).toBeTruthy();
+      expect(p.level!.height, `the rendition playing is within the cap — ${why}`).toBeLessThanOrEqual(cap!.height);
+      expect(p.loadLevel?.height ?? 0, `the rendition being fetched is within the cap — ${why}`).toBeLessThanOrEqual(cap!.height);
+      expect(p.capLevel, `hls.js applied a size cap — ${why}`).toBeTruthy();
+      expect(p.capLevel!.height, `hls.js's own cap is the CSS-size cap or lower — ${why}`).toBeLessThanOrEqual(cap!.height);
+    }
     // VOD never shows a LIVE badge — the badge claims only what is true.
     await expect(page.locator('[data-stream-pill="live"]')).toHaveCount(0);
     await shot(page, 'player-two-streams-desktop-1325x758');

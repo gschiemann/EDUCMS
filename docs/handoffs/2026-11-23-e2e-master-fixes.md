@@ -53,3 +53,69 @@ So in WebKit the old test was green on the corner bug and red on the fix. No Saf
 - Master's spec, `chromium-dsf2`, against the fixed product: fails `Expected: > 2000, Received: 1920`, exactly CI WebKit's failure, reproduced without WebKit.
 - **Negative control** (a scratch build with `measureBounds` back on `devicePixelRatio`, never committed): the new spec at `chromium-dsf2` fails at `right edge on the panel: Expected <= 1921, Received 3840`. Master's spec passes on that build, which shows the old test was green on the bug. At dpr 1 (`chromium`) the new spec cannot tell the two maths apart. Only the dsf-2 project, which is WebKit on CI, can.
 - Not run in WebKit: the lines after the bounds (tap Google, re-show with the new URL, no blocked card) have not run in WebKit since 700d93b82, because every run stopped at the bounds. If CI WebKit fails there, treat it as a new finding.
+
+## 3. `streaming-widget` in WebKit: the rendition budget ignored what a pixel is
+
+**The failing assertion.** `apps/web/tests/e2e/streaming-widget.spec.ts`, "two streams on one board both play": `stream 0 frames advanced (1 → 1)`, where stream 0 is the Mux VOD. It failed on all 3 attempts on PR #345 (job 137470626547) and on master 1292fd287 (job 137419519314). About 90% of WebKit attempts fail. 8eb336396 passed on its first attempt, with no code change.
+
+**Why the product failed (the mechanism as corrected by the skeptic).**
+- **The engine.** CI's Playwright WebKit is a WPE build without native HLS, so `LiveVideoStream` runs hls.js over MSE there. The "Desktop Safari" project runs at devicePixelRatio 2.
+- **The cap.** hls.js 1.6.16's `capLevelToPlayerSize` multiplies the zone's size by devicePixelRatio. A 640×720 CSS half-zone was treated as 1280×1440, so both streams were allowed their 1080p renditions.
+- **What the trace shows.** Mux played segment 0 at 720p. Within about 0.3 s hls.js switched both streams up to 1080p, about 33 MB of appends for Mux. Bipbop never showed its 1080p (gear5) data: hls.js reloaded it at gear4, and it kept playing. Mux stopped presenting frames inside its **720p** segment 0 (0.22 to 3.5 s of content), before any 1080p frame was due, and hls.js raised no fatal error.
+- **So it is not a 1080p60 decode cost.** The trigger is the early up-switch to a 1080p rendition in WPE's MSE path, possibly with the size of the append burst. The exact internal failure is unproven: non-fatal hls.js errors and level switches were never recorded. They are now.
+- **The defect is real beyond CI.** On the APK, one CSS px is one physical px (the player pins its viewport to the panel's pixels and loads at `setInitialScale(100)`), while the ROM reports a density of 2 to 3. hls.js was multiplying by a number that means nothing there, and a half-screen zone could fetch and decode 1080p. That broke the component's own promise.
+
+**Why our system let it reach master.**
+- f3f73d319 (2026-11-07) added the component and this spec together. It reached master through release train #263 (merge 9961ecbbf), whose WebKit shard was cancelled.
+- **First red master commit: 0fdbf4940**, the first master run that executed the test in WebKit (job 128637273844). All 3 attempts failed.
+- The spec was merged on a local "12/12 passed, Chromium and WebKit". That was most likely on macOS, where Playwright's WebKit has native HLS and never takes this path (unverified). The streaming handoff said "Not verified: CI".
+- E2E is not a required check, and the occasional green (c27a720, 8eb336396) made a broken test look flaky.
+
+**The fix.**
+- **Product** (`apps/web/src/components/widgets/streaming/LiveVideoStream.tsx`): `ignoreDevicePixelRatio: true` in `new Hls({...})`, so `capLevelToPlayerSize` caps by the zone's CSS size, as the component promises. The skeptic ruled out `maxDevicePixelRatio: 1`, which is min(dpr, 1) and under-caps a ROM that reports 0.75.
+- **Diagnostics** in the existing `window.__eduStreams` proof, written only by the existing once-a-second watchdog tick (no new timer, no network):
+  - `currentTime` and `readyState`;
+  - `getVideoPlaybackQuality` dropped/total;
+  - the playing, loading and cap renditions (width, height, fps, bitrate), and the rendition list;
+  - the last five NON-fatal hls.js errors and level switches. Non-fatal errors still return early as before; they are now also recorded.
+  - Each video carries `data-stream-proof-id` so a test can find its own proof.
+- **Spec:**
+  - The frame-advance assertion and its 3 s window are unchanged. Its message now carries each stream's proof.
+  - New assertion: in each half-screen zone, the rendition playing, the one being fetched and hls.js's own cap are at or below the CSS-size cap. That cap is computed in the test from the zone's CSS box and the rendition list, never multiplied by devicePixelRatio. Under the browser's native HLS, hls.js is not in play, so the test records an annotation instead.
+  - The proofs are attached to the run (`stream-proofs.json`, in the HTML report on CI).
+
+**What changes for whom.**
+- **APK panels** get a correct, physical-pixel cap. The over-fetch caused by the inflated ROM density is gone.
+- **Real hi-DPI browsers** (a Retina admin preview, a browser player on a hi-DPI display) now get renditions sized to the zone's CSS pixels, softer than their pixels could show. A full-screen 1920×1080 CSS zone still gets 1080p.
+- **The editor's "Test stream" pill** reports the decoded width × height. On a Retina Mac it now shows the preview's rendition (for a 1080p source in the small preview box, e.g. 640×360 or 848×480), not the source's best. Its copy is unchanged. Whether to word it as "the preview rendition", or to keep the device pixel ratio for the editor's instance only, is the owner's call. `/player` must keep the new cap either way, because that is what the spec runs.
+
+**Tests (local, Chromium; WebKit is CI's).**
+- The whole spec, `chromium`: 6/6 passed, none skipped (the third-party streams were reachable).
+- Two streams, `chromium-dsf2` (the Desktop Safari scale): passed. The attached proofs at dsf 2 show Mux playing, fetching and capped at 848×480 (zone 640×720), and bipbop playing 640×360 under a 960×540 cap. Bipbop also logged three non-fatal `fragParsingError`s at start in both projects. These are the first data from the new diagnostics; hls.js recovered and they were not investigated.
+- **Negative control** (a scratch build without `ignoreDevicePixelRatio`, never committed), `chromium-dsf2`: fails at "the rendition playing is within the cap". The proof shows Mux playing 1280×720 and fetching 1920×1080 under a 1920×1080 cap in a 640×720 zone: the same early up-switch the WebKit trace shows, reproduced in Chromium. Chromium kept advancing frames through it, so the freeze itself is WPE's. At dpr 1 (`chromium`) the old config passes, because dpr 1 cannot tell the two apart.
+
+**Not verified, and the follow-up.**
+- That the change turns CI WebKit green. Pass means 5/5 first-attempt passes of the webkit 4/4 two-streams test; at today's roughly 10% first-attempt rate, 5/5 by chance is about 1e-5.
+- If CI WebKit still freezes, read the per-stream proof in the failure message first (playhead stopped or frames dropped, which rendition, which non-fatal errors). Bipbop still switches up under the fix (gear1 to gear3); check its switches before blaming Mux.
+- The skeptic's discriminating experiment: in a diagnostic branch, never the product, cap Mux at its 720p start level so it plays with no switch.
+- If WebKit still freezes after that, the honest follow-up is a macOS-runner job that runs this spec's WebKit leg on the engine Safari users actually have (native HLS). That is a CI-definition change and needs the owner's approval; it is not done here. The Linux leg stays, with no skip.
+- On glass: that a half-screen stream on a bench APK screen picks the CSS-size rendition (expected: the physical-pixel size, since 1 CSS px = 1 physical px there).
+
+**Mount proof.** `LiveVideoStream.tsx` is reachable from the `/player` route through the module graph: `app/player/page.tsx → lazyRenderer.ts → rendererBundle.tsx → WidgetRenderer.tsx → widget-families.tsx → StreamingWidget.tsx → LiveVideoStream.tsx`. That is a TypeScript `preProcessFile` walk over static and dynamic imports. Its negative control: `BuilderShell.tsx` and `BottomToolbar.tsx` come back unreachable from `/player`. The e2e also proves the mount in the rendered DOM: the player route's videos carry the new `data-stream-proof-id`.
+
+## Tests run for this branch (all local, Chromium; exact results)
+
+| What | Result |
+|---|---|
+| `jest src/app/player/__tests__/playlistFallback.test.ts` | 62/62 passed |
+| `jest src/app/player stream-source.test.ts website-tabs-config.test.ts --maxWorkers=2` | 137 suites, 2132 tests passed |
+| `tsc --noEmit` (whole web app, e2e specs included) | clean |
+| `check-rulebook.cjs` | PASS |
+| `check-taurus-safety.cjs`, `check-inset-serialization.cjs`, `check-request-budget.cjs` | OK |
+| eslint on the changed files | no new findings against `master` (the pre-existing `no-explicit-any` counts are unchanged) |
+| `player-bad-file.spec.ts`, chromium, `--retries=0` | 7/7 passed |
+| `website-tabs.spec.ts`, chromium, `--retries=0` | 4/4 passed; native test also passed at chromium-dsf2 |
+| `streaming-widget.spec.ts`, chromium, `--retries=0` | 6/6 passed; two-streams also passed at chromium-dsf2 |
+| Negative controls (scratch build with the three old behaviours) | player-bad-file: 2 fallback tests fail as CI does; website-tabs dsf2: right edge 3840 > 1921; streaming dsf2: playing 720 > cap 480 |
+
+After the negative control, the fixed tree was restored (its diff checked byte for byte against the one saved before), rebuilt and run once more: the three specs in `chromium`, 17/17 passed, plus the two DPR tests in `chromium-dsf2`, 2/2 passed, all with `--retries=0`. The e2e runs used a scratch config, kept outside the worktree and never committed, that points Chromium at the preinstalled headless shell 1243.
