@@ -599,6 +599,7 @@ export function PlayerUpdatesPanel({ schoolId }: { schoolId: string }) {
           <div className="flex-1 min-w-[200px]">
             <label htmlFor="ota-window-tz" className="block text-[12px] font-medium text-slate-600">{t('settings.ota.timezoneIana')}</label>
             <input
+              spellCheck={false}
               id="ota-window-tz"
               type="text"
               value={timezone}

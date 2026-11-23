@@ -29,7 +29,14 @@ export interface BrandKitLike {
   fontHeading?: string | null;
   fontBody?: string | null;
   displayName?: string | null;
+  tagline?: string | null;
   sourceUrl?: string | null;
+  /**
+   * 'tenant-branding' = this kit is the copy of the organisation brand a
+   * template took when it was created (templates.controller), not a brand
+   * detected for this template alone.
+   */
+  inheritedFrom?: string | null;
 }
 
 // ── Is there a brand at all? ─────────────────────────────────────────────
@@ -81,8 +88,95 @@ export function kitFromTenantBranding(b: (BrandKitLike & { palette?: unknown }) 
     fontHeading: b.fontHeading ?? null,
     fontBody: b.fontBody ?? null,
     displayName: b.displayName ?? null,
+    tagline: b.tagline ?? null,
     sourceUrl: b.sourceUrl ?? null,
   };
+}
+
+/**
+ * The kit the Brand tab works with. A brand detected for THIS template wins.
+ * A copy of the organisation brand taken when the template was created does
+ * not: the organisation brand as it is NOW wins over it, so a rebrand in
+ * Settings reaches the editor (before, the tab kept offering the old name).
+ */
+export function pickBrandKit<K extends BrandKitLike>(
+  templateKit: K | null | undefined,
+  orgKit: K | null | undefined,
+): { kit: K | null; source: 'template' | 'org' | null } {
+  const inherited = templateKit?.inheritedFrom === 'tenant-branding';
+  if (hasBrand(templateKit) && !(inherited && hasBrand(orgKit))) return { kit: templateKit!, source: 'template' };
+  if (hasBrand(orgKit)) return { kit: orgKit!, source: 'org' };
+  return { kit: null, source: null };
+}
+
+// ── Organisation identity: name, tagline, initials ──────────────────────
+// PARITY: these lists and brandInitials() must stay identical to the API's
+// copies in apps/api/src/branding/brand-identity.ts (BOARD_*_FIELDS,
+// deriveInitials), which Settings > Brand "Apply to templates" and new
+// templates use. A rebrand recognises what this editor stamped only if both
+// sides write the same keys with the same initials. Both test suites pin the
+// same lists and examples, and brand-kit-actions.test.ts reads the API file
+// to check it.
+
+/** Board text fields (`data-field` keys) that hold the organisation's name. */
+export const BOARD_NAME_FIELDS = ['brand.name', 'school.name', 'brand.restaurant'] as const;
+/** Board text fields that hold the organisation's tagline / motto. */
+export const BOARD_TAGLINE_FIELDS = ['brand.tagline', 'school.motto'] as const;
+/** Board text fields that hold the organisation's initials (2-3 letters). */
+export const BOARD_INITIALS_FIELDS = ['school.initials', 'brand.initials', 'brand.mark'] as const;
+/** Board text fields that hold a one-letter monogram. */
+export const BOARD_MONOGRAM_FIELDS = ['brand.monogram'] as const;
+
+const INITIALS_SKIP = /^(the|of|at|and|for|in|a|an)$/i;
+
+/**
+ * Initials for an organisation name — the same rule as the API's
+ * deriveInitials (apps/api/src/branding/brand-identity.ts): split on whitespace / - / _ / slash, skip
+ * the/of/at/and/for/in/a/an, first letter of up to three words, uppercase.
+ * "Lincoln High School" → "LHS"; "The Academy of Arts" → "AA".
+ */
+export function brandInitials(name: string | null | undefined): string {
+  if (typeof name !== 'string') return '';
+  return name
+    .split(/[\s\-_/]+/)
+    .filter(Boolean)
+    .filter((w) => !INITIALS_SKIP.test(w))
+    .slice(0, 3)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase();
+}
+
+export interface BrandIdentity {
+  name: string | null;
+  tagline: string | null;
+  initials: string | null;
+  monogram: string | null;
+}
+
+const clean = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
+
+/** What the kit says about WHO the organisation is. A value it lacks is null — never written. */
+export function brandIdentity(kit: BrandKitLike | null | undefined): BrandIdentity {
+  const name = clean(kit?.displayName);
+  const tagline = clean(kit?.tagline);
+  const initials = name ? brandInitials(name) || null : null;
+  return { name, tagline, initials, monogram: initials ? initials[0] : null };
+}
+
+const IDENTITY_CONFIG_KEYS = ['schoolName', 'tagline', 'initials', 'schoolInitials'] as const;
+const IDENTITY_BOARD_FIELDS: readonly string[] = [...BOARD_NAME_FIELDS, ...BOARD_TAGLINE_FIELDS, ...BOARD_INITIALS_FIELDS, ...BOARD_MONOGRAM_FIELDS];
+
+function textOverridesOf(cfg: Record<string, unknown>): Record<string, unknown> {
+  const t = cfg.textOverrides;
+  return t && typeof t === 'object' && !Array.isArray(t) ? (t as Record<string, unknown>) : {};
+}
+
+/** A comparable snapshot of the identity fields of one config (did the name / tagline change?). */
+export function identitySnapshot(cfg: Record<string, unknown> | null | undefined): string {
+  const c = cfg || {};
+  const text = textOverridesOf(c);
+  return JSON.stringify([IDENTITY_CONFIG_KEYS.map((k) => c[k] ?? null), IDENTITY_BOARD_FIELDS.map((k) => text[k] ?? null)]);
 }
 
 // ── Colour maths ─────────────────────────────────────────────────────────
@@ -344,10 +438,13 @@ export function brandTextZone(
 // ── "Brand this template" ───────────────────────────────────────────────
 
 /** What "Brand this template" will do with THIS kit — shown before the click. */
-export type BrandChecklistItem = 'logo' | 'fonts' | 'colors' | 'background';
+export type BrandChecklistItem = 'logo' | 'name' | 'tagline' | 'fonts' | 'colors' | 'background';
 export function brandChecklist(kit: BrandKitLike): BrandChecklistItem[] {
   const out: BrandChecklistItem[] = [];
+  const id = brandIdentity(kit);
   if (kit.logoUrl) out.push('logo');
+  if (id.name) out.push('name');
+  if (id.tagline) out.push('tagline');
   if (kit.fontHeading || kit.fontBody) out.push('fonts');
   if (brandColors(kit.palette).length > 0) out.push('colors');
   if (brandTemplateBackground(kit)) out.push('background');
@@ -366,13 +463,59 @@ export function brandTemplateBackground(kit: BrandKitLike): { bgColor: string; b
   return null;
 }
 
-/** Image-slot keys packaged boards use for the organisation logo. */
-export const BOARD_LOGO_SLOTS = ['brand.logo', 'school.logo'];
+/** Image-slot keys packaged boards use for the organisation logo (same list as the API's BOARD_LOGO_SLOTS). */
+export const BOARD_LOGO_SLOTS = ['brand.logo', 'school.logo'] as const;
+
+/**
+ * The name, tagline and initials for ONE React widget. "Brand this template"
+ * is an explicit per-template action, so what the brand has replaces what is
+ * there — but only in keys that mean the ORGANISATION:
+ *   - LOGO: schoolName + tagline (the v2 logo variants render both); initials
+ *     only where the config already carries them (the themed crests derive
+ *     their own from schoolName otherwise).
+ *   - HS_*: schoolName (uppercase, as a new template gets it) + schoolInitials.
+ *   - Anything else: only when the config carries `schoolName`, and then only
+ *     the keys it already has. `initials` / `tagline` alone can mean a person
+ *     (staff spotlight) or a sponsor (ribbon sponsor) — never touched.
+ */
+function applyWidgetIdentity(widgetType: string, cfg: Record<string, unknown>, id: BrandIdentity): void {
+  const has = (k: string) => Object.prototype.hasOwnProperty.call(cfg, k);
+  if (widgetType === 'LOGO') {
+    if (id.name) cfg.schoolName = id.name;
+    if (id.tagline) cfg.tagline = id.tagline;
+    if (id.initials && has('initials')) cfg.initials = id.initials;
+    return;
+  }
+  if (widgetType.startsWith('HS_')) {
+    if (id.name) cfg.schoolName = id.name.toUpperCase();
+    if (id.initials) cfg.schoolInitials = id.initials;
+    return;
+  }
+  if (!has('schoolName')) return;
+  if (id.name) cfg.schoolName = id.name;
+  if (id.tagline && has('tagline')) cfg.tagline = id.tagline;
+  if (id.initials && has('initials')) cfg.initials = id.initials;
+  if (id.initials && has('schoolInitials')) cfg.schoolInitials = id.initials;
+}
+
+/** The name, tagline, initials and monogram into a packaged board's text fields. */
+function applyBoardIdentity(cfg: Record<string, unknown>, id: BrandIdentity): void {
+  if (!id.name && !id.tagline) return;
+  const text: Record<string, unknown> = { ...textOverridesOf(cfg) };
+  const put = (keys: readonly string[], v: string | null) => { if (v) for (const k of keys) text[k] = v; };
+  put(BOARD_NAME_FIELDS, id.name);
+  put(BOARD_TAGLINE_FIELDS, id.tagline);
+  put(BOARD_INITIALS_FIELDS, id.initials);
+  put(BOARD_MONOGRAM_FIELDS, id.monogram);
+  cfg.textOverrides = text;
+}
 
 /**
  * The branded config for ONE zone — what "Brand this template" writes. Pure:
  * returns a new config object (equal by value to the old one when nothing
  * applies). Widgets the kit does not model only get keys they already have.
+ * The organisation's name, tagline and initials go wherever a widget or
+ * board has a field for them (applyWidgetIdentity / applyBoardIdentity).
  */
 export function brandZoneConfig(zone: Pick<Zone, 'widgetType' | 'defaultConfig'>, kit: BrandKitLike): Record<string, unknown> {
   const cfg: Record<string, unknown> = { ...(zone.defaultConfig || {}) };
@@ -387,6 +530,7 @@ export function brandZoneConfig(zone: Pick<Zone, 'widgetType' | 'defaultConfig'>
   const surfaceAlt = normalizeHex(palette.surfaceAlt);
   const has = (k: string) => Object.prototype.hasOwnProperty.call(cfg, k);
   const contrastOn = (hex: string) => readableOn(hex, [], 4.5, ink);
+  const identity = brandIdentity(kit);
 
   switch (zone.widgetType) {
     case 'LOGO':
@@ -461,6 +605,9 @@ export function brandZoneConfig(zone: Pick<Zone, 'widgetType' | 'defaultConfig'>
         for (const k of BOARD_LOGO_SLOTS) img[k] = logoUrl;
         cfg.imageOverrides = img;
       }
+      // The organisation name / tagline / initials into the board's text
+      // fields. Same rule: a field key the board does not have is ignored.
+      applyBoardIdentity(cfg, identity);
       break;
     }
     default:
@@ -470,6 +617,7 @@ export function brandZoneConfig(zone: Pick<Zone, 'widgetType' | 'defaultConfig'>
       if (primary && has('accentColor')) cfg.accentColor = primary;
       break;
   }
+  if (zone.widgetType && zone.widgetType !== 'EXTERNAL_HTML') applyWidgetIdentity(zone.widgetType, cfg, identity);
   return cfg;
 }
 

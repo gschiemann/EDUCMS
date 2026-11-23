@@ -148,6 +148,7 @@ export function LogViewer() {
             ))}
           </div>
           <input
+            spellCheck={false}
             value={tagFilter}
             onChange={(e) => setTagFilter(e.target.value)}
             placeholder="Filter tag (e.g. auth, api, upload)…"

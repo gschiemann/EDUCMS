@@ -121,7 +121,7 @@ export function ChangePasswordCard() {
           {/* A hidden username field is what tells a password manager WHICH
               account these fields belong to; without it, saved-credential
               updates land on the wrong entry or not at all. */}
-          <input type="text" name="username" autoComplete="username" className="hidden" tabIndex={-1} readOnly value="" />
+          <input spellCheck={false} type="text" name="username" autoComplete="username" className="hidden" tabIndex={-1} readOnly value="" />
           <div>
             <label htmlFor="cp-current" className="block text-xs font-semibold text-slate-700 mb-1.5">
               {t('changePassword.currentLabel')}

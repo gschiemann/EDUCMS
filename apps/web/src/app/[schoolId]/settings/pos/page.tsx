@@ -537,7 +537,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
             </div>
           ) : (
           <>
-          <Field label={t('billingCommerce.displayNameOptional')} placeholder={provider.name} value={displayName} onChange={setDisplayName} />
+          <Field words label={t('billingCommerce.displayNameOptional')} placeholder={provider.name} value={displayName} onChange={setDisplayName} />
 
           {provider.id === 'toast' && (
             <>
@@ -560,7 +560,7 @@ function ConnectModal({ provider, onClose, onConnected }: { provider: PosProvide
               )}
               {manualToastStores && <label className="block">
                 <span className="text-xs font-bold text-slate-600">{t('billingCommerce.toast.manualLabel')}</span>
-                <textarea className="mt-1 w-full min-h-28 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder={t('billingCommerce.toast.manualPlaceholder')} value={toastLocations} onChange={(e) => setToastLocations(e.target.value)} />
+                <textarea spellCheck={false} className="mt-1 w-full min-h-28 px-3 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400" placeholder={t('billingCommerce.toast.manualPlaceholder')} value={toastLocations} onChange={(e) => setToastLocations(e.target.value)} />
                 <span className="text-[11px] text-slate-500">{t('billingCommerce.toast.manualHint')}</span>
               </label>}
             </>
@@ -702,11 +702,14 @@ function OAuthConnectPanel({ provider, onStart }: { provider: { id: string; name
   );
 }
 
-function Field({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
+// Every Field here holds a key, ID, secret or URL — except the display name,
+// which passes `words` so the dashboard's spell-check default applies to it.
+function Field({ label, value, onChange, placeholder, type = 'text', words = false }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; words?: boolean }) {
   return (
     <label className="block">
       <span className="text-xs font-bold text-slate-600">{label}</span>
       <input
+        spellCheck={words ? undefined : false}
         type={type}
         value={value}
         placeholder={placeholder}
