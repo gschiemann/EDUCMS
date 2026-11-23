@@ -1,6 +1,6 @@
 # Broadcast banner: text size and a slower marquee (2026-11-23)
 
-**Status.** Branch `claude/broadcast-banner-size-speed`, cut from `origin/master` `1292fd287`. Two code commits (`731e5ba7e` the feature, `52f031428` the review-round-1 fix) and this document. Not merged, not pushed. This is life-safety **CHANGE class** (`CLAUDE.md` §5: a pushed broadcast and a district copy are part of the alert path). Before anyone relies on it, it needs:
+**Status.** Branch `claude/broadcast-banner-size-speed`, cut from `origin/master` `1292fd287`. Two code commits (`731e5ba7e` the feature, `52f031428` the review-round-1 fix), this document, and a test-only commit (`ee80e0daa`, the speed measurement). Not merged, not pushed. This is life-safety **CHANGE class** (`CLAUDE.md` §5: a pushed broadcast and a district copy are part of the alert path). Before anyone relies on it, it needs:
 - the owner's written go to merge;
 - CI green on the nine required checks, including `webkit · Emergency path`, which nobody could run in this sandbox;
 - the on-glass bench drill below, after deploy. That drill is the owner's call.
@@ -70,7 +70,7 @@ Maximum bar height, for a 2,000-character static message (the API maximum):
 - A 2-line static bar (a ~130-character message) is 119 / 141 / 171 px at 1920 (Small / Medium / Large; 11% / 13% / 16% of the height). At 3840 it is 199 / 246 / 319 px (9% / 11% / 15%).
 - **The 2-line promise at Large holds to about 230 characters.** Beyond that, Large wraps to more lines. At 400 characters on 1920: Small 2 lines, Medium 3, Large 4 lines in a 186 px bar (17% of the screen). A 300-character message is 3 lines at Large on 1280, 1920 and 3840.
 - **Scrolling** is one line at the full font. The bar is 77 / 89 / 109 px at 1920 and 117 / 141 / 180 px at 3840.
-- **Measured speed.** A short message (6 copies, the case that used to run 2-3x) moved at 40 / 64 / 96 px/s at 1920 and 73 / 128 / 192 px/s at 3840 (slow / normal / fast), against 40 / 64 / 96 and 80 / 128 / 192 expected. The 73 is the 2 s wall-clock sampling of a loaded box; see follow-up 1.
+- **Measured speed.** A short message (6 copies, the case that used to run 2-3x) moves at exactly 40 / 64 / 96 px/s at 1920 and 80 / 128 / 192 px/s at 3840 (slow / normal / fast), measured on the animation's own clock (`ee80e0daa`; 6 of 6 runs under parallel load). An earlier wall-clock window read 73 at 3840 slow and once failed under load; that measurement is fixed, see follow-up 1.
 
 **Sanitising.** The key order is fixed: color, mode, speed, size. `size` appears only for small or large. An unknown or hostile size is treated as medium.
 
@@ -117,7 +117,7 @@ The strict schema still refuses unknown keys and unknown size values.
 
 ## Follow-ups (not blocking, from review round 2)
 
-1. **A flaky e2e test.** `text size, bar height and real scroll speed on a 3840x2160 stage` times a 2 s wall-clock window. It failed once in a loaded parallel run (60.6 px/s against a floor of 64) and passed 3 of 3 alone. The product is right. The fix is to measure from the animation itself (an `getAnimations()[0].currentTime` delta, or `data-banner-seconds` against the track width), or to run that test serially.
+1. **Fixed: a flaky e2e measurement.** `text size, bar height and real scroll speed on a 3840x2160 stage` timed a 2 s wall-clock window with `performance.now()`, which runs ahead of the last painted frame; it failed once in a loaded parallel run (60.6 px/s against a floor of 64). `ee80e0daa` reads position and time from the same clock (the animation's `currentTime`); same assertions, same 20% band, 6 of 6 runs at three workers read the expected speeds exactly.
 2. **The never-clip pass can miss a cap change.** It re-runs only when the text, font or floor changes. If an LED canvas height override changes mid-message while the stage width stays the same, a very long Large message keeps the font fitted to the old cap until the next re-render. This needs more than about 1,300 characters at Large. A fix is a ResizeObserver on the bar, or passing the cap in as a prop.
 3. **The silent downgrade.** During the deploy-order window a Large or Small send goes out at Medium with only a console warning. A small note in the sent state would tell the sender.
 4. **Labels.** The speed label stays "Normal" next to the new size label "Medium" (the stored value is `normal`). That is one reading of the owner's word "medium"; the owner can choose to rename it.
