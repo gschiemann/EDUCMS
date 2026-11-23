@@ -3,10 +3,16 @@
  * then pop up for each one in use and ask me if I want to delete anyways".
  *
  * 30 of your templates (more than the 12-card first page), 8 used by
- * playlists, 1 used by an emergency playlist. Select all reaches all 30; one
+ * playlists, 1 used by an emergency playlist. The owner's own steps — the
+ * select-all box over the tiles, then Delete — reach all 30 in one click; one
  * dialog lists the 8 (pre-checked) and the emergency one (kept, no checkbox);
  * one click deletes 29 — force only on the 8 — and the toast says exactly that.
  * Real dashboard, mocked API.
+ *
+ * Running it locally: the repo's pinned Playwright may look for a headless
+ * shell build the box does not have; point launchOptions.executablePath at
+ * the installed Chromium (docs/handoffs/2026-11-13-session-handoff.md). That
+ * launch error is not a test failure.
  */
 import { test, expect, type Page, type Route } from '@playwright/test';
 
@@ -20,6 +26,8 @@ const CORS: Record<string, string> = {
 };
 const USER = { id: 'u1', email: 'e2e@example.com', role: 'SCHOOL_ADMIN', tenantId: SCHOOL_ID, canTriggerPanic: false };
 
+// The box over the tiles names the whole count, not the 12 shown.
+const SELECT_ALL = 'Select all 30 of your templates';
 const pad = (n: number) => String(n).padStart(2, '0');
 const IN_USE = new Set([3, 6, 9, 11, 14, 17, 20, 23].map((n) => `tpl-${pad(n)}`));
 const EMERGENCY = 'tpl-27';
@@ -48,6 +56,8 @@ type Scenario = {
   becameInUse?: string;
   /** A template whose delete fails with a server error. */
   failing?: string;
+  /** An in-use template whose playlist turned emergency after the usage read: its forced delete meets the server guard. */
+  turnedEmergency?: string;
 };
 
 async function open(page: Page, scenario: Scenario = {}, viewport = { width: 1325, height: 800 }) {
@@ -96,7 +106,7 @@ async function open(page: Page, scenario: Scenario = {}, viewport = { width: 132
       if (used && !force) {
         return json(route, { code: 'TEMPLATE_IN_USE', message: 'This layout is assigned to a playlist.', playlists: [], total: 1, usage: { playlists: [], screensReached: 3, locations: 1 } }, 409);
       }
-      if (id === EMERGENCY) {
+      if (id === EMERGENCY || id === scenario.turnedEmergency) {
         return json(route, { code: 'TEMPLATE_EMERGENCY_IN_USE', message: 'This layout is used by an emergency playlist.' }, 409);
       }
       removed.add(id);
@@ -116,16 +126,16 @@ async function open(page: Page, scenario: Scenario = {}, viewport = { width: 132
   }, USER);
   await page.setViewportSize(viewport);
   await page.goto(`/${SCHOOL_ID}/templates`, { waitUntil: 'domcontentloaded' });
-  await page.getByRole('checkbox', { name: 'Select all your templates shown' }).waitFor({ state: 'visible', timeout: 90_000 });
+  await page.getByRole('checkbox', { name: SELECT_ALL }).waitFor({ state: 'visible', timeout: 90_000 });
   return { calls, removed };
 }
 
 async function selectAllAndDelete(page: Page) {
-  await page.getByRole('checkbox', { name: 'Select all your templates shown' }).check();
+  // The owner's steps: the select-all box, then Delete. One click reaches all 30.
+  await page.getByRole('checkbox', { name: SELECT_ALL }).check();
   const bar = page.getByTestId('templates-bulk-bar');
-  await expect(bar).toContainText('12 selected');
-  await bar.getByRole('button', { name: 'Select all 30' }).click();
   await expect(bar).toContainText('30 selected');
+  await expect(bar.getByRole('button', { name: 'Select all 30' })).toHaveCount(0);
   await bar.getByRole('button', { name: 'Delete', exact: true }).click();
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toContainText('Delete 30 templates?');
@@ -171,9 +181,9 @@ test.describe('bulk deleting your templates', () => {
     await page.screenshot({ path: info.outputPath('bulk-delete-done.png'), fullPage: false });
   });
 
-  test('untick keeps one; a template that came into use mid-run is asked about again; a real failure says so and stays selected', async ({ page }) => {
+  test('untick keeps one; a template that came into use mid-run is asked about again; one that turned emergency is kept; a real failure says so and stays selected', async ({ page }) => {
     test.setTimeout(150_000);
-    const { calls } = await open(page, { becameInUse: 'tpl-02', failing: 'tpl-04' });
+    const { calls } = await open(page, { becameInUse: 'tpl-02', failing: 'tpl-04', turnedEmergency: 'tpl-06' });
     const dialog = await selectAllAndDelete(page);
     await dialog.getByRole('checkbox', { name: /Board 03/ }).uncheck();
     await dialog.getByRole('button', { name: 'Delete 28 templates' }).click();
@@ -185,12 +195,14 @@ test.describe('bulk deleting your templates', () => {
     expect(calls.deletes).not.toContain('tpl-02 force');
     await dialog.getByRole('button', { name: 'Delete 1 template' }).click();
 
-    await expect(page.getByText("27 templates deleted · 1 kept (emergency playlist) · 1 kept · 1 couldn't be deleted: Database busy")).toBeVisible({ timeout: 20_000 });
+    // Board 06's forced delete met the server's emergency guard: kept (emergency), tried once.
+    await expect(page.getByText("26 templates deleted · 2 kept (emergency playlist) · 1 kept · 1 couldn't be deleted: Database busy")).toBeVisible({ timeout: 20_000 });
     expect(calls.deletes).toContain('tpl-02 force');
+    expect(calls.deletes.filter((d) => d.startsWith('tpl-06'))).toEqual(['tpl-06 force']);
     expect(calls.deletes.some((d) => d.startsWith('tpl-03'))).toBe(false);
     // Only the failed one stays selected, ready to retry.
     await expect(page.getByTestId('templates-bulk-bar')).toContainText('1 selected');
-    for (const n of ['03', '04', '27']) {
+    for (const n of ['03', '04', '06', '27']) {
       await expect(page.getByRole('button', { name: new RegExp(`more actions for board ${n}`, 'i') }).first()).toBeVisible();
     }
   });
@@ -198,10 +210,9 @@ test.describe('bulk deleting your templates', () => {
   test('phone width: the dialog fits 390px, focus is on Delete, and Escape cancels without deleting', async ({ page }, info) => {
     test.setTimeout(150_000);
     const { calls } = await open(page, {}, { width: 390, height: 844 });
-    await page.getByRole('checkbox', { name: 'Select all your templates shown' }).check();
+    const selectAll = page.getByRole('checkbox', { name: SELECT_ALL });
+    await selectAll.check();
     const dock = page.getByTestId('templates-bulk-bar');
-    await expect(dock).toContainText('12 selected');
-    await dock.getByRole('button', { name: 'Select all 30' }).click();
     await expect(dock).toContainText('30 selected');
     await dock.getByRole('button', { name: 'Delete', exact: true }).click();
     const dialog = page.getByRole('alertdialog');
@@ -216,5 +227,8 @@ test.describe('bulk deleting your templates', () => {
     await expect(dialog).toHaveCount(0);
     expect(calls.deletes).toEqual([]);
     await expect(dock).toContainText('30 selected');
+    // The same box clears all 30, including the ones past "View all".
+    await selectAll.uncheck();
+    await expect(dock).toHaveCount(0);
   });
 });

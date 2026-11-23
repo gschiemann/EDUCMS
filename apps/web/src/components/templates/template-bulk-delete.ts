@@ -233,9 +233,28 @@ export function tallyRound(prev: BulkDeleteTally, plan: BulkDeletePlan, results:
   return t;
 }
 
-/** The operator declined the follow-up: those become kept by choice. */
-export function declineUsageChanged(t: BulkDeleteTally): BulkDeleteTally {
-  return { ...t, keptByChoice: [...t.keptByChoice, ...t.usageChanged.map((r) => r.id)], usageChanged: [] };
+/**
+ * The operator declined the follow-up. What its re-read said still decides the
+ * bucket: an emergency-protected row is kept (emergency), an unreadable one
+ * failed, and the rest — in use or free again — are kept by choice. Without a
+ * re-read yet (`rows` null, cancelled while checking), all are kept by choice.
+ */
+export function declineUsageChanged(t: BulkDeleteTally, rows?: readonly BulkDeleteRow[] | null): BulkDeleteTally {
+  const byId = new Map((rows ?? []).map((r) => [r.id, r]));
+  const out: BulkDeleteTally = {
+    ...t,
+    keptEmergency: [...t.keptEmergency],
+    keptByChoice: [...t.keptByChoice],
+    failed: [...t.failed],
+    usageChanged: [],
+  };
+  for (const c of t.usageChanged) {
+    const r = byId.get(c.id);
+    if (r?.kind === 'emergency') out.keptEmergency.push(c.id);
+    else if (r?.kind === 'unknown') out.failed.push({ id: c.id, message: r.message });
+    else out.keptByChoice.push(c.id);
+  }
+  return out;
 }
 
 export interface BulkDeleteSummary {

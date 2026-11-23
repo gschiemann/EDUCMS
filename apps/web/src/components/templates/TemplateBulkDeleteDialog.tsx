@@ -34,13 +34,15 @@ import {
 interface Round { targets: BulkDeleteTarget[]; followUp: boolean }
 
 export function TemplateBulkDeleteDialog({
-  targets, loadUsage, deleteOne, onDone, onCancel,
+  targets, loadUsage, deleteOne, beforeRun, onDone, onCancel,
 }: {
   targets: BulkDeleteTarget[];
   /** `GET /templates/:id/usage` — resolves with the raw answer. */
   loadUsage: (id: string) => Promise<unknown>;
   /** `DELETE /templates/:id[?force=true]` — rejects with the API error (code/message). */
   deleteOne: (id: string, force: boolean) => Promise<unknown>;
+  /** Runs once before each round's deletes (the gallery cancels in-flight list refetches). */
+  beforeRun?: () => Promise<unknown> | void;
   /** Something was attempted; the summary is what actually happened. */
   onDone: (summary: BulkDeleteSummary) => void;
   /** Cancelled before anything was deleted. */
@@ -57,6 +59,8 @@ export function TemplateBulkDeleteDialog({
   const [checked, setChecked] = useState<Set<string>>(() => new Set());
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const tallyRef = useRef<BulkDeleteTally>(emptyTally());
+  // A second click before the re-render that shows progress must not start a second run.
+  const runningRef = useRef(false);
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
@@ -91,20 +95,24 @@ export function TemplateBulkDeleteDialog({
   function cancel() {
     if (deleting) return;
     if (round.followUp) {
-      // The first round already deleted things: report it, and keep these by choice.
-      onDone(summarise(declineUsageChanged(tallyRef.current)));
+      // The first round already deleted things: report it. These are kept —
+      // by choice, or as the re-read said (emergency playlist, unreadable).
+      onDone(summarise(declineUsageChanged(tallyRef.current, rows)));
       return;
     }
     onCancel();
   }
 
   async function confirm() {
-    if (!rows || !plan || deleting || plan.ops.length === 0) return;
+    if (!rows || !plan || deleting || runningRef.current || plan.ops.length === 0) return;
+    runningRef.current = true;
     setProgress({ done: 0, total: plan.ops.length });
+    try { await beforeRun?.(); } catch { /* only a refetch guard; the deletes still run */ }
     const results = await runDeletePlan(plan.ops, deleteOne, {
       fallbackMessage: tDel('deleteFailed'),
       onProgress: (done, total) => { if (mountedRef.current) setProgress({ done, total }); },
     });
+    runningRef.current = false;
     tallyRef.current = tallyRound(tallyRef.current, plan, results);
     const changed = tallyRef.current.usageChanged;
     if (changed.length > 0 && mountedRef.current) {
@@ -273,9 +281,12 @@ export function TemplateBulkDeleteDialog({
             ref={primaryRef}
             type="button"
             onClick={() => { void confirm(); }}
-            disabled={!canConfirm}
+            // While deleting it stays focusable (aria-disabled, not disabled), so
+            // keyboard and remote focus keep a home on it until the toast.
+            disabled={!canConfirm && !deleting}
+            aria-disabled={!canConfirm || undefined}
             data-testid="templates-bulk-delete-confirm"
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-rose-600 px-4 text-[13px] font-bold text-white tabular-nums hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 disabled:opacity-60"
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-rose-600 px-4 text-[13px] font-bold text-white tabular-nums hover:bg-rose-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 disabled:opacity-60 aria-disabled:cursor-default aria-disabled:opacity-60"
           >
             {deleting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
             {confirmLabel}
@@ -311,11 +322,13 @@ export function ConnectedTemplateBulkDeleteDialog({
     qc.setQueriesData({ queryKey: ['templates'] }, (val: unknown) =>
       Array.isArray(val) ? val.filter((x: { id?: string } | null) => x?.id !== id) : val);
   }, [qc]);
+  // A list refetch already in flight would briefly bring deleted cards back.
+  const beforeRun = useCallback(() => qc.cancelQueries({ queryKey: ['templates'] }), [qc]);
   const done = useCallback((summary: BulkDeleteSummary) => {
     void qc.invalidateQueries({ queryKey: ['templates'] });
     onDone(summary);
   }, [qc, onDone]);
   return (
-    <TemplateBulkDeleteDialog targets={targets} loadUsage={loadUsage} deleteOne={deleteOne} onDone={done} onCancel={onCancel} />
+    <TemplateBulkDeleteDialog targets={targets} loadUsage={loadUsage} deleteOne={deleteOne} beforeRun={beforeRun} onDone={done} onCancel={onCancel} />
   );
 }

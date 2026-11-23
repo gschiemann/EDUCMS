@@ -7538,7 +7538,7 @@
     "filterHoliday": "Holiday",
     "categoryTabs": "Category",
     "selectTemplate": "Select {name}",
-    "selectAllShown": "Select all your templates shown",
+    "selectAllYours": "{count, plural, one {Select your # template} other {Select all # of your templates}}",
     "duplicate": "Duplicate",
     "export": "Export",
     "delete": "Delete"

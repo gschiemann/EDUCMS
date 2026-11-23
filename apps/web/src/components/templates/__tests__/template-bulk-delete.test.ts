@@ -193,5 +193,22 @@ describe('runDeletePlan + tally + summarise', () => {
 
     // Follow-up declined instead: f2 is kept by choice.
     expect(summarise(declineUsageChanged(tally))).toMatchObject({ deleted: 2, keptByChoice: 2, failed: 1 });
+    expect(summarise(declineUsageChanged(tally, follow))).toMatchObject({ deleted: 2, keptByChoice: 2, failed: 1 });
+  });
+
+  it('a declined follow-up keeps the re-read buckets: emergency stays emergency, unreadable is failed', () => {
+    const tally = { ...emptyTally(), deleted: ['f1'], usageChanged: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }] };
+    const follow = classifyTargets(
+      [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }],
+      new Map<string, UsageRead>([
+        ['a', { ok: true, usage: parseUsage(usage(1, { protectedEmergency: true }))! }],
+        ['b', { ok: false, message: 'Usage unavailable' }],
+        ['c', { ok: true, usage: parseUsage(usage(1))! }],
+      ]),
+      'unknown',
+    );
+    const s = summarise(declineUsageChanged(tally, follow));
+    expect(s).toMatchObject({ deleted: 1, keptEmergency: 1, keptByChoice: 1, failed: 1, firstError: 'Usage unavailable' });
+    expect(s.handled.sort()).toEqual(['a', 'c', 'f1']);
   });
 });

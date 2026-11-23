@@ -7538,7 +7538,7 @@
     "filterHoliday": "节日",
     "categoryTabs": "类别",
     "selectTemplate": "选择 {name}",
-    "selectAllShown": "选择显示的所有模板",
+    "selectAllYours": "选择你的全部 {count} 个模板",
     "duplicate": "复制",
     "export": "导出",
     "delete": "删除"

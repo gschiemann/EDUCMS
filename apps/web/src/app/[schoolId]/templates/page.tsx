@@ -2404,26 +2404,27 @@ export default function TemplatesPage() {
     input.click();
   }
 
-  // Selection (2026-11-23) — the box over the tiles selects what is SHOWN; the
-  // bar's "Select all N" reaches every one of YOUR templates the current search
-  // and filters match, including the ones past "Show more" (the owner's select
-  // all used to stop at the first page, so the rest were never deleted). Never
-  // a preset, never one the filter hides: the selection is pruned to that set.
+  // Selection (2026-11-23) — the box over the tiles and the bar's "Select all N"
+  // both reach EVERY one of your templates the current search and filters
+  // match, including the ones past "View all" (the owner's select all used to
+  // stop at the first page, so the rest were never deleted). The bar's
+  // "N selected" and the dialog's "Delete N templates?" state the true number.
+  // Never a preset (customTemplates has none), never one the filter hides.
+  const matchedTplIds = isViewer ? [] : customTemplates.map((t: Template) => t.id);
   const canSelectTpls = !isViewer && viewMode === 'grid';
-  const shownTplIds = canSelectTpls ? visibleCustom.map((t: Template) => t.id) : [];
-  const selectableTplIds = canSelectTpls ? customTemplates.map((t: Template) => t.id) : [];
+  const selectableTplIds = canSelectTpls ? matchedTplIds : [];
   const selectedTpls = canSelectTpls ? customTemplates.filter((t: Template) => tplSelected.has(t.id)) : [];
-  const shownSelectedCount = shownTplIds.filter((id) => tplSelected.has(id)).length;
-  const tplSelState = selectionState(shownSelectedCount, shownTplIds.length);
+  const tplSelState = selectionState(selectedTpls.length, selectableTplIds.length);
   // A search or filter that hides a selected template drops it from the
   // selection, so clearing the filter later does not bring back a selection
-  // nobody can see (and a bulk action never reaches it).
+  // nobody can see (and a bulk action never reaches it). Pruned against what
+  // the filter matches, not the view mode: a grid/list/grid toggle keeps it.
   // (React's "adjust state when a value changes" pattern: during render, not in an effect.)
-  const selectableTplKey = selectableTplIds.join('\n');
-  const [prunedForKey, setPrunedForKey] = useState(selectableTplKey);
-  if (prunedForKey !== selectableTplKey) {
-    setPrunedForKey(selectableTplKey);
-    const allowed = new Set(selectableTplIds);
+  const matchedTplKey = matchedTplIds.join('\n');
+  const [prunedForKey, setPrunedForKey] = useState(matchedTplKey);
+  if (prunedForKey !== matchedTplKey) {
+    setPrunedForKey(matchedTplKey);
+    const allowed = new Set(matchedTplIds);
     setTplSelected((prev) => {
       let changed = false;
       const next = new Set<string>();
@@ -3638,13 +3639,13 @@ export default function TemplatesPage() {
           <section aria-labelledby="your-templates-heading">
             <div className="mb-3 flex items-end justify-between gap-3">
               <div className="flex items-center gap-2">
-                {shownTplIds.length > 0 && (
+                {selectableTplIds.length > 0 && (
                   <SelectionCheckbox
                     checked={tplSelState === 'all'}
                     indeterminate={tplSelState === 'some'}
-                    label={tTpl('selectAllShown')}
-                    title={selectAllTitle(tplSelState, tTpl('selectAllShown'), tUi('clearSelection'))}
-                    onChange={() => setTplSelected((prev) => (tplSelState === 'all' ? new Set() : new Set([...prev, ...shownTplIds])))}
+                    label={tTpl('selectAllYours', { count: selectableTplIds.length })}
+                    title={selectAllTitle(tplSelState, tTpl('selectAllYours', { count: selectableTplIds.length }), tUi('clearSelection'))}
+                    onChange={() => setTplSelected(tplSelState === 'all' ? new Set() : new Set(selectableTplIds))}
                     testId="templates-select-all"
                   />
                 )}
@@ -3693,7 +3694,7 @@ export default function TemplatesPage() {
               <div className={GALLERY_GRID_CLASS}>
                 {visibleCustom.map((t: Template) => (
                   <div key={t.id} className="relative" data-selected={tplSelected.has(t.id) || undefined}>
-                    {shownTplIds.length > 0 && (
+                    {canSelectTpls && (
                       <SelectionTileCheckbox
                         checked={tplSelected.has(t.id)}
                         anySelected={selectedTpls.length > 0}

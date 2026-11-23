@@ -7538,7 +7538,7 @@
     "filterHoliday": "Festividad",
     "categoryTabs": "Categoría",
     "selectTemplate": "Seleccionar {name}",
-    "selectAllShown": "Seleccionar todas tus plantillas mostradas",
+    "selectAllYours": "{count, plural, one {Seleccionar tu # plantilla} other {Seleccionar tus # plantillas}}",
     "duplicate": "Duplicar",
     "export": "Exportar",
     "delete": "Eliminar"
