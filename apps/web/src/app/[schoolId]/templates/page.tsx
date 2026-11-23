@@ -5770,7 +5770,7 @@ function TemplateBuilder({ template, onBack, onSaved }: {
                     <input type="color" value={bgColor || '#ffffff'}
                       onChange={e => { setBgColor(e.target.value); setBgGradient(''); setIsDirty(true); setSaveStatus('idle'); }}
                       className="w-10 h-8 rounded border border-slate-200 cursor-pointer" />
-                    <input value={bgColor || ''} placeholder="#ffffff"
+                    <input spellCheck={false} value={bgColor || ''} placeholder="#ffffff"
                       onChange={e => { setBgColor(e.target.value); setBgGradient(''); setIsDirty(true); setSaveStatus('idle'); }}
                       className="flex-1 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                     {bgColor && <button onClick={() => { setBgColor(''); setIsDirty(true); setSaveStatus('idle'); }}
@@ -5810,7 +5810,7 @@ function TemplateBuilder({ template, onBack, onSaved }: {
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Image URL</label>
                   <div className="flex gap-2 items-center">
-                    <input value={bgImage || ''} placeholder="https://..."
+                    <input spellCheck={false} value={bgImage || ''} placeholder="https://..."
                       onChange={e => { setBgImage(e.target.value); setIsDirty(true); setSaveStatus('idle'); }}
                       className="flex-1 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                     {bgImage && <button onClick={() => { setBgImage(''); setIsDirty(true); setSaveStatus('idle'); }}
@@ -6339,7 +6339,7 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
     return (
       <div className="space-y-3 pt-2 border-t border-slate-100">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Website URL</label>
-        <input value={config.url || ''} onChange={e => setConfig({ url: e.target.value })} onBlur={e => {
+        <input spellCheck={false} value={config.url || ''} onChange={e => setConfig({ url: e.target.value })} onBlur={e => {
           const v = e.target.value.trim();
           if (v && !v.startsWith('http://') && !v.startsWith('https://') && !v.startsWith('//')) {
             setConfig({ url: `https://${v}` });
@@ -6578,7 +6578,7 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
     return (
       <div className="space-y-3 pt-2 border-t border-slate-100">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Calendar Feed</label>
-        <input value={config.feedUrl || ''} onChange={e => setConfig({ feedUrl: e.target.value })} placeholder="iCal/Google Calendar URL" className={inputClass} />
+        <input spellCheck={false} value={config.feedUrl || ''} onChange={e => setConfig({ feedUrl: e.target.value })} placeholder="iCal/Google Calendar URL" className={inputClass} />
         <input type="number" min={1} max={20} value={config.maxEvents || 5} onChange={e => setConfig({ maxEvents: parseInt(e.target.value) || 5 })}
           className={inputClass} />
         <span className="text-[10px] text-slate-400">Max events to show</span>
@@ -6622,7 +6622,7 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
     return (
       <div className="space-y-3 pt-2 border-t border-slate-100">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">RSS Feed</label>
-        <input value={config.feedUrl || ''} onChange={e => setConfig({ feedUrl: e.target.value })} placeholder="https://example.com/rss" className={inputClass} />
+        <input spellCheck={false} value={config.feedUrl || ''} onChange={e => setConfig({ feedUrl: e.target.value })} placeholder="https://example.com/rss" className={inputClass} />
         <input type="number" min={1} max={20} value={config.maxItems || 5} onChange={e => setConfig({ maxItems: parseInt(e.target.value) || 5 })}
           className={inputClass} />
         <span className="text-[10px] text-slate-400">Max headlines to show</span>

@@ -781,6 +781,7 @@ function WebhooksSection() {
             <label className="text-[11px] font-bold text-slate-600 flex flex-col gap-1">
               POST URL
               <input
+                spellCheck={false}
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://your.receiver/webhook"

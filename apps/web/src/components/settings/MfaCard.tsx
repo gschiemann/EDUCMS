@@ -297,6 +297,7 @@ export function MfaCard() {
                   {t('mfaCard.enterCodeLabel')}
                 </label>
                 <input
+                  spellCheck={false}
                   id="mfa-verify-code"
                   type="text"
                   inputMode="numeric"

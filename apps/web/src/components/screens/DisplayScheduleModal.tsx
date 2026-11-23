@@ -640,6 +640,7 @@ export function DisplayScheduleModal({
           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">
             {t('screens.display.timezone')}
             <input
+              spellCheck={false}
               type="text"
               list="display-schedule-timezones"
               value={timezone}

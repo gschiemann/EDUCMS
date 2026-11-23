@@ -67,6 +67,7 @@ export function TeamAbbrevFields({ gameId, game }: { gameId: string; game: TeamA
       <div className="min-w-0">
         <label htmlFor={id} className="block text-xs text-slate-500 truncate">{teamName}</label>
         <input
+          spellCheck={false}
           id={id}
           value={value}
           maxLength={5}

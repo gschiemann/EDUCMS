@@ -20,6 +20,7 @@ import { useTenantStatus } from '@/hooks/use-api';
 import { AppDialogHost } from '@/components/ui/app-dialog';
 import { BrandStyleInjector } from '@/components/branding/BrandStyleInjector';
 import { TrialStatusBar } from '@/components/billing/TrialStatusBar';
+import { installSpellcheckDefault } from '@/lib/spellcheck-default';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations();
@@ -27,6 +28,14 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const setEmergencyActive = useAppStore((state) => state.setEmergencyActive);
   const { data: tenant } = useTenantStatus();
   const pathname = usePathname() || '';
+
+  // Spell check by default on every free-text field of the dashboard (owner,
+  // 2026-11-23: "even when I'm typing the screen group names"). One
+  // capture-phase focusin listener, no timers; fields that say
+  // spellCheck={false} keep it off. Mounted HERE, the chrome of every
+  // /[schoolId]/* page, so no screen surface (/player, /board, /ribbon,
+  // /scorebug, /overlay, /pair) ever installs it. See lib/spellcheck-default.ts.
+  useEffect(() => installSpellcheckDefault(), []);
 
   // Universally lock the dashboard when backend reports an emergency
   // NOTE: this hook MUST run on every render (hook-rule), so it stays above

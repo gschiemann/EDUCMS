@@ -639,6 +639,7 @@ export default function SettingsBrandingPage() {
                   {t('settings.cc.brand.hexLabel')}
                 </label>
                 <input
+                  spellCheck={false}
                   id="brand-hex"
                   value={hexText ?? effColor}
                   disabled={!canEdit}

@@ -248,6 +248,7 @@ export default function NewCustomerPage() {
               <label>
                 <span className={LABEL}>{t("create.accountUrl")}</span>
                 <input
+                  spellCheck={false}
                   className={INPUT}
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}

@@ -289,6 +289,7 @@ function SignupForm() {
                   <div className="flex items-center bg-white border border-slate-300 rounded-lg overflow-hidden focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition">
                     <span className="pl-3.5 pr-2 py-2.5 text-sm text-slate-400 font-mono shrink-0 border-r border-slate-200" aria-hidden>/</span>
                     <input
+                      spellCheck={false}
                       id={id}
                       required
                       value={slug}
