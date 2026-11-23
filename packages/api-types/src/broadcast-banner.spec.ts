@@ -96,29 +96,31 @@ describe('marquee speeds (slowed 2026-11-23)', () => {
   it('keeps the three stored values', () => {
     expect(BANNER_SPEEDS).toEqual(['slow', 'normal', 'fast']);
   });
-  it('one stage width every 48 s / 30 s / 20 s', () => {
-    expect(BANNER_SPEED_STAGES_PER_MIN).toEqual({ slow: 1.25, normal: 2, fast: 3 });
-    for (const [speed, seconds] of [['slow', 48], ['normal', 30], ['fast', 20]] as const) {
-      expect(60 / BANNER_SPEED_STAGES_PER_MIN[speed]).toBe(seconds);
+  it('one stage width every 30 s / 20 s / 13.3 s', () => {
+    expect(BANNER_SPEED_STAGES_PER_MIN).toEqual({ slow: 2, normal: 3, fast: 4.5 });
+    for (const [speed, seconds] of [['slow', 30], ['normal', 20], ['fast', 13.3]] as const) {
+      expect(60 / BANNER_SPEED_STAGES_PER_MIN[speed]).toBeCloseTo(seconds, 1);
     }
   });
   it.each([
-    [1920, 'slow', 40], [1920, 'normal', 64], [1920, 'fast', 96],
-    [3840, 'slow', 80], [3840, 'normal', 128], [3840, 'fast', 192],
+    [1920, 'slow', 64], [1920, 'normal', 96], [1920, 'fast', 144],
+    [3840, 'slow', 128], [3840, 'normal', 192], [3840, 'fast', 288],
   ] as const)('a %d px stage at %s moves %d px per second', (w, speed, px) => {
     expect(bannerPxPerSecond(w, speed)).toBe(px);
   });
-  it('the new fast is no faster than the old slow (3 stage widths a minute)', () => {
-    expect(BANNER_SPEED_STAGES_PER_MIN.fast).toBeLessThanOrEqual(3);
+  it('every speed is slower than the old normal (5 stage widths a minute)', () => {
+    for (const speed of BANNER_SPEEDS) expect(BANNER_SPEED_STAGES_PER_MIN[speed]).toBeLessThan(5);
+    expect(BANNER_SPEED_STAGES_PER_MIN.slow).toBeLessThan(BANNER_SPEED_STAGES_PER_MIN.normal);
+    expect(BANNER_SPEED_STAGES_PER_MIN.normal).toBeLessThan(BANNER_SPEED_STAGES_PER_MIN.fast);
   });
-  it('a loop one stage wide takes 48 s / 30 s / 20 s, in 0.1 s steps', () => {
-    expect(bannerLoopSeconds(1920, 1920, 'slow')).toBe(48);
-    expect(bannerLoopSeconds(1920, 1920, 'normal')).toBe(30);
-    expect(bannerLoopSeconds(1920, 1920, 'fast')).toBe(20);
+  it('a loop one stage wide takes 30 s / 20 s / 13.3 s, in 0.1 s steps', () => {
+    expect(bannerLoopSeconds(1920, 1920, 'slow')).toBe(30);
+    expect(bannerLoopSeconds(1920, 1920, 'normal')).toBe(20);
+    expect(bannerLoopSeconds(1920, 1920, 'fast')).toBe(13.3);
     // A 4K canvas draws everything twice as wide: the same screen-relative speed.
-    expect(bannerLoopSeconds(3840, 3840, 'slow')).toBe(48);
-    expect(bannerLoopSeconds(3840, 3840, 'fast')).toBe(20);
-    expect(bannerLoopSeconds(1000, 1920, 'normal')).toBe(15.6);
+    expect(bannerLoopSeconds(3840, 3840, 'slow')).toBe(30);
+    expect(bannerLoopSeconds(3840, 3840, 'fast')).toBe(13.3);
+    expect(bannerLoopSeconds(1000, 1920, 'normal')).toBe(10.4);
   });
   it('the speed is the same for every message length (the loop is timed by the distance travelled)', () => {
     // Three copies of a short message or one copy of a long one: same px per second.

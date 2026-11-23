@@ -31,9 +31,12 @@
  * send carries no `size` and is accepted by both builds.
  *
  * SPEED (2026-11-23): slowed after the owner found even "slow" too fast —
- * one stage width every 48 s / 30 s / 20 s (was 20 s / 12 s / 7.5 s), and the
- * marquee now actually runs at that speed for every message length (see
- * `bannerLoopSeconds`: a short message used to run 2-3x the table). The
+ * one stage width every 30 s / 20 s / 13.3 s (was 20 s / 12 s / 7.5 s), and
+ * the marquee now actually runs at that speed for every message length (see
+ * `bannerLoopSeconds`: a short message used to run 2-4x the table, so what
+ * the owner saw at "slow" was about 7 s per screen width). A first cut of
+ * 48 s / 30 s / 20 s was judged too slow once that bug was fixed too: at
+ * 48 s a reader waits on every word of a long message. The
  * stored values stay `slow` / `normal` / `fast`, so stored messages and older
  * players stay valid; an older player keeps its own (faster) behaviour.
  *
@@ -48,14 +51,15 @@ export type BannerSpeed = (typeof BANNER_SPEEDS)[number];
 
 /**
  * Marquee speed in canvas-relative terms: stage widths crossed per minute.
- * 1.25 / 2 / 3 = one stage width every 48 s / 30 s / 20 s; on a 1920 px stage
- * that is 40 / 64 / 96 px per second, on a 3840 px stage 80 / 128 / 192
- * (the same speed relative to the screen). The new "fast" is the old "slow".
+ * 2 / 3 / 4.5 = one stage width every 30 s / 20 s / 13.3 s; on a 1920 px
+ * stage that is 64 / 96 / 144 px per second, on a 3840 px stage 128 / 192 /
+ * 288 (the same speed relative to the screen). Every speed is slower than
+ * the old "normal" (5), and far slower than a short message really ran.
  */
 export const BANNER_SPEED_STAGES_PER_MIN: Record<BannerSpeed, number> = {
-  slow: 1.25,
-  normal: 2,
-  fast: 3,
+  slow: 2,
+  normal: 3,
+  fast: 4.5,
 };
 
 /**

@@ -170,12 +170,12 @@ describe('static text is never clipped by the overlay cap (2026-11-23 review)', 
   });
 });
 
-describe('scroll speed (one stage width every 48 s / 30 s / 20 s)', () => {
+describe('scroll speed (one stage width every 30 s / 20 s / 13.3 s)', () => {
   // A copy half a stage wide needs 2 copies to fill the bar: one loop slides
   // both (one stage width), so it takes a whole stage's crossing time.
   it.each([
-    [1920, 'slow', 48], [1920, 'normal', 30], [1920, 'fast', 20],
-    [3840, 'slow', 48], [3840, 'normal', 30], [3840, 'fast', 20],
+    [1920, 'slow', 30], [1920, 'normal', 20], [1920, 'fast', 13.3],
+    [3840, 'slow', 30], [3840, 'normal', 20], [3840, 'fast', 13.3],
   ] as const)('on a %d px stage, %s takes %d s per loop', (w, speed, seconds) => {
     const c = draw({ mode: 'scroll', speed }, w);
     const el = scrollText(c);
@@ -188,7 +188,7 @@ describe('scroll speed (one stage width every 48 s / 30 s / 20 s)', () => {
 
   it('the size does not change the speed', () => {
     for (const size of ['small', 'medium', 'large']) {
-      expect(scrollText(draw({ mode: 'scroll', speed: 'slow', size }, 1920)).getAttribute('data-banner-seconds')).toBe('48');
+      expect(scrollText(draw({ mode: 'scroll', speed: 'slow', size }, 1920)).getAttribute('data-banner-seconds')).toBe('30');
     }
   });
 

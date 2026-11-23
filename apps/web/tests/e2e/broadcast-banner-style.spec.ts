@@ -168,7 +168,7 @@ for (const [w, h] of [[1920, 1080], [3840, 2160]] as const) {
     }
 
     // The real speed of a SHORT message (3 copies fill the bar) at every speed.
-    for (const [speed, stagesPerMin] of [['slow', 1.25], ['normal', 2], ['fast', 3]] as const) {
+    for (const [speed, stagesPerMin] of [['slow', 2], ['normal', 3], ['fast', 4.5]] as const) {
       await show({ mode: 'scroll', speed }, 'Early dismissal at 1 pm');
       const track = banner(page).locator('[data-banner-text="scroll"] [data-banner-track]');
       await expect(banner(page).locator(`[data-banner-speed="${speed}"]`)).toBeVisible();

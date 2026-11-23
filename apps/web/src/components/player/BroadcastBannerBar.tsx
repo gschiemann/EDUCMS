@@ -12,7 +12,7 @@
  *     the overlay's height cap (`StaticText`).
  *   - scroll: a seamless marquee (the text repeated end to end until it
  *     fills the bar twice; the track slides half its copies, then loops),
- *     slow / normal / fast — one stage width every 48 s / 30 s / 20 s
+ *     slow / normal / fast — one stage width every 30 s / 20 s / 13.3 s
  *     (2026-11-23, slowed), timed by the distance the track really travels
  *     so a short message moves exactly as fast as a long one.
  *   - size (2026-11-23): small / medium / large text, a fraction of the stage

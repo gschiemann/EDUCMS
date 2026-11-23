@@ -27,15 +27,17 @@ The different-vendor review was **waived by the owner in writing** ("Don't worry
 
 ## Speed
 
-The stored values stay `slow` / `normal` / `fast`, so stored messages and older players stay valid. The new "fast" is the old "slow".
+The stored values stay `slow` / `normal` / `fast`, so stored messages and older players stay valid. Every new speed is slower than the old "normal", and far slower than a short message really ran (next paragraph).
 
 | Speed | Old: stage widths/min | Old: s per screen width | Old px/s at 1920 / 3840 | New: stage widths/min | New: s per screen width | New px/s at 1920 / 3840 |
 |---|---|---|---|---|---|---|
-| slow | 3 | 20 | 96 / 192 | 1.25 | 48 | 40 / 80 |
-| normal | 5 | 12 | 160 / 320 | 2 | 30 | 64 / 128 |
-| fast | 8 | 7.5 | 256 / 512 | 3 | 20 | 96 / 192 |
+| slow | 3 | 20 | 96 / 192 | 2 | 30 | 64 / 128 |
+| normal | 5 | 12 | 160 / 320 | 3 | 20 | 96 / 192 |
+| fast | 8 | 7.5 | 256 / 512 | 4.5 | 13.3 | 144 / 288 |
 
-**A second bug, also fixed.** The old bar timed one loop by one copy of the text, but the track slides half its copies per loop. So a short message moved 2x or 3x the table speed. On the shipped component at "slow" on a 1920 stage, a long message moved at 96 px/s, a ~60-character message at 192 px/s and a ~25-character message at 290 px/s. That is a large part of why "even slow is fast". `bannerLoopSeconds` now times the distance actually travelled, so every message length moves at the table speed.
+**Why these numbers (the owner's call, 2026-11-23).** The first cut was 1.25 / 2 / 3 (48 s / 30 s / 20 s). With the bug below fixed as well, that made "slow" about 7x slower than what the owner actually saw (about 7 s per screen width on a short message), and at 48 s a reader waits on every word of a long message. The lead recommended 2 / 3 / 4.5; the owner said "finish everything" without choosing, so the recommendation shipped. It is one constant (`BANNER_SPEED_STAGES_PER_MIN`) to tune after the bench drill.
+
+**A second bug, also fixed.** The old bar timed one loop by one copy of the text, but the track slides half its copies per loop. So a short message moved 2x to 4x the table speed. On the shipped component at "slow" on a 1920 stage, a long message moved at 96 px/s, a ~60-character message at 192 px/s and a ~25-character message at 290 px/s. That is a large part of why "even slow is fast". `bannerLoopSeconds` now times the distance actually travelled, so every message length moves at the table speed.
 
 **Minimum loop time.** It stays 4 s (`BANNER_MIN_LOOP_SECONDS`). A loop is always at least as wide as the bar, so the floor never applies on a real stage. It can only slow a degenerate case down. A short message cannot whip by.
 
@@ -70,7 +72,7 @@ Maximum bar height, for a 2,000-character static message (the API maximum):
 - A 2-line static bar (a ~130-character message) is 119 / 141 / 171 px at 1920 (Small / Medium / Large; 11% / 13% / 16% of the height). At 3840 it is 199 / 246 / 319 px (9% / 11% / 15%).
 - **The 2-line promise at Large holds to about 230 characters.** Beyond that, Large wraps to more lines. At 400 characters on 1920: Small 2 lines, Medium 3, Large 4 lines in a 186 px bar (17% of the screen). A 300-character message is 3 lines at Large on 1280, 1920 and 3840.
 - **Scrolling** is one line at the full font. The bar is 77 / 89 / 109 px at 1920 and 117 / 141 / 180 px at 3840.
-- **Measured speed.** A short message (6 copies, the case that used to run 2-3x) moves at exactly 40 / 64 / 96 px/s at 1920 and 80 / 128 / 192 px/s at 3840 (slow / normal / fast), measured on the animation's own clock (`ee80e0daa`; 6 of 6 runs under parallel load). An earlier wall-clock window read 73 at 3840 slow and once failed under load; that measurement is fixed, see follow-up 1.
+- **Measured speed.** A short message (6 copies, the case that used to run 2-3x) moves at the table speed, measured on the animation's own clock (`ee80e0daa`): 6 of 6 runs under parallel load read exactly 40 / 64 / 96 px/s at 1920 and 80 / 128 / 192 at 3840 on the first-cut table; the shipped table's numbers are in the Validation section. An earlier wall-clock window read 73 at 3840 slow and once failed under load; that measurement is fixed, see follow-up 1.
 
 **Sanitising.** The key order is fixed: color, mode, speed, size. `size` appears only for small or large. An unknown or hostile size is treated as medium.
 
@@ -129,7 +131,7 @@ Use a **test tenant** and a **paired bench screen**. Send INFO broadcasts only, 
 1. Confirm `/api/v1/health` reports `commit` equal to the merge SHA, so Small and Large are not downgraded by the deploy-order path.
 2. Static, once at each size (Small, Medium, Large): a one-line message, then a ~200-character message. Check from viewing distance that it is readable and that the bar stays a reasonable band at the bottom.
 3. Static, Large, 2,000 characters starting with START and ending with END. Check that both words are on the glass and the bar stays within 40% of the screen.
-4. Scrolling, once at each speed (Slow, Normal, Fast), at Medium: a short message ("Early dismissal at 1 pm") and a long one. Slow should take about 48 s to cross the screen, Normal about 30 s and Fast about 20 s, the same for both lengths.
+4. Scrolling, once at each speed (Slow, Normal, Fast), at Medium: a short message ("Early dismissal at 1 pm") and a long one. Slow should take about 30 s to cross the screen, Normal about 20 s and Fast about 13 s, the same for both lengths. If any speed feels wrong on the glass, it is one constant to tune.
 5. Scrolling, Large, Slow, a long message (several hundred characters) on the Chromium 83 Taurus bench controller. Check that it moves smoothly and does not stall.
 6. Clear each message. Check that the banner leaves the glass and normal content returns.
 7. Optional: open one message on a screen still running an older player build and confirm it shows Medium.
