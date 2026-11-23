@@ -18,9 +18,8 @@
  *
  * Exported as a function so main.ts and the HTTP spec mount the SAME thing.
  */
-import { HttpException, HttpStatus } from '@nestjs/common';
 import { json, type NextFunction, type Request, type Response } from 'express';
-import { GAME_STATE_MAX_BODY_BYTES } from './game-state';
+import { GAME_STATE_MAX_BODY_BYTES, gameStateBodyTooLarge } from './game-state';
 
 /**
  * The route, with or without a trailing slash; the id is one path segment.
@@ -49,15 +48,7 @@ export function mountGameStateBodyParser(app: GameStateMiddlewareHost): void {
   app.use(GAME_STATE_ROUTE, (req, res, next) => {
     parse(req, res, (err?: unknown) => {
       if (isTooLarge(err)) {
-        next(
-          new HttpException(
-            {
-              code: 'SCREEN_GAME_STATE_BODY_TOO_LARGE',
-              message: 'Body exceeds 16 KB',
-            },
-            HttpStatus.PAYLOAD_TOO_LARGE,
-          ),
-        );
+        next(gameStateBodyTooLarge());
         return;
       }
       next(err as Error | undefined);

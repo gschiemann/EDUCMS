@@ -2815,12 +2815,14 @@ export class AssetsController {
    * endpoint to hit, those resolutions 404'd → operator saw
    * "webpage unavailable" with an Android WebView error page.
    *
-   * Auth follows the same pattern as /templates/:id/playback:
-   *   - kind:'device' → look up the bound screen, scope by tenant
-   *   - SUPER_ADMIN → cross-tenant by design
-   *   - user JWT → scope by tenantId
-   * No @RequireRoles because device JWTs have no role; auth is
-   * enforced via the where-clause filter on the lookup.
+   * Auth: every caller needs a tenant scope, and the lookup is always
+   * constrained to it (SDW-01, 2026-11-23):
+   *   - kind:'device' → the bound screen's live tenant
+   *   - SUPER_ADMIN → the active workspace (support access, 2026-10-11),
+   *     never cross-tenant
+   *   - user JWT → their own tenant
+   * A caller with no tenant scope gets 404. No @RequireRoles because device
+   * JWTs have no role; the where clause always carries `tenantId`.
    *
    * Returns only the playback-needed fields (id, fileUrl, mimeType,
    * fileSize) — never the full Asset row. Status must be PUBLISHED;

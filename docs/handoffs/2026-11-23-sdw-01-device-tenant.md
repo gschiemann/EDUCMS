@@ -23,7 +23,7 @@ Model: Claude Opus 5.5, Claude Code cloud session, dispatched by a workflow scri
 
 1. Extend the tenant-isolation static gate (tracked privately). The baseline was not raised.
 2. Evaluate Prisma `strictUndefinedChecks` across the API (needs an audit of call sites first).
-3. The doc comment above `GET /assets/:id/playback` still calls SUPER_ADMIN "cross-tenant by design". Support access has scoped it to the active workspace since 2026-10-11. The comment is cosmetic and out of date.
+3. Done in the launch-fixes 6-10 integration: the doc comment above `GET /assets/:id/playback` now says every caller needs a tenant scope and SUPER_ADMIN reads the active workspace (support access, 2026-10-11), never cross-tenant.
 
 ## After deploy (bench screens only)
 

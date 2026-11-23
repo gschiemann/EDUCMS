@@ -279,6 +279,11 @@ function codeOf(res: request.Response): unknown {
   return (res.body as { code?: unknown }).code;
 }
 
+/** The human message of an error answer. */
+function messageOf(res: request.Response): unknown {
+  return (res.body as { message?: unknown }).message;
+}
+
 /** The JSON body of an answer. */
 function bodyOf(res: request.Response): unknown {
   return res.body as unknown;
@@ -364,6 +369,7 @@ describe('a body over 16 KB is refused before anything else runs', () => {
     const res = await post(PAIRED, oversize());
     expect(res.status).toBe(413);
     expect(codeOf(res)).toBe('SCREEN_GAME_STATE_BODY_TOO_LARGE');
+    expect(messageOf(res)).toBe('Body exceeds 16 KB');
     expect(findUnique).not.toHaveBeenCalled();
     expect(signSpy).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
@@ -415,6 +421,7 @@ describe('a body over 16 KB is refused before anything else runs', () => {
     const res = await post(PAIRED, oversize());
     expect(res.status).toBe(413);
     expect(codeOf(res)).toBe('SCREEN_GAME_STATE_BODY_TOO_LARGE');
+    expect(messageOf(res)).toBe('Body exceeds 16 KB');
     expect(publish).not.toHaveBeenCalled();
   });
 

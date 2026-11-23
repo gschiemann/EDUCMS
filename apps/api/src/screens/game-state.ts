@@ -1,3 +1,4 @@
+import { HttpException, HttpStatus } from '@nestjs/common';
 import { z } from 'zod';
 
 /**
@@ -42,6 +43,26 @@ import { z } from 'zod';
  *  parser in `main.ts`, which refuses a larger body before it is parsed; this
  *  constant is the in-handler backstop for a request that declares its length. */
 export const GAME_STATE_MAX_BODY_BYTES = 16 * 1024;
+
+/**
+ * The 413 for a body over `GAME_STATE_MAX_BODY_BYTES`. One helper, so the
+ * route parser (`game-state-body.ts`) and the handler's `Content-Length`
+ * backstop answer the same code, and the message is derived from the limit
+ * rather than typed beside it.
+ */
+export function gameStateBodyTooLarge(): HttpException {
+  const kb = GAME_STATE_MAX_BODY_BYTES / 1024;
+  const limit = Number.isInteger(kb)
+    ? `${kb} KB`
+    : `${GAME_STATE_MAX_BODY_BYTES} bytes`;
+  return new HttpException(
+    {
+      code: 'SCREEN_GAME_STATE_BODY_TOO_LARGE',
+      message: `Body exceeds ${limit}`,
+    },
+    HttpStatus.PAYLOAD_TOO_LARGE,
+  );
+}
 
 /**
  * Per-address ceiling, per 60 s, for the route's `@Throttle`.

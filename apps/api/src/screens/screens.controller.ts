@@ -40,6 +40,7 @@ import type { Request as ExpressReq, Response } from 'express';
 import {
   GAME_STATE_ADDRESS_LIMIT_PER_MIN,
   GAME_STATE_MAX_BODY_BYTES,
+  gameStateBodyTooLarge,
   parseGameStateBody,
 } from './game-state';
 import { PrismaService } from '../prisma/prisma.service';
@@ -4742,13 +4743,7 @@ export class ScreensController {
   ) {
     const declared = Number(req?.headers?.['content-length'] ?? NaN);
     if (Number.isFinite(declared) && declared > GAME_STATE_MAX_BODY_BYTES) {
-      throw new HttpException(
-        {
-          code: 'SCREEN_GAME_STATE_BODY_TOO_LARGE',
-          message: 'Body exceeds 16 KB',
-        },
-        HttpStatus.PAYLOAD_TOO_LARGE,
-      );
+      throw gameStateBodyTooLarge();
     }
     const parsed = parseGameStateBody(body);
     if (!parsed.ok) {
