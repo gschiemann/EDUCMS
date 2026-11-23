@@ -91,6 +91,8 @@ import { needsResize } from '@/components/templates/create-template-flow';
 // scratch/design/templates-page/TEMPLATES-GALLERY-V1-DESIGN-HANDOFF.md
 import { TemplateOverflowMenu, type OverflowItem } from '@/components/templates/TemplateOverflowMenu';
 import { TemplateUsagePill } from '@/components/templates/TemplateUsagePill';
+import { ConnectedTemplateBulkDeleteDialog } from '@/components/templates/TemplateBulkDeleteDialog';
+import type { BulkDeleteSummary, BulkDeleteTarget } from '@/components/templates/template-bulk-delete';
 import {
   type TemplateUsageState,
   deriveTemplateUsage,
@@ -130,7 +132,7 @@ import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { getAiTemplatePrompts } from '@cms/api-types';
-import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { appAlert } from '@/components/ui/app-dialog';
 import { DateField } from '@/components/ui/date-field';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -1076,6 +1078,10 @@ export default function TemplatesPage() {
   const isPhone = usePhoneWidth();
   const [tplSelected, setTplSelected] = useState<Set<string>>(() => new Set());
   const [tplBulkBusy, setTplBulkBusy] = useState(false);
+  // The bulk delete's one confirmation (TemplateBulkDeleteDialog): the selection
+  // as it was when Delete was pressed.
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<BulkDeleteTarget[] | null>(null);
+  const tBulkDel = useTranslations('templateBulkDelete');
   const importTemplate = useImportTemplate();
   // Express lane — "Put on a screen". Creates a one-item playlist FROM this
   // board/template (same path the New-Playlist "From Template" mode uses) and
@@ -2398,10 +2404,33 @@ export default function TemplatesPage() {
     input.click();
   }
 
-  // Selection — only templates the operator can SEE stay selected.
-  const selectableTplIds = !isViewer && viewMode === 'grid' ? visibleCustom.map((t: Template) => t.id) : [];
-  const selectedTpls = visibleCustom.filter((t: Template) => tplSelected.has(t.id));
-  const tplSelState = selectionState(selectedTpls.length, selectableTplIds.length);
+  // Selection (2026-11-23) — the box over the tiles selects what is SHOWN; the
+  // bar's "Select all N" reaches every one of YOUR templates the current search
+  // and filters match, including the ones past "Show more" (the owner's select
+  // all used to stop at the first page, so the rest were never deleted). Never
+  // a preset, never one the filter hides: the selection is pruned to that set.
+  const canSelectTpls = !isViewer && viewMode === 'grid';
+  const shownTplIds = canSelectTpls ? visibleCustom.map((t: Template) => t.id) : [];
+  const selectableTplIds = canSelectTpls ? customTemplates.map((t: Template) => t.id) : [];
+  const selectedTpls = canSelectTpls ? customTemplates.filter((t: Template) => tplSelected.has(t.id)) : [];
+  const shownSelectedCount = shownTplIds.filter((id) => tplSelected.has(id)).length;
+  const tplSelState = selectionState(shownSelectedCount, shownTplIds.length);
+  // A search or filter that hides a selected template drops it from the
+  // selection, so clearing the filter later does not bring back a selection
+  // nobody can see (and a bulk action never reaches it).
+  // (React's "adjust state when a value changes" pattern: during render, not in an effect.)
+  const selectableTplKey = selectableTplIds.join('\n');
+  const [prunedForKey, setPrunedForKey] = useState(selectableTplKey);
+  if (prunedForKey !== selectableTplKey) {
+    setPrunedForKey(selectableTplKey);
+    const allowed = new Set(selectableTplIds);
+    setTplSelected((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => { if (allowed.has(id)) next.add(id); else changed = true; });
+      return changed ? next : prev;
+    });
+  }
   const toggleTpl = (id: string) => setTplSelected((prev) => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -2418,30 +2447,40 @@ export default function TemplatesPage() {
   async function bulkExportTpls() {
     for (const t of selectedTpls) await handleExport(t);
   }
-  async function bulkDeleteTpls() {
-    if (!isAdmin || tplBulkBusy) return;
+  function bulkDeleteTpls() {
+    if (!isAdmin || tplBulkBusy || bulkDeleteTargets) return;
     const targets = selectedTpls;
+    if (targets.length === 0) return;
+    // One selected template keeps the single delete's own dialog.
     if (targets.length === 1) { void handleDeleteTemplate(targets[0]); return; }
-    const ok = await appConfirm({
-      title: tTpl('bulkDeleteTitle', { count: targets.length }),
-      message: tTpl('bulkDeleteBody'),
-      tone: 'danger',
-      confirmLabel: tTpl('delete'),
-    });
-    if (!ok) return;
-    setTplBulkBusy(true);
-    let deleted = 0, skipped = 0;
-    try {
-      // Never forced: a template that is on a screen answers 409 and is skipped.
-      for (const t of targets) {
-        try { await deleteTemplate.mutateAsync({ id: t.id }); deleted += 1; }
-        catch { skipped += 1; }
-      }
-    } finally {
-      setTplBulkBusy(false);
-      setTplSelected(new Set());
+    setBulkDeleteTargets(targets.map((t: Template) => ({ id: t.id, name: t.name, listedPlaylists: listedPlaylistsFor(t) })));
+  }
+  /**
+   * What the gallery already knows about a template's playlists: the list's
+   * `_count.playlists`, raised by the usage summary when that says more. Only a
+   * positive 0 lets the bulk delete skip the fresh usage read.
+   */
+  function listedPlaylistsFor(t: Template): number | undefined {
+    const listed = t._count?.playlists;
+    const summary = (usageByTemplate as Record<string, { playlists?: unknown }> | undefined)?.[t.id]?.playlists;
+    const fromSummary = typeof summary === 'number' && Number.isFinite(summary) ? summary : undefined;
+    if (typeof listed !== 'number' || !Number.isFinite(listed)) return fromSummary !== undefined && fromSummary > 0 ? fromSummary : undefined;
+    return Math.max(listed, fromSummary ?? 0);
+  }
+  function finishBulkDelete(summary: BulkDeleteSummary) {
+    setBulkDeleteTargets(null);
+    // Only what was settled leaves the selection; a failed one stays selected to retry.
+    const handled = new Set(summary.handled);
+    setTplSelected((prev) => new Set([...prev].filter((id) => !handled.has(id))));
+    const parts = [tBulkDel('resultDeleted', { count: summary.deleted })];
+    if (summary.keptEmergency > 0) parts.push(tBulkDel('resultKeptEmergency', { count: summary.keptEmergency }));
+    if (summary.keptByChoice > 0) parts.push(tBulkDel('resultKeptByChoice', { count: summary.keptByChoice }));
+    if (summary.failed > 0) {
+      parts.push(tBulkDel('resultFailed', { count: summary.failed, message: summary.firstError || tDel('deleteFailed') }));
+      toast.error(parts.join(' · '), { duration: ERROR_TOAST_DURATION_MS });
+    } else {
+      toast.success(parts.join(' · '));
     }
-    toast.success(tTpl('bulkDeleteDone', { deleted, skipped }));
   }
   const tplBarProps: SelectionBarProps = {
     count: selectedTpls.length,
@@ -2455,7 +2494,7 @@ export default function TemplatesPage() {
     actions: [
       { id: 'export', label: tTpl('export'), icon: <Download className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void bulkExportTpls(); }, disabled: tplBulkBusy },
       { id: 'duplicate', label: tTpl('duplicate'), icon: <Copy className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void bulkDuplicateTpls(); }, disabled: tplBulkBusy, busy: tplBulkBusy },
-      ...(isAdmin ? [{ id: 'delete', variant: 'danger' as const, label: tTpl('delete'), icon: <Trash2 className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void bulkDeleteTpls(); }, disabled: tplBulkBusy }] : []),
+      ...(isAdmin ? [{ id: 'delete', variant: 'danger' as const, label: tTpl('delete'), icon: <Trash2 className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { bulkDeleteTpls(); }, disabled: tplBulkBusy || !!bulkDeleteTargets }] : []),
     ],
   };
 
@@ -3599,13 +3638,13 @@ export default function TemplatesPage() {
           <section aria-labelledby="your-templates-heading">
             <div className="mb-3 flex items-end justify-between gap-3">
               <div className="flex items-center gap-2">
-                {selectableTplIds.length > 0 && (
+                {shownTplIds.length > 0 && (
                   <SelectionCheckbox
                     checked={tplSelState === 'all'}
                     indeterminate={tplSelState === 'some'}
                     label={tTpl('selectAllShown')}
                     title={selectAllTitle(tplSelState, tTpl('selectAllShown'), tUi('clearSelection'))}
-                    onChange={() => setTplSelected(tplSelState === 'all' ? new Set() : new Set(selectableTplIds))}
+                    onChange={() => setTplSelected((prev) => (tplSelState === 'all' ? new Set() : new Set([...prev, ...shownTplIds])))}
                     testId="templates-select-all"
                   />
                 )}
@@ -3654,7 +3693,7 @@ export default function TemplatesPage() {
               <div className={GALLERY_GRID_CLASS}>
                 {visibleCustom.map((t: Template) => (
                   <div key={t.id} className="relative" data-selected={tplSelected.has(t.id) || undefined}>
-                    {selectableTplIds.length > 0 && (
+                    {shownTplIds.length > 0 && (
                       <SelectionTileCheckbox
                         checked={tplSelected.has(t.id)}
                         anySelected={selectedTpls.length > 0}
@@ -3760,6 +3799,15 @@ export default function TemplatesPage() {
             </section>
           )}
         </>
+      )}
+
+      {/* Several selected: one confirmation for all of them (in-use rows pre-checked). */}
+      {bulkDeleteTargets && (
+        <ConnectedTemplateBulkDeleteDialog
+          targets={bulkDeleteTargets}
+          onDone={finishBulkDelete}
+          onCancel={() => setBulkDeleteTargets(null)}
+        />
       )}
 
       {/* One delete confirmation: fresh usage and any errors stay here. */}

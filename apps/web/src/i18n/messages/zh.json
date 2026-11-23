@@ -5867,6 +5867,26 @@
     "deleteAnyway": "仍然删除",
     "deleteTemplate": "删除模板"
   },
+  "templateBulkDelete": {
+    "title": "删除 {count} 个模板？",
+    "followUpTitle": "{count} 个模板刚刚开始被使用",
+    "followUpBody": "删除过程中，这些模板的使用位置发生了变化。它们已在下方勾选；取消勾选即可保留。",
+    "checking": "正在检查这些模板的使用位置…",
+    "checkingShort": "正在检查…",
+    "inUseIntro": "其中 {count} 个正在被播放列表使用。删除后会从这些播放列表中移除，播放列表将改用下一个布局。取消勾选即可保留。",
+    "inUse": "使用中",
+    "keptEmergency": "已保留：被紧急播放列表使用",
+    "keptUnknown": "已保留：无法检查使用位置",
+    "usageUnknown": "无法检查此模板的使用位置。",
+    "untitled": "未命名",
+    "confirm": "删除 {count} 个模板",
+    "nothingToDelete": "没有可删除的模板",
+    "progress": "正在删除第 {done} 个，共 {total} 个…",
+    "resultDeleted": "已删除 {count} 个模板",
+    "resultKeptEmergency": "保留 {count} 个（紧急播放列表）",
+    "resultKeptByChoice": "保留 {count} 个",
+    "resultFailed": "{count} 个无法删除：{message}"
+  },
   "builderPanel": {
     "deleteLocked": "已锁定 — 解锁后才能删除",
     "deleteTextElement": "删除文字元素",
@@ -7521,10 +7541,7 @@
     "selectAllShown": "选择显示的所有模板",
     "duplicate": "复制",
     "export": "导出",
-    "delete": "删除",
-    "bulkDeleteTitle": "删除 {count} 个模板？",
-    "bulkDeleteBody": "正在屏幕上显示的模板将被跳过——请逐个删除，以便查看它们在哪里播放。",
-    "bulkDeleteDone": "已删除 {deleted} 个模板{skipped, plural, =0 {} other {，跳过 # 个（使用中）}}"
+    "delete": "删除"
   },
   "acceptInvite": {
     "title": "接受邀请",
