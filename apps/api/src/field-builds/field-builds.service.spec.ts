@@ -5,7 +5,7 @@
  * the signer are doubles.
  */
 import { randomUUID } from 'node:crypto';
-import { HttpException } from '@nestjs/common';
+import { HttpException, Logger } from '@nestjs/common';
 import { FIELD_AUDIT, FieldBuildsService } from './field-builds.service';
 import * as mirror from './field-mirror';
 import { PUSH_SETTLE_MS, GATE_TTL_MS } from './field-builds.policy';
@@ -27,6 +27,16 @@ const S_CUSTOMER = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1';
 const T0 = Date.UTC(2026, 9, 18, 15, 0, 0);
 
 const owner = { id: 'super-1', userId: 'super-1', role: 'SUPER_ADMIN', email: 'owner@example.test' };
+
+/**
+ * FLT-02 (2026-11-23): with no bench list no screen is a bench screen, so the
+ * cases below that are about other rules list every fixture screen as bench.
+ * The bench rule itself is pinned in "PLAYER_FIELD_BENCH_SCREENS at the push".
+ */
+const BENCH_ENV = 'PLAYER_FIELD_BENCH_SCREENS';
+const ESCAPE_ENV = 'PLAYER_FIELD_BENCH_FAIL_OPEN';
+const EVERY_FIXTURE_SCREEN = [S1, S2, S3, S_REVOKED, S_CUSTOMER].join(',');
+const savedBenchEnv = { [BENCH_ENV]: process.env[BENCH_ENV], [ESCAPE_ENV]: process.env[ESCAPE_ENV] };
 
 // ─── a tiny Prisma stand-in: just the queries this service makes ──────────
 type Row = Record<string, any>;
@@ -228,6 +238,8 @@ beforeEach(() => {
   });
   setNow(T0);
   setActiveFieldWindow(null);
+  process.env[BENCH_ENV] = EVERY_FIXTURE_SCREEN;
+  delete process.env[ESCAPE_ENV];
   jest.spyOn(mirror, 'fieldMirrorStatus').mockResolvedValue({ state: 'present', httpStatus: 200, checkedAt: new Date(T0).toISOString() });
 });
 afterEach(() => {
@@ -235,6 +247,10 @@ afterEach(() => {
   jest.useRealTimers();
   setActiveFieldWindow(null);
   delete process.env.PLAYER_APK_QUARANTINE;
+  for (const [k, v] of Object.entries(savedBenchEnv)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
 });
 
 const armBody = (patch: Record<string, unknown> = {}) => ({
@@ -664,18 +680,11 @@ describe('reads for the panel', () => {
  * 2026-10-31 — the owner's fleet push rules (player-ota/fleet-push-policy.ts):
  * one hardware class and off-hours for more than one screen (overridable, and
  * the override is audited), and bench screens only for a field build
- * (PLAYER_FIELD_BENCH_SCREENS; unset = exactly as before; no override).
+ * (PLAYER_FIELD_BENCH_SCREENS; unset = no bench screen since 2026-11-23,
+ * FLT-02; no override on a request).
  */
 describe('the owner’s fleet push rules', () => {
-  const BENCH = 'PLAYER_FIELD_BENCH_SCREENS';
-  const savedBench = process.env[BENCH];
-  beforeEach(() => {
-    delete process.env[BENCH];
-  });
-  afterEach(() => {
-    if (savedBench === undefined) delete process.env[BENCH];
-    else process.env[BENCH] = savedBench;
-  });
+  const BENCH = BENCH_ENV;
   type H = ReturnType<typeof harness>;
   const screenOf = (h: H, id: string) => h.db.screens.find((s) => s.id === id)!;
   const pushRows = (h: H) => h.db.audit.filter((a) => a.action === FIELD_AUDIT.PUSH);
@@ -884,11 +893,51 @@ describe('the owner’s fleet push rules', () => {
       return w;
     }
 
-    it('UNSET (or blank): every screen inside the window can be pushed, exactly as before', async () => {
+    it('UNSET (or blank): NO screen is a bench screen — every push is refused (422), nothing is armed, and the log says why (FLT-02)', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      for (const unset of [undefined, '', '   ']) {
+        if (unset === undefined) delete process.env[BENCH];
+        else process.env[BENCH] = unset;
+        setNow(T0);
+        const h = harness();
+        const w = await openWindow(h);
+        for (const screenIds of [[S1], [S3], [S1, S3]]) {
+          const r = await codeOf(h.svc.push(owner, w.id, { screenIds }));
+          expect(r).toMatchObject({
+            status: 422,
+            code: 'FIELD_BUILD_SCREEN_NOT_BENCH',
+            body: { screens: screenIds.map((id) => expect.objectContaining({ id })), benchListConfigured: false },
+          });
+          expect(r.body.message).toContain('no bench screens are listed');
+        }
+        expect(pushRows(h)).toHaveLength(0);
+        expect(armedScreens(h)).toHaveLength(0);
+      }
+      const lines = warn.mock.calls.map((c) => String(c[0]));
+      expect(lines.some((l) => /\[field-builds\] push refused .*reason=no-bench-list/.test(l))).toBe(true);
+    });
+
+    it('UNSET with the escape PLAYER_FIELD_BENCH_FAIL_OPEN=1: every screen inside the window can be pushed, as before 2026-11-23', async () => {
+      delete process.env[BENCH];
+      process.env[ESCAPE_ENV] = '1';
       const h = harness();
       const w = await openWindow(h);
       expect((await h.svc.push(owner, w.id, { screenIds: [S3] })).results[0]).toMatchObject({ screenId: S3, armed: true });
       process.env[BENCH] = '   ';
+      expect((await h.svc.push(owner, w.id, { screenIds: [S1] })).results[0]).toMatchObject({ screenId: S1, armed: true });
+      expect(pushRows(h)).toHaveLength(2);
+    });
+
+    it('the escape never widens a list that is set', async () => {
+      process.env[BENCH] = S1;
+      process.env[ESCAPE_ENV] = 'yes';
+      const h = harness();
+      const w = await openWindow(h);
+      expect(await codeOf(h.svc.push(owner, w.id, { screenIds: [S3] }))).toMatchObject({
+        status: 422,
+        code: 'FIELD_BUILD_SCREEN_NOT_BENCH',
+        body: { benchListConfigured: true },
+      });
       expect((await h.svc.push(owner, w.id, { screenIds: [S1] })).results[0]).toMatchObject({ screenId: S1, armed: true });
     });
 

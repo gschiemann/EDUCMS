@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { useUIStore } from '@/store/ui-store';
 import { createUploadQueue } from '@/lib/upload-queue';
+import { registerUnsavedWork } from '@/lib/unsaved-work';
 import type { CompletedAsset } from '@/lib/direct-upload';
 import type { VideoEncodeState } from '@/lib/video-encode-copy';
 
@@ -18,6 +19,10 @@ export interface UploadItem {
  * or file data are written to localStorage. A full browser close still ends
  * client transfers; ordinary application navigation does not. */
 export const useUploadJobStore = create<{ items: UploadItem[] }>(() => ({ items: [] }));
+// A reload ends every transfer held here, including queued and paused ones,
+// so they count as unsaved work (lib/unsaved-work) until they finish.
+const UNFINISHED: readonly UploadPhase[] = ['idle', 'uploading', 'processing'];
+registerUnsavedWork(() => useUploadJobStore.getState().items.some(item => UNFINISHED.includes(item.phase)));
 type Runner = (signal: AbortSignal) => Promise<void>;
 const runners = new Map<string, Runner>();
 const controllers = new Map<string, AbortController>();

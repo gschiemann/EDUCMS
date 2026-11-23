@@ -35,8 +35,14 @@ import { MANAGER_HEALTH_HEADER, isRelayedManagerReport, managerHealthChanged, ma
 import { diagnosticsHeartbeat } from '../screen-diagnostics/diagnostics-heartbeat';
 import { HARDWARE_SERIAL_HEADER, hardwareSerialWrite, parseHardwareSerialHeader } from './hardware-serial';
 import { manifestDiagnostics } from '../screen-diagnostics/diagnostics-policy';
-import { Throttle, SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
 import type { Request as ExpressReq, Response } from 'express';
+import {
+  GAME_STATE_ADDRESS_LIMIT_PER_MIN,
+  GAME_STATE_MAX_BODY_BYTES,
+  gameStateBodyTooLarge,
+  parseGameStateBody,
+} from './game-state';
 import { PrismaService } from '../prisma/prisma.service';
 import { withDbRetry } from '../prisma/with-db-retry';
 import { scopedScreenWhere } from '../user-scope/user-scope.context';
@@ -258,6 +264,9 @@ import { ADMIN_ROLES_FOR_SCREEN_SECRETS } from '../security/screen-secrets';
 // shared list of typed-name fields.
 import { redactTypedStudentNames } from '../sports/typed-student-names';
 import { assertSupportReach, hasSupportReach } from '../support-access/support-access.context';
+// SDW-01 (2026-11-23): the manifest is the one screens route on the guard
+// surface that answers a screen with no tenant (see getManifest).
+import { AllowUnpairedDevice } from '../security/allow-unpaired-device.decorator';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -4696,33 +4705,60 @@ export class ScreensController {
    * do NOT also accept the admin JwtAuthGuard path; the bridge is the
    * only legit caller and it authenticates as the device.
    *
+   * PAIRED screens only (SDW-02, 2026-11-23). The only caller is the bridge
+   * in the player page, and the page mounts it only on a paired screen
+   * (`tenantId && screenId`, unchanged since the first build on 2026-05-26).
+   * The APK hands serial bytes to that same bridge and never posts here;
+   * apps/edge, tools/cts-feed and the sports console do not call it. There is
+   * no game binding to check: this is the path for a screen with NO game
+   * bound — a bound screen posts to `/sports/scoreboard-console/:screenId/
+   * snapshot`, which checks the binding itself.
+   *
    * Persistence: NONE in v1. Game state is ephemeral (full snapshot
    * arrives every ~125ms while a game is live); persisting every
    * update would write ~30,000 rows / hour with no downstream reader
    * needing them. Replay is captured via the existing AuditLog stream
    * when a future Sprint 13 phase adds a `GameEvent` table.
    *
-   * Rate limit: SkipThrottle + an in-handler floor (max 16 Hz per
-   * screen) so a misbehaving bridge can't DOS the WS bus. The bridge
-   * already throttles at 8 Hz client-side; 16 Hz here is double that
-   * to absorb burst.
+   * Bounds (SDW-02), cheapest first; nothing is signed or published until
+   * every one has passed — see `game-state.ts` for the measurements:
+   *   1. Body: the route has its own 16 KB JSON parser in `main.ts` (413
+   *      before parsing); `Content-Length` is re-checked here.
+   *   2. Shape: a listed field of the wrong type or past its bound → 400.
+   *      Only the parsed copy is signed and published.
+   *   3. Device credential for a paired screen → else 401.
+   *   4. Per-screen floor: 16 Hz (below).
+   *   5. Per-address ceiling: `@Throttle` keyed on the client address,
+   *      4× a bridge's 5 Hz maximum. The route is deliberately NOT in
+   *      `DEVICE_THROTTLE_ROUTES` (see `security/device-throttle-key.ts`).
+   * The order is deliberate: an oversize or malformed body is answered 413 or
+   * 400 before the credential is read, so a caller without one gets that
+   * answer rather than 401. It depends on the body alone and says nothing
+   * about the screen or its credential.
    */
   @Post(':id/game-state')
-  @SkipThrottle()
+  @Throttle({
+    default: { limit: GAME_STATE_ADDRESS_LIMIT_PER_MIN, ttl: 60_000 },
+  })
   async postGameState(
     @Param('id') id: string,
     @Req() req: ExpressReq,
-    @Body() body: { source?: string; snapshot?: Record<string, unknown> },
+    @Body() body: unknown,
   ) {
-    // SEC-001 — prior behaviour, stated. Tightening this to `false` is a
-    // candidate follow-up (game state is tenant data), deliberately NOT
-    // bundled into a security fix that must not change what plays.
-    const auth = await this.deviceAuth(req, id, { allowUnpaired: true });
+    const declared = Number(req?.headers?.['content-length'] ?? NaN);
+    if (Number.isFinite(declared) && declared > GAME_STATE_MAX_BODY_BYTES) {
+      throw gameStateBodyTooLarge();
+    }
+    const parsed = parseGameStateBody(body);
+    if (!parsed.ok) {
+      throw new HttpException(
+        { code: parsed.code, message: parsed.message },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const auth = await this.deviceAuth(req, id, { allowUnpaired: false });
     if (!auth.ok) {
       throw new HttpException({ code: 'SCREEN_DEVICE_AUTH_REQUIRED', message: `Device auth required (${auth.reason})` }, HttpStatus.UNAUTHORIZED);
-    }
-    if (!body || typeof body !== 'object' || !body.snapshot || typeof body.snapshot !== 'object') {
-      throw new HttpException({ code: 'SCREEN_GAME_STATE_SNAPSHOT_REQUIRED', message: 'snapshot is required' }, HttpStatus.BAD_REQUEST);
     }
 
     // Per-screen rate floor: 16 Hz max. Reuses the in-memory rate
@@ -4748,8 +4784,8 @@ export class ScreensController {
 
     const signed = this.signer.signMessage('GAME_STATE', {
       screenId: id,
-      source: typeof body.source === 'string' ? body.source : 'cts',
-      snapshot: body.snapshot,
+      source: parsed.source,
+      snapshot: parsed.snapshot,
     });
     try {
       await this.redisService.publish(`device:${id}`, signed);
@@ -6607,7 +6643,17 @@ export class ScreensController {
   // enumerate emergency media, drive the display, or unpair the screen.
   // Closing the read needs an operator-approved recovery flow (see the
   // SEC-001 report), not a wider denylist.
+  //
+  // SDW-01 (2026-11-23) — and it is one of the three guard-surface reads an
+  // UNPAIRED screen keeps (`@AllowUnpairedDevice`). It reads the screen's own
+  // row (`u.sub` must equal `:id`), never `req.user.tenantId`, and with no
+  // tenant it builds no emergency block and no tenant content. The APK's
+  // native alert watch polls it with the canonical stored token, which is the
+  // registration token while the screen is still on the pairing splash, and
+  // the page keeps polling it while it confirms an "unpaired" answer before
+  // leaving its content. Both are unchanged.
   @UseGuards(JwtAuthGuard)
+  @AllowUnpairedDevice()
   @Get(':id/manifest')
   async getManifest(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
     // LIFE-SAFETY (2026-07-31, Greg's stuck-lockdown dongle): the manifest

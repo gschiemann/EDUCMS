@@ -103,6 +103,14 @@ export const DEVICE_TRACKER_PREFIX = 'dev:';
  *     req/min/screen — three orders of magnitude below the cap.
  *   • Everything behind an operator session. A dashboard user is a human at an
  *     IP; that is the right identity for them.
+ *   • `ScreensController#postGameState` (removed 2026-11-23, SDW-02). Every
+ *     accepted request is signed and published on the alert bus, so it needs
+ *     a ceiling per ADDRESS, and a device key moves the bucket off the address.
+ *     The per-device clamp below (300/min) is also exactly the scoreboard
+ *     bridge's 5 Hz maximum, with a 60 s block on the request after it. It is
+ *     keyed on the address at 1200/min (`screens/game-state.ts`), as the
+ *     bound-console route already is for the same bridge; the handler keeps its
+ *     own per-screen 16 Hz floor.
  */
 export const DEVICE_THROTTLE_ROUTES: readonly string[] = [
   // The three routes that ARE the fleet's steady-state load (P0-7 §5.1:
@@ -116,7 +124,6 @@ export const DEVICE_THROTTLE_ROUTES: readonly string[] = [
   'ScreensController#getEmergencyAssets',
   'ScreensController#getMenu',
   'ScreensController#issueStreamTicket',
-  'ScreensController#postGameState',
   'ScreensController#setOrientationFromDevice',
   'GpioController#gpioEvent',
   'DisplayController#reportCapabilities',

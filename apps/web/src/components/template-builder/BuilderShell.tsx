@@ -77,6 +77,7 @@ import {
 } from '@/components/widgets/holiday-style-contract';
 import type { Template, Zone } from './types';
 import { isFromDocumentFrame } from '@/lib/board-message-source';
+import { registerUnsavedWork } from '@/lib/unsaved-work';
 
 interface Props {
   template: Template;
@@ -1049,7 +1050,12 @@ export function BuilderShell({ template, onBack, onSaved }: Props) {
       }
     };
     window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
+    // Same answer for the unsaved-work registry (StaleBundleWatcher).
+    const unregister = registerUnsavedWork(() => isDirty);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+      unregister();
+    };
   }, [isDirty, template.isSystem, previewMode]);
 
   // 2026-10-12 (owner) — Scenes are "Pages", and they only exist for an
