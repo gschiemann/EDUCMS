@@ -1,6 +1,6 @@
 # Three E2E reds on master: one product log, one stale test, one rendition budget (2026-11-23)
 
-**Status.** Branch `claude/e2e-master-fixes`, cut from `origin/master` `1006d21b2`. One commit per fix, each with its own section below. Not pushed, no pull request. The owner's written go: "merge and finish everything". None of the three touches the emergency path. Item 1 changes the web player's console output, so it reaches every screen with its next bundle update. Item 3 changes how the STREAMING widget picks its hls.js rendition; that widget is unmounted by an alert takeover. Item 2 is test-only.
+**Status.** Branch `claude/e2e-master-fixes`, cut from `origin/master` `1006d21b2`. One commit per fix, each with its own section below: `c4fa907f2` (item 1), `0c4241304` (item 2), `ce6bcafce` (item 3), then the commit that adds the final gates and the owner's checks to this file. Not pushed, no pull request. `master` has since moved to `31ebf86e7` (#350, #351); `git merge-tree` against it is clean and no file is changed on both sides, but the gates below ran on this branch's own head, so CI on the updated branch is the gate that counts. The owner's written go: "merge and finish everything". None of the three touches the emergency path. Item 1 changes the web player's console output, so it reaches every screen with its next bundle update. Item 3 changes how the STREAMING widget picks its hls.js rendition; that widget is unmounted by an alert takeover. Item 2 is test-only.
 
 **How the causes were found.** A read-only investigation per item, each checked by an independent skeptic who tried to refute it. Where the skeptic corrected the finding, the correction is what shipped and what is written here. AGENTS.md asks for two investigations per failure, so each item says why the product (or the test) failed and why our system let it reach `master`.
 
@@ -119,3 +119,66 @@ So in WebKit the old test was green on the corner bug and red on the fix. No Saf
 | Negative controls (scratch build with the three old behaviours) | player-bad-file: 2 fallback tests fail as CI does; website-tabs dsf2: right edge 3840 > 1921; streaming dsf2: playing 720 > cap 480 |
 
 After the negative control, the fixed tree was restored (its diff checked byte for byte against the one saved before), rebuilt and run once more: the three specs in `chromium`, 17/17 passed, plus the two DPR tests in `chromium-dsf2`, 2/2 passed, all with `--retries=0`. The e2e runs used a scratch config, kept outside the worktree and never committed, that points Chromium at the preinstalled headless shell 1243.
+
+One process slip, reported by the author: one of the whole-app `tsc --noEmit` runs above was started outside the machine's lock wrapper for heavy commands. Nothing crashed, but on this 16 GB machine that rule exists because two concurrent web builds took the container down earlier the same day. Every final gate below ran through the wrapper, one at a time.
+
+## Review round 1 (same vendor, under the owner's waiver): approve, no must-fix
+
+The open points, and where each one went:
+
+- **WebKit is the real gate for items 2 and 3.** Both fail only in WebKit, which is not installed here. Do not call the branch fixed until CI's webkit shards pass on the first attempt. For item 3 the bar is the investigation's: 5/5 first-attempt passes of the two-streams test. Kept below under "What is unverified".
+- **The cap assertion reads `hls.currentLevel` once, right after the 3 s window.** In Chromium, at dsf 1 and dsf 2 and over three repeats, the cap was applied before the first fragment, so it held. CI WebKit might apply the cap only after segment 0 has loaded at Mux's 720p first level, and then "the rendition playing is within the cap" could go red there. If it does, read the attached `stream-proofs.json` (`levelSwitches`) and treat it as a new finding. It is not a reason to loosen the assertion.
+- **`ignoreDevicePixelRatio` is a visible quality trade-off for real hi-DPI browsers** (a Retina admin preview, a browser-based player on a true dpr-2 display): they now get CSS-size renditions. The decision is written into the PR body as well as here, under "The owner's checks".
+- **Could the proof carry an old stream's diagnostics after a URL change?** `emit()` now spreads the previous registry entry, which raised the question. Checked at the final gates: no. The stream effect depends on `[url]`, and its cleanup ends with `delete registry[id]`. React runs that cleanup before the new effect, so the first `emit()` for the new URL spreads nothing. The two rings are declared inside the effect, so they also start empty for each URL. Within one URL they are kept across reconnects, on purpose: a reconnect history is part of the evidence. No change needed.
+- **Pre-existing, not introduced here:** the decision line is printed when the playlist is picked, so in the "backup is broken too" case it says `showing "Everyday"` while the card is up. This is the lead's call and still open.
+- **The tsc outside the wrapper:** see the process note above.
+
+## Final gates (2026-11-23, on `ce6bcafce`)
+
+Every heavy step ran through the lock wrapper, one at a time, while another workflow was also using the machine. The e2e used the same kind of scratch config as above (outside the worktree, never committed), on a fresh production build (`BUILD_ID` 21:54Z) served with `CI=true E2E_PREBUILT=1`.
+
+| Gate | Command | Result |
+|---|---|---|
+| pnpm lockfile drift | `pnpm install --frozen-lockfile --lockfile-only`, then `git diff --exit-code pnpm-lock.yaml` | pass, no diff |
+| Web typecheck | `pnpm --filter web exec tsc --noEmit -p tsconfig.json` (the whole app, e2e specs included) | clean, no output |
+| Web build | `pnpm --filter web build` with `NEXT_PUBLIC_API_URL=http://api.invalid/api/v1`, `NODE_OPTIONS=--max-old-space-size=4096` | pass, 77/77 static pages. CI's build job inlines the production API URL instead; only that string differs. |
+| Bundle budget | `node apps/web/tools/check-bundle-budget.cjs` | OK, within the ratcheted ceiling |
+| The build job's other checks | `check-client-sentry.cjs` (self-test and check), `check-sw-shell.cjs`, `check-help-prerender.cjs`, `check-brand-contrast.cjs` | all OK |
+| Web jest, full | `pnpm --filter web exec jest --ci --maxWorkers=2` | 720/720 suites, 10,607/10,607 tests |
+| i18n parity | `check-i18n-parity.cjs` | OK (no new user-facing string on this branch) |
+| Mobile performance | `pnpm mobile-perf-guard` | OK |
+| Pill rules | `check-pill-rules.cjs` | OK, 58 legacy instances, none above the baseline |
+| `inset` serialization | `check-inset-serialization.cjs` | OK, 0 confirmed landmines |
+| `taurus-safety.yml` | `check-taurus-safety.cjs`, `check-scene-css.cjs`, `check-variant-registry.cjs`, `check-board-editability.cjs`, `check-widget-truth.cjs`, `check-font-ceilings.cjs` (plus `inset` above) | all OK, within baselines |
+| Rulebook | `scripts/check-rulebook.cjs --self-test`, then the check; `check-incident-records.cjs` | PASS, no offences. Re-run after this file was edited: PASS. |
+| Request budget | `check-request-budget.cjs --self-test`, then the check; `vercel-ignore-build.test.sh` | OK. Timers 44/44 and 8/8, unchanged. |
+| The changed specs, `chromium`, `--retries=0` | `player-bad-file`, `website-tabs`, `streaming-widget` | 17/17 passed, all on the first attempt |
+| The two DPR tests, `chromium-dsf2`, `--retries=0` | website-tabs native, two streams | 2/2 passed |
+| `emergency-path.yml`'s list, `chromium`, CI's retries | `emergency-path`, `emergency-drill-paint-proof`, `emergency-instant-board`, `player-native-dual-video`, `player-offline-lazy-renderer` | 40 passed, 0 failed, 0 flaky, 1 skipped. The skip is a `test.fixme` that already existed on Chromium in `emergency-drill-paint-proof.spec.ts` ("a page reloaded under a persisted native hold with NO cached alert…"). This branch does not touch that file. |
+
+Not run here, because CI runs them: the API jobs and the Docker boot smoke. This branch changes no file under `apps/api`, `packages/` or any Dockerfile, so they are expected to be unaffected. The WebKit legs of everything above were not run either: WebKit is not installed here.
+
+## What is unverified
+
+- **WebKit (CI is the gate).** Items 2 and 3 fail only in WebKit, and item 1 is also red in webkit 3/4. Do not call any of them fixed until CI's `E2E shard (Playwright / webkit 3/4)` and `webkit 4/4` pass them **on the first attempt**. For item 3 the bar is 5/5 first-attempt passes of the two-streams test. If its new cap assertion goes red there, read `stream-proofs.json` in the HTML report first (see the review section).
+- **The rest of the website-tabs test in WebKit.** The lines after the bounds (tap Google, re-show, no blocked card) have not run in WebKit since 700d93b82.
+- **Real Safari.** Safari uses native HLS, so hls.js and this cap are not in play there. CI never exercises Safari's own path; Playwright's Linux WebKit is WPE. The `webkit · Emergency path` required check is CI's as well.
+- **Real devices.**
+  - An APK half-screen stream picking the physical-pixel rendition on a bench screen. Expected: the zone's size in physical pixels, because one CSS px is one physical px there.
+  - The website-tabs geometry on the 4K portrait panel. That check has been open since 2026-11-07; this branch changes only the test.
+  - The single `PLAYLIST_FALLBACK` line in a real screen's console or bug report.
+- **Deploy.** "Done" needs the merge SHA on `master`, CI green, and `/api/v1/health` reporting `commit` equal to it. Until then the branch is unverified.
+
+## The owner's checks
+
+1. **The hi-DPI trade-off (item 3).** Real hi-DPI browsers now get CSS-size renditions (a Retina admin preview; a browser-based player on a true dpr-2 display). The editor's "Test stream" pill shows the preview's rendition, not the source's best. Keep that for every instance (recommended; `/player` must keep the cap either way), or keep the device pixel ratio for the editor's preview only. Separately, decide whether to word the pill as the preview's rendition. This decision is also in the PR body.
+2. **If CI WebKit still freezes Mux:**
+   - first read the per-stream proof in the failure message;
+   - then the skeptic's experiment, on a scratch branch, never the product: cap Mux at its 720p start level;
+   - only then a macOS-runner job for this spec's WebKit leg. That is a CI-definition change, which needs your approval and is not in this branch.
+3. **The decision line's timing (pre-existing, item 1).** It is printed when the playlist is picked, so it can say `showing "Everyday"` while the card is up because the backup is broken too. This is the lead's call.
+4. **Whether the general E2E shards become required checks.** Today they are not, and that is the common reason all three reds reached `master`.
+5. **After merge:**
+   - confirm the webkit 3/4 and 4/4 shards on the merge commit;
+   - confirm `/api/v1/health` `commit`;
+   - on a bench screen, play a half-screen stream and open a fallback, then read its console or bug report: one `PLAYLIST_FALLBACK` line for the fallback.
