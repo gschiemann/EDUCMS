@@ -281,6 +281,8 @@ describe('a pushed build during an alert (field-build push)', () => {
     process.env.PLAYER_APK_FIELD_CANDIDATE = release.versionName;
     process.env.PLAYER_APK_FIELD_TENANT_ID = TENANT;
     process.env.PLAYER_APK_FIELD_SCREEN_IDS = SCREEN;
+    // FLT-02: with no bench list no screen is a bench screen; SCREEN is the bench.
+    process.env.PLAYER_FIELD_BENCH_SCREENS = SCREEN;
     process.env.PLAYER_APK_FIELD_EXPIRES_AT = new Date(
       Date.now() + 60 * MIN,
     ).toISOString();
@@ -456,6 +458,8 @@ describe('a double-sided unit: an alert on ANY side holds the install', () => {
     process.env.PLAYER_APK_FIELD_CANDIDATE = release.versionName;
     process.env.PLAYER_APK_FIELD_TENANT_ID = TENANT;
     process.env.PLAYER_APK_FIELD_SCREEN_IDS = SCREEN;
+    // FLT-02: with no bench list no screen is a bench screen; SCREEN is the bench.
+    process.env.PLAYER_FIELD_BENCH_SCREENS = SCREEN;
     process.env.PLAYER_APK_FIELD_EXPIRES_AT = new Date(
       Date.now() + 60 * MIN,
     ).toISOString();

@@ -145,6 +145,10 @@ beforeEach(() => {
   // The ordinary (stable) path asks GitHub for releases: answer "none", never the network.
   global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] }) as any;
   for (const k of Object.keys(process.env)) if (k.startsWith('PLAYER_APK_FIELD_')) delete process.env[k];
+  // FLT-02 (2026-11-23): with no bench list no screen is a bench screen. The
+  // pushed screen here is the bench; the last block pins the list itself.
+  process.env.PLAYER_FIELD_BENCH_SCREENS = SCREEN;
+  delete process.env.PLAYER_FIELD_BENCH_FAIL_OPEN;
   process.env.DEVICE_SECRET_KEY = 'fake-test-device-key';
   field.setActiveFieldWindow(null);
   windowRow = liveWindow();
@@ -318,16 +322,45 @@ describe('FieldWindowGateMiddleware', () => {
 });
 
 /**
- * 2026-10-31 — PLAYER_FIELD_BENCH_SCREENS at the REAL update check and the
- * REAL download (player-ota/fleet-push-policy.ts). Set, a pushed screen that
- * is not on the list is HELD on its build — never offered the field build,
- * never handed the stable one in its place — and a ticket it already holds no
- * longer downloads. Unset, nothing changes: every case above runs unset.
+ * PLAYER_FIELD_BENCH_SCREENS at the REAL update check and the REAL download
+ * (player-ota/fleet-push-policy.ts). Since 2026-11-23 (FLT-02) the list fails
+ * closed: unset or blank, no screen is a bench screen. A pushed screen inside
+ * the window that is not a bench screen is never offered the field build —
+ * the update check answers it from the stable ladder, as outside a window —
+ * and a ticket it already holds no longer downloads.
  */
 describe('PLAYER_FIELD_BENCH_SCREENS at the update check and the download', () => {
-  it('SET without this screen: the pushed screen is held on its current build, and the log says why', async () => {
+  const lines = (spy: jest.SpyInstance) => spy.mock.calls.map((c) => String(c[0]));
+
+  for (const [label, value] of [
+    ['UNSET', undefined],
+    ['blank', '   '],
+  ] as const) {
+    it(`${label}: no screen is a bench screen — the pushed screen gets no field build, and the stable ladder answers it`, async () => {
+      if (value === undefined) delete process.env.PLAYER_FIELD_BENCH_SCREENS;
+      else process.env.PLAYER_FIELD_BENCH_SCREENS = value;
+      const { http } = await boot();
+      const log = jest.spyOn(Logger.prototype, 'log');
+      const res = await updateCheck(http).expect(201);
+      // The stable catalogue here is empty, so the stable ladder's answer is "nothing newer".
+      expect(res.body).toEqual({ uptoDate: true });
+      expect(JSON.stringify(res.body)).not.toContain('field-apk');
+      expect(field.verifiedFieldBytes).not.toHaveBeenCalled();
+      expect(prisma.client.auditLog.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ action: 'PLAYER_FIELD_APK_OFFER' }) }),
+      );
+      expect(lines(log).find((l) => l.includes('[ota] field-window-not-bench'))).toMatch(
+        new RegExp(`screen=${SCREEN} .*reason=no-bench-list`),
+      );
+      // The operator's push was taken by the ordinary (stable) path, not held as a field push.
+      expect(lines(log).find((l) => l.includes('[ota] decision=offer-latest'))).toMatch(/reason=force-pending-/);
+    });
+  }
+
+  it('SET without this screen: not held — the stable ladder answers the pushed screen, and the log says why', async () => {
     process.env.PLAYER_FIELD_BENCH_SCREENS = OTHER_SCREEN;
     const { http } = await boot();
+    const log = jest.spyOn(Logger.prototype, 'log');
     const warn = jest.spyOn(Logger.prototype, 'warn');
     const res = await updateCheck(http).expect(201);
     expect(res.body).toEqual({ uptoDate: true });
@@ -335,24 +368,38 @@ describe('PLAYER_FIELD_BENCH_SCREENS at the update check and the download', () =
     expect(prisma.client.auditLog.create).not.toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'PLAYER_FIELD_APK_OFFER' }) }),
     );
-    const line = warn.mock.calls.map((c) => String(c[0])).find((l) => l.includes('[ota] decision=uptoDate-field'));
-    expect(line).toMatch(/reason=not-a-bench-screen/);
+    expect(lines(log).find((l) => l.includes('[ota] field-window-not-bench'))).toMatch(/reason=not-listed/);
+    expect(lines(log).find((l) => l.includes('[ota] decision=offer-latest'))).toMatch(/reason=force-pending-/);
+    expect(lines(warn).some((l) => l.includes('[ota] decision=uptoDate-field'))).toBe(false);
   });
 
-  it('SET with this screen (any case): offered exactly as when unset', async () => {
+  it('SET with this screen (any case): offered the field build exactly as before', async () => {
     process.env.PLAYER_FIELD_BENCH_SCREENS = `${OTHER_SCREEN}, ${SCREEN.toUpperCase()}`;
     const { http } = await boot();
     const res = await updateCheck(http).expect(201);
     expect(res.body.latest).toMatchObject({ versionName: CANDIDATE, versionCode: RELEASE.versionCode, sha256: RELEASE.sha256 });
   });
 
-  it('a ticket handed out while the screen was on the bench no longer downloads once the list drops it', async () => {
+  it('the escape PLAYER_FIELD_BENCH_FAIL_OPEN=1 restores the old reading of an unset list: the pushed screen is offered the field build', async () => {
+    delete process.env.PLAYER_FIELD_BENCH_SCREENS;
+    process.env.PLAYER_FIELD_BENCH_FAIL_OPEN = '1';
+    const { http } = await boot();
+    const res = await updateCheck(http).expect(201);
+    expect(res.body.latest).toMatchObject({ versionName: CANDIDATE, versionCode: RELEASE.versionCode, sha256: RELEASE.sha256 });
+    // ...and its ticket downloads, as before.
+    const url = new URL(res.body.latest.apkUrl);
+    await request(http).get(url.pathname + url.search).expect(200);
+  });
+
+  it('a ticket handed out while the screen was on the bench no longer downloads once the list drops it — or is unset', async () => {
     const { http } = await boot();
     const offer = await updateCheck(http).expect(201);
     const url = new URL(offer.body.latest.apkUrl);
     process.env.PLAYER_FIELD_BENCH_SCREENS = OTHER_SCREEN;
     await request(http).get(url.pathname + url.search).expect(404);
     delete process.env.PLAYER_FIELD_BENCH_SCREENS;
+    await request(http).get(url.pathname + url.search).expect(404);
+    process.env.PLAYER_FIELD_BENCH_SCREENS = SCREEN;
     await request(http).get(url.pathname + url.search).expect(200);
   });
 });

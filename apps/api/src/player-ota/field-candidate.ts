@@ -228,9 +228,10 @@ function macMatches(payload: string, signature: Buffer, env: NodeJS.ProcessEnv):
 }
 /**
  * The ticket is minted — and honoured — only for a screen the gate admits
- * AND, when PLAYER_FIELD_BENCH_SCREENS is set, a listed bench screen
- * (fleet-push-policy.ts). Unset, the bench check admits every screen, so the
- * ticket is exactly what it was before the variable existed.
+ * AND a bench screen listed in PLAYER_FIELD_BENCH_SCREENS
+ * (fleet-push-policy.ts). With no list set no screen is a bench screen, so no
+ * ticket is minted or honoured (fail closed since 2026-11-23, FLT-02), unless
+ * PLAYER_FIELD_BENCH_FAIL_OPEN restores the old reading of an unset list.
  */
 export function mintFieldTicket(
   r: FieldCandidateRelease,
