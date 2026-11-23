@@ -45,6 +45,16 @@ import { sanitizeLogoSvg } from './sanitize-svg';
 import { selectVectorLogo } from './select-vector-logo';
 import { isSvgDocument, normalizeLogoImage, svgForStorage } from './logo-image';
 import { isLogoBackground, resolveStoredLogoBackground } from './logo-colors';
+import {
+  BrandLike,
+  brandKitAsBrand,
+  brandKitSnapshot,
+  emptyIdentityCounts,
+  patchTemplateBackground,
+  patchZoneIdentity,
+  patchZoneStyle,
+  styleFromBrand,
+} from './brand-identity';
 
 import { createHash } from 'crypto';
 
@@ -959,11 +969,20 @@ export class BrandingController {
    *     (heading), bold/italic/underline reset to defaults — these
    *     keys flow into the universal scoped <style> override on the
    *     player render so every text descendant inherits the brand.
+   *   - Identity (2026-11-23): the organisation name, tagline, initials
+   *     and logo go into the board text fields / logo slots and the
+   *     LOGO / HS_* / schoolName widgets (brand-identity.ts).
    *
    * Two modes:
-   *   - 'fill-blanks' (default, safe): only set keys that are unset.
+   *   - 'fill-blanks' (default, safe): set keys that are unset, AND keys
+   *     that still hold what the template's previous brand (its
+   *     Template.brandKit snapshot) stamped — so a rebrand replaces the old
+   *     brand, while anything typed by hand stays.
    *   - 'override' (bold): force the brand on every zone, replacing
-   *     existing colors/fonts. Demo-friendly.
+   *     existing colors/fonts/name/tagline/logo. Demo-friendly.
+   *
+   * Every template's brandKit becomes the new brand's snapshot, in the
+   * same transaction as the patches and the audit row.
    *
    * System presets are EXCLUDED — those are the gold-standard
    * canonical templates and shouldn't drift per-tenant. Only custom
@@ -988,11 +1007,14 @@ export class BrandingController {
     if (!branding) {
       throw new HttpException({ code: 'BRANDING_NOT_CONFIGURED', message: 'No brand kit configured for this tenant. Paste your school URL on the Brand Kit panel first.' }, HttpStatus.BAD_REQUEST);
     }
-    const palette = (branding.palette as any) || {};
-    const fontHeading = branding.fontHeading || null;
-    const fontBody = branding.fontBody || null;
-    const ink = palette.ink || '#0f172a';
-    const surface = palette.surface || palette.surfaceAlt || palette.primary || '#ffffff';
+    // Rebrand rule (brand-identity.ts): a field is written when it is blank,
+    // OR when it still equals what this template's PREVIOUS brand (its own
+    // Template.brandKit snapshot) produced — so a second brand replaces the
+    // first brand's colours, fonts, name, tagline, initials and logo, while
+    // anything an operator typed by hand survives 'fill-blanks'. A template
+    // with no snapshot keeps the old behaviour: blanks only.
+    const style = styleFromBrand(branding as BrandLike, true);
+    const snapshot = brandKitSnapshot(branding);
 
     const templates = await this.prisma.client.template.findMany({
       where: { tenantId, isSystem: false },
@@ -1004,78 +1026,49 @@ export class BrandingController {
     }
 
     let zonesPatched = 0;
+    let templatesWithPreviousBrand = 0;
+    const identity = emptyIdentityCounts();
 
     await this.prisma.client.$transaction(async (tx) => {
       for (const tpl of templates) {
-        // Background fill. When the palette has BOTH primary AND
-        // accent, paint a primary→accent gradient instead of the flat
-        // surface — superintendents who scrape with two strong school
-        // colors get the boldest possible "this is us" backdrop.
-        // Fallback to flat surface for monochrome palettes.
-        // (2026-05-26 audit fix.)
-        const bgPatch: any = {};
-        if (mode === 'override' || (!tpl.bgColor && !tpl.bgGradient && !tpl.bgImage)) {
-          if (palette.primary && palette.accent && palette.primary !== palette.accent) {
-            bgPatch.bgGradient = `linear-gradient(135deg, ${palette.primary} 0%, ${palette.accent} 100%)`;
-            bgPatch.bgColor = palette.primary; // fallback for clients that ignore bgGradient
-          } else {
-            bgPatch.bgColor = surface;
-            bgPatch.bgGradient = null;
-          }
-        }
-        if (Object.keys(bgPatch).length > 0) {
-          await tx.template.update({ where: { id: tpl.id, tenantId }, data: bgPatch });
-        }
+        const previous = brandKitAsBrand((tpl as any).brandKit);
+        if (previous) templatesWithPreviousBrand += 1;
 
-        // Zone-level brand override — universal text-style keys read
-        // by the BuilderZone scoped <style> override, plus accentColor
-        // which 60+ widgets across restaurant / retail / sports /
-        // fitness packs consume directly. Strict fill-blanks unless
-        // operator picked override mode.
-        const accent = palette.accent || palette.primary || null;
+        // Background: override, no background at all, or still the previous
+        // brand's (its primary→accent gradient, or its flat surface). When the
+        // palette has BOTH primary AND accent the brand paints a gradient
+        // (2026-05-26 audit fix); monochrome palettes get the flat surface.
+        const bgPatch = patchTemplateBackground(
+          { bgColor: tpl.bgColor ?? null, bgGradient: tpl.bgGradient ?? null, bgImage: tpl.bgImage ?? null },
+          style,
+          previous,
+          mode,
+        );
+        // The new brand becomes this template's brand snapshot, so the NEXT
+        // rebrand can recognise what this one stamped (tagline included).
+        await tx.template.update({
+          where: { id: tpl.id, tenantId },
+          data: { ...bgPatch, brandKit: snapshot as any },
+        });
+
+        // Zone-level: the universal text-style keys BuilderZone's scoped
+        // <style> override reads (color, fontFamily), accentColor (60+
+        // restaurant / retail / sports / fitness widgets), and cfg.brand —
+        // the token map EXTERNAL_HTML boards forward as `?brand=` to the
+        // shim's applyBrand() (2026-06-08: boards ignore color/fontFamily).
+        // Then the identity: name / tagline / initials / logo.
         for (const z of tpl.zones) {
           const cfg = (() => {
-            try { return z.defaultConfig ? JSON.parse(z.defaultConfig as any) : {}; } catch { return {}; }
+            try {
+              const parsed = z.defaultConfig ? JSON.parse(z.defaultConfig as any) : {};
+              return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+            } catch { return {}; }
           })();
-          const patch: Record<string, any> = {};
-          if (mode === 'override' || cfg.color === undefined) patch.color = ink;
-          if ((mode === 'override' || cfg.fontFamily === undefined) && fontHeading) patch.fontFamily = fontHeading;
-          // 2026-05-26 audit fix — extend the brand paint to cover
-          // accentColor (the most-consumed brand-tint key across the
-          // widget library). Without this, "Apply Brand" left every
-          // restaurant / retail / sports / fitness widget on its
-          // designed accent forever; the operator had to recolor
-          // each one manually.
-          if (accent && (mode === 'override' || cfg.accentColor === undefined)) {
-            patch.accentColor = accent;
-          }
-          // 2026-06-08 — THE "branding doesn't work" fix. EXTERNAL_HTML signage
-          // boards (the entire school / HS / signage gallery) ignore
-          // color/fontFamily/accentColor — they render a self-contained iframe
-          // that re-skins from `cfg.brand`, which ExternalHtmlWidget forwards as
-          // `?brand=` and the baked shim's applyBrand() maps onto its --brand-*
-          // CSS vars (BRAND_MAP keys: primary/accent/text/surface/background/
-          // muted/fontDisplay/fontBody). Until now Apply-Brand set keys these
-          // boards never read, so it did NOTHING visible on any board template.
-          // Build the token map from the tenant palette + fonts and stamp it.
-          if (z.widgetType === 'EXTERNAL_HTML' && (mode === 'override' || cfg.brand === undefined)) {
-            const brandTokens: Record<string, string> = {};
-            if (palette.primary) brandTokens.primary = palette.primary;
-            if (accent) brandTokens.accent = accent;
-            if (ink) brandTokens.text = ink;
-            if (surface) brandTokens.surface = surface;
-            if (palette.primary || surface) brandTokens.background = palette.primary || surface;
-            const mutedVal = palette.muted || palette.ink2 || palette.ink3;
-            if (mutedVal) brandTokens.muted = mutedVal;
-            if (fontHeading) brandTokens.fontDisplay = fontHeading;
-            if (fontBody) brandTokens.fontBody = fontBody;
-            if (Object.keys(brandTokens).length > 0) patch.brand = brandTokens;
-          }
-          // fontBody not currently consumed but kept on the zone so a
-          // future "apply body font separately" toggle can pick it up.
-          if (Object.keys(patch).length === 0) continue;
-          const merged = { ...cfg, ...patch };
-          await tx.templateZone.update({ where: { id: z.id }, data: { defaultConfig: JSON.stringify(merged) } });
+          const styled = patchZoneStyle({ widgetType: z.widgetType, cfg }, style, previous, mode);
+          const named = patchZoneIdentity({ widgetType: z.widgetType, cfg: styled.cfg }, branding as BrandLike, previous, mode);
+          if (!styled.changed && named.changed.length === 0) continue;
+          for (const f of named.changed) identity[f] += 1;
+          await tx.templateZone.update({ where: { id: z.id }, data: { defaultConfig: JSON.stringify(named.cfg) } });
           zonesPatched += 1;
         }
       }
@@ -1088,7 +1081,13 @@ export class BrandingController {
           targetId: tenantId,
           tenantId,
           userId,
-          details: JSON.stringify({ mode, templateCount: templates.length, zonesPatched }),
+          details: JSON.stringify({
+            mode,
+            templateCount: templates.length,
+            zonesPatched,
+            templatesWithPreviousBrand,
+            identityZonesPatched: identity,
+          }),
         },
       });
     });
@@ -1106,6 +1105,7 @@ export class BrandingController {
     return {
       count: templates.length,
       zonesPatched,
+      identityZonesPatched: identity,
       mode,
       templates: templateList,
       message: `Applied your brand to ${templates.length} template${templates.length === 1 ? '' : 's'} (${zonesPatched} zones updated).`,
