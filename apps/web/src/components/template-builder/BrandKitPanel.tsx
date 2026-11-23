@@ -20,15 +20,18 @@ import {
   brandBackgrounds,
   brandChecklist,
   brandColors,
+  brandIdentity,
   brandTemplateBackground,
   brandTextZone,
   brandZoneConfig,
   colorPatchConfig,
   currentPlacement,
   hasBrand,
+  identitySnapshot,
   isTextZone,
   kitFromTenantBranding,
   logoSize,
+  pickBrandKit,
   placeBox,
   readableOn,
   type BrandBackground,
@@ -55,10 +58,15 @@ import type { Zone } from './types';
  *   - "Brand this template" lists what it will do BEFORE the click, and offers
  *     Undo after.
  *
- * WHICH BRAND. The template's own kit (Template.brandKit — a per-template
- * website detection, or what a new template inherited at creation) wins;
- * otherwise the organisation brand from Settings → Brand & appearance. With
- * neither (no logo, colour or font) the tab shows only "Set up your brand".
+ * WHICH BRAND. A brand detected for THIS template (Template.brandKit from a
+ * website detection) wins; otherwise the organisation brand from Settings →
+ * Brand & appearance as it is now. The copy of the organisation brand a new
+ * template takes at creation (`inheritedFrom: 'tenant-branding'`) does not
+ * win over the current organisation brand, so a rebrand reaches the editor.
+ * With neither (no logo, colour or font) the tab shows only "Set up your brand".
+ *
+ * "Brand this template" also writes the organisation's name, tagline and
+ * initials into every widget / board field that holds them.
  *
  * The per-template kit stays per-template (2026-04-27): detecting a brand
  * here writes ONLY Template.brandKit, never the tenant theme.
@@ -74,6 +82,8 @@ interface BrandApplySummary {
   background: 'gradient' | 'solid' | null;
   fonts: boolean;
   logos: number;
+  /** A name / tagline / initials field changed somewhere. */
+  identity: boolean;
 }
 
 const SECTION = 'border-b border-slate-200/60 p-4 space-y-2.5';
@@ -105,8 +115,9 @@ export function BrandKitPanel() {
 
   const templateKit = ((template as { brandKit?: BrandKit | null } | undefined)?.brandKit ?? null) as BrandKit | null;
   const orgKit = kitFromTenantBranding(tenantBrandingQuery?.data as BrandKit | null | undefined) as BrandKit | null;
-  const usingTemplateKit = hasBrand(templateKit);
-  const kit: BrandKit | null = usingTemplateKit ? templateKit : hasBrand(orgKit) ? orgKit : null;
+  const picked = pickBrandKit<BrandKit>(templateKit, orgKit);
+  const usingTemplateKit = picked.source === 'template';
+  const kit: BrandKit | null = picked.kit;
 
   const [placingLogo, setPlacingLogo] = useState(false);
   const [lastApply, setLastApply] = useState<string | null>(null);
@@ -153,7 +164,7 @@ export function BrandKitPanel() {
   // ── Brand this template ──────────────────────────────────────────────
   const applyBrandToAll = (k: BrandKit): BrandApplySummary => {
     const st = store();
-    const summary: BrandApplySummary = { widgets: 0, total: st.zones.filter((z) => z.widgetType !== 'EMPTY').length, background: null, fonts: false, logos: 0 };
+    const summary: BrandApplySummary = { widgets: 0, total: st.zones.filter((z) => z.widgetType !== 'EMPTY').length, background: null, fonts: false, logos: 0, identity: false };
     st.beginTransaction();
     try {
       const ids = st.zones.filter((z) => !z.locked).map((z) => z.id);
@@ -166,6 +177,7 @@ export function BrandKitPanel() {
             const brand = cfg.brand as Record<string, unknown> | undefined;
             if ((k.fontHeading || k.fontBody) && (cfg.fontFamily || brand?.fontDisplay || brand?.fontBody)) summary.fonts = true;
             if (z.widgetType === 'LOGO' && k.logoUrl) summary.logos += 1;
+            if (identitySnapshot(cfg) !== identitySnapshot(z.defaultConfig)) summary.identity = true;
           }
           return { defaultConfig: cfg };
         });
@@ -181,10 +193,11 @@ export function BrandKitPanel() {
     return summary;
   };
 
-  const describeApply = (sum: BrandApplySummary): string => {
+  const describeApply = (sum: BrandApplySummary, k: BrandKit): string => {
     const parts: string[] = [];
     if (sum.total > 0) parts.push(t('applyWidgets', { count: sum.widgets, total: sum.total }));
     if (sum.logos > 0) parts.push(t('applyLogos', { count: sum.logos }));
+    if (sum.identity) parts.push(brandIdentity(k).tagline ? t('applyNameTagline') : t('applyName'));
     if (sum.fonts) parts.push(t('applyFonts'));
     if (sum.background === 'gradient') parts.push(t('applyBgGradient'));
     else if (sum.background === 'solid') parts.push(t('applyBgSolid'));
@@ -200,7 +213,7 @@ export function BrandKitPanel() {
 
   const handleBrandTemplate = (k: BrandKit) => {
     if (isSystem) return;
-    const text = describeApply(applyBrandToAll(k));
+    const text = describeApply(applyBrandToAll(k), k);
     setLastApply(text);
     toast.success(text, { duration: 6000, action: { label: t('undo'), onClick: undoLast } });
   };
@@ -371,7 +384,10 @@ export function BrandKitPanel() {
       }
       setScrapePhase('applying');
       const result = await adoptMutation.mutateAsync({ ...preview, palette: preview.palette });
-      const adopted = ((result as { brandKit?: BrandKit } | undefined)?.brandKit ?? { ...preview }) as BrandKit;
+      const saved = ((result as { brandKit?: BrandKit } | undefined)?.brandKit ?? { ...preview }) as BrandKit;
+      // The detected tagline rides along to the canvas even when the saved kit
+      // does not carry it.
+      const adopted: BrandKit = { ...saved, tagline: saved.tagline ?? (typeof preview.tagline === 'string' ? preview.tagline : null) };
       if (hasBrand(adopted)) handleBrandTemplate(adopted);
       setScrapeUrl('');
     } catch (err) {
@@ -463,6 +479,7 @@ export function BrandKitPanel() {
   const colors = brandColors(palette);
   const backgrounds = brandBackgrounds(palette);
   const checklist = brandChecklist(kit);
+  const identity = brandIdentity(kit);
   const fontHeading = kit.fontHeading || kit.fontBody || undefined;
   const fontBody = kit.fontBody || kit.fontHeading || undefined;
   const logoChipBackdrop = logoBackdrop(readLogoBackground(kit), 'unknown');
@@ -569,7 +586,15 @@ export function BrandKitPanel() {
           {checklist.map((item) => (
             <li key={item} className="flex items-start gap-1.5 text-[11px] text-slate-700">
               <Check className="w-3.5 h-3.5 mt-px text-emerald-600 flex-shrink-0" aria-hidden />
-              <span>{item === 'fonts' ? t('check.fonts', { fonts: fontsLabel }) : t(`check.${item}`)}</span>
+              <span className="min-w-0 break-words">
+                {item === 'fonts'
+                  ? t('check.fonts', { fonts: fontsLabel })
+                  : item === 'name'
+                    ? t('check.name', { name: identity.name ?? '' })
+                    : item === 'tagline'
+                      ? t('check.tagline', { tagline: identity.tagline ?? '' })
+                      : t(`check.${item}`)}
+              </span>
             </li>
           ))}
         </ul>

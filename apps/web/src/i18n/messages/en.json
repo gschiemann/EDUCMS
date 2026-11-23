@@ -1323,7 +1323,7 @@
         "templatesTitle": "Templates",
         "templatesDesc": "Push this brand into screen templates, or clear the brand entirely.",
         "applyTemplates": "Apply brand to templates",
-        "applyTemplatesHelp": "Fills brand colors into template zones that are still on stock defaults. Zones you styled yourself are left alone.",
+        "applyTemplatesHelp": "Puts your logo, name, tagline, colors and fonts into your templates wherever a spot is blank or still shows your previous brand. Anything you changed by hand is left alone.",
         "applying": "Applying…",
         "applyDone": "Applied to {count} templates · {zones} zones updated.",
         "applyFailed": "Apply failed — nothing was changed. {message}",
@@ -6592,6 +6592,8 @@
     "brandIntro": "One click does all of this:",
     "check": {
       "logo": "Your logo in the logo spots",
+      "name": "Your name, {name}, and its initials in the name spots",
+      "tagline": "Your tagline, “{tagline}”, in the tagline spots",
       "fonts": "Headings and body text in {fonts}",
       "colors": "Brand colors on text, tickers and countdowns",
       "background": "A brand background"
@@ -6662,6 +6664,8 @@
     "applySummary": "Brand applied: {parts}.",
     "applyWidgets": "{count} of {total} widgets restyled",
     "applyLogos": "{count, plural, one {# logo} other {# logos}} filled",
+    "applyName": "your name filled",
+    "applyNameTagline": "your name and tagline filled",
     "applyFonts": "brand fonts on text",
     "applyBgGradient": "brand gradient background",
     "applyBgSolid": "brand color background",
