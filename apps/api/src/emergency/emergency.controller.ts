@@ -191,6 +191,9 @@ import {
   TenantAlertChangedConflictFilter,
 } from './tenant-alert-changed.filter';
 import { withTimeout } from '../health/with-timeout';
+// SDW-01 (2026-11-23): metadata only. The two device emergency reads keep
+// answering a screen with no tenant exactly as before ("nothing active").
+import { AllowUnpairedDevice } from '../security/allow-unpaired-device.decorator';
 
 /** A kept location as read, with its parent (review round 3: one entry per alert). */
 type KeptTenantRow = KeptTenantAlert & { parentId: string | null };
@@ -3623,6 +3626,9 @@ export class EmergencyController {
     return { alerts: [...alerts, ...scopedAlerts] };
   }
 
+  // SDW-01: an unpaired screen keeps this read; with no tenant it answers
+  // `{ active: [], tenantId: null }` below, before any query.
+  @AllowUnpairedDevice()
   @Get('status')
   async status(
     @Req() req: any,
@@ -3812,6 +3818,9 @@ export class EmergencyController {
    * produced. The DB is the source of truth for the poll tier exactly
    * as it is for the user-session /status path.
    */
+  // SDW-01: an unpaired screen keeps this read; `deviceMessages` answers
+  // INACTIVE from the screen's own row when it has no tenant.
+  @AllowUnpairedDevice()
   @Get('messages')
   async deviceMessagesRoute(@Req() req: any, @Res() res: Response): Promise<void> {
     const u = req?.user || {};

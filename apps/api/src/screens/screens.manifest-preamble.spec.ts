@@ -335,6 +335,10 @@ async function pollManifest(
   const ctx: any = {
     getType: () => 'http',
     switchToHttp: () => ({ getRequest: () => req }),
+    // The route being served, as Nest names it — the manifest is one of the
+    // routes that answers an unpaired screen (SDW-01, `@AllowUnpairedDevice`).
+    getHandler: () => ScreensController.prototype.getManifest,
+    getClass: () => ScreensController,
   };
   await lastValueFrom(
     h.interceptor.intercept(ctx, {

@@ -258,6 +258,9 @@ import { ADMIN_ROLES_FOR_SCREEN_SECRETS } from '../security/screen-secrets';
 // shared list of typed-name fields.
 import { redactTypedStudentNames } from '../sports/typed-student-names';
 import { assertSupportReach, hasSupportReach } from '../support-access/support-access.context';
+// SDW-01 (2026-11-23): the manifest is the one screens route on the guard
+// surface that answers a screen with no tenant (see getManifest).
+import { AllowUnpairedDevice } from '../security/allow-unpaired-device.decorator';
 
 const PAIRING_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -6607,7 +6610,17 @@ export class ScreensController {
   // enumerate emergency media, drive the display, or unpair the screen.
   // Closing the read needs an operator-approved recovery flow (see the
   // SEC-001 report), not a wider denylist.
+  //
+  // SDW-01 (2026-11-23) — and it is one of the three guard-surface reads an
+  // UNPAIRED screen keeps (`@AllowUnpairedDevice`). It reads the screen's own
+  // row (`u.sub` must equal `:id`), never `req.user.tenantId`, and with no
+  // tenant it builds no emergency block and no tenant content. The APK's
+  // native alert watch polls it with the canonical stored token, which is the
+  // registration token while the screen is still on the pairing splash, and
+  // the page keeps polling it while it confirms an "unpaired" answer before
+  // leaving its content. Both are unchanged.
   @UseGuards(JwtAuthGuard)
+  @AllowUnpairedDevice()
   @Get(':id/manifest')
   async getManifest(@Param('id') id: string, @Req() req: ExpressReq, @Res() res: Response) {
     // LIFE-SAFETY (2026-07-31, Greg's stuck-lockdown dongle): the manifest

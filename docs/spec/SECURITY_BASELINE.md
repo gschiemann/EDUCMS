@@ -99,6 +99,17 @@ overstates controls is false assurance to a district IT reviewer and the exact
   live Screen row, identity read from the live row, unproven credentials refused
   on writes. `verifyDeviceForScreen` / `admitDeviceCredential` (`screens/device-auth.ts`);
   `DeviceIdentityInterceptor` (`security/device-identity.interceptor.ts`).
+- **A device principal belongs to a tenant** (2026-11-23) — on `JwtAuthGuard`
+  routes, a device whose live Screen row has no tenant gets 401
+  `DEVICE_SCREEN_UNPAIRED`, except on the routes marked `@AllowUnpairedDevice()`
+  (the manifest, `emergency/messages`, `emergency/status`; the list and its
+  call-site evidence are in `screens/device-principal-routes.spec.ts`). The
+  pairing routes use explicit device auth with `allowUnpaired` and are not on
+  this surface. The code is not a credential-recovery signal: the web player
+  starts its one controlled recovery on a 401 from the manifest or telemetry,
+  or on a push-channel `AUTH_FAIL` (besides its own renewal timers), and none
+  of those answers with this code.
+  `security/allow-unpaired-device.decorator.ts`; `DeviceIdentityInterceptor`.
 
 ## 3. Defense against abuse — SHIPPED (with gaps)
 
