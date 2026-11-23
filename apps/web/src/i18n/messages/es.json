@@ -6592,6 +6592,8 @@
     "brandIntro": "Un clic hace todo esto:",
     "check": {
       "logo": "Tu logotipo en los espacios de logotipo",
+      "name": "Tu nombre, {name}, y sus iniciales en los espacios del nombre",
+      "tagline": "Tu lema, “{tagline}”, en los espacios del lema",
       "fonts": "Títulos y texto en {fonts}",
       "colors": "Colores de marca en textos, cintas y cuentas regresivas",
       "background": "Un fondo de marca"
@@ -6662,6 +6664,8 @@
     "applySummary": "Marca aplicada: {parts}.",
     "applyWidgets": "{count} de {total} widgets con nuevo estilo",
     "applyLogos": "{count, plural, one {# logotipo colocado} other {# logotipos colocados}}",
+    "applyName": "tu nombre colocado",
+    "applyNameTagline": "tu nombre y tu lema colocados",
     "applyFonts": "fuentes de marca en el texto",
     "applyBgGradient": "fondo con degradado de marca",
     "applyBgSolid": "fondo con color de marca",

@@ -6592,6 +6592,8 @@
     "brandIntro": "One click does all of this:",
     "check": {
       "logo": "Your logo in the logo spots",
+      "name": "Your name, {name}, and its initials in the name spots",
+      "tagline": "Your tagline, “{tagline}”, in the tagline spots",
       "fonts": "Headings and body text in {fonts}",
       "colors": "Brand colors on text, tickers and countdowns",
       "background": "A brand background"
@@ -6662,6 +6664,8 @@
     "applySummary": "Brand applied: {parts}.",
     "applyWidgets": "{count} of {total} widgets restyled",
     "applyLogos": "{count, plural, one {# logo} other {# logos}} filled",
+    "applyName": "your name filled",
+    "applyNameTagline": "your name and tagline filled",
     "applyFonts": "brand fonts on text",
     "applyBgGradient": "brand gradient background",
     "applyBgSolid": "brand color background",

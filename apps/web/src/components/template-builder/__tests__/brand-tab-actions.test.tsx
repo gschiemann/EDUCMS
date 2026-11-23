@@ -249,4 +249,39 @@ describe('Brand this template', () => {
     expect(cfg(zone('board')).brand).toBeUndefined();
     expect(useBuilderStore.getState().meta.bgGradient).toBe('');
   });
+
+  it('a rebrand: the name and tagline are listed, written into the board and the logo widget, and undo in the same step', () => {
+    mockTemplateKit = { ...MOCK_KIT, displayName: 'Lincoln High School', tagline: 'Home of the Eagles' };
+    const logo = { id: 'logo1', name: 'Logo', widgetType: 'LOGO', x: 2, y: 3, width: 10, height: 10, zIndex: 1, sortOrder: 0, defaultConfig: { schoolName: 'Old Academy', tagline: 'Old motto' } } as Zone;
+    const oldBoard = { ...board, defaultConfig: { url: '/templates/signage/qsr/x.html', textOverrides: { 'brand.name': 'Old Academy', 'brand.tagline': 'Old motto' } } } as Zone;
+    init([oldBoard, logo]);
+    render(<BrandKitPanel />);
+    const list = screen.getByTestId('brand-checklist');
+    expect(list.textContent).toContain('Your name, Lincoln High School, and its initials in the name spots');
+    expect(list.textContent).toContain('Your tagline, “Home of the Eagles”, in the tagline spots');
+    fireEvent.click(screen.getByRole('button', { name: 'Brand this template' }));
+    const [message, opts] = mockToastSuccess.mock.calls[0];
+    expect(String(message)).toContain('your name and tagline filled');
+    const t = cfg(zone('board')).textOverrides as Record<string, unknown>;
+    expect(t['brand.name']).toBe('Lincoln High School');
+    expect(t['brand.tagline']).toBe('Home of the Eagles');
+    expect(t['school.initials']).toBe('LHS');
+    expect(cfg(zone('logo1'))).toMatchObject({ schoolName: 'Lincoln High School', tagline: 'Home of the Eagles', assetUrl: MOCK_KIT.logoUrl });
+    act(() => opts.action.onClick());
+    expect((cfg(zone('board')).textOverrides as Record<string, unknown>)['brand.name']).toBe('Old Academy');
+    expect(cfg(zone('logo1')).schoolName).toBe('Old Academy');
+  });
+
+  it('a copy of the organisation brand taken at creation gives way to the organisation brand as it is now', () => {
+    mockTemplateKit = { ...MOCK_KIT, displayName: 'Old Academy', inheritedFrom: 'tenant-branding' };
+    mockOrgBrand = { ...MOCK_KIT, displayName: 'Lincoln High School', tagline: 'Home of the Eagles' };
+    init([board]);
+    render(<BrandKitPanel />);
+    expect(screen.getByText("From your organization's brand.")).toBeTruthy();
+    expect(screen.getByText('Lincoln High School')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Brand this template' }));
+    const t = cfg(zone('board')).textOverrides as Record<string, unknown>;
+    expect(t['brand.name']).toBe('Lincoln High School');
+    expect(t['brand.tagline']).toBe('Home of the Eagles');
+  });
 });
