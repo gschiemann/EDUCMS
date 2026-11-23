@@ -8764,5 +8764,10 @@
       "DRILL_APPROVALS_UNREADABLE": "服务器无法读取批准记录，因此未作任何更改。请重试。",
       "generic": "操作未成功，未作任何更改。请重试。"
     }
+  },
+  "appUpdate": {
+    "available": "有新版本可用",
+    "reload": "重新加载",
+    "later": "稍后"
   }
 }

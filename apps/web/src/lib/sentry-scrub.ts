@@ -1,8 +1,8 @@
 /**
- * Telemetry scrubbing shared by the web app's three Sentry configs
- * (`sentry.client.config.ts`, `sentry.server.config.ts`,
- * `sentry.edge.config.ts`). One module so the browser, Node and edge runtimes
- * cannot drift apart.
+ * Telemetry scrubbing shared by the web app's three Sentry inits (the browser
+ * one in `src/instrumentation-client.ts` via `sentry-client-options.ts`,
+ * `sentry.server.config.ts`, `sentry.edge.config.ts`). One module so the
+ * browser, Node and edge runtimes cannot drift apart.
  *
  * Follows the API's approach (`apps/api/src/sentry-redaction.ts`): keep the
  * path (that is the diagnostic value), drop the query string and fragment,

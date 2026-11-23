@@ -8764,5 +8764,10 @@
       "DRILL_APPROVALS_UNREADABLE": "The server could not read the approvals, so nothing was changed. Try again.",
       "generic": "That didn't work, and nothing was changed. Try again."
     }
+  },
+  "appUpdate": {
+    "available": "A new version is available",
+    "reload": "Reload",
+    "later": "Later"
   }
 }

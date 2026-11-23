@@ -21,6 +21,7 @@ import {
 } from 'react';
 import { useRouter } from 'next/navigation';
 import type { SettingsSectionId } from './registry';
+import { registerUnsavedWork } from '@/lib/unsaved-work';
 
 export type SettingsScopeKind = 'account' | 'organization' | 'location';
 export type SettingsSectionStatus = 'attention' | 'error' | null;
@@ -199,6 +200,8 @@ export function SettingsShellProvider({ children }: { children: ReactNode }) {
   );
 
   // Browser-level guard (refresh / close tab / external link) while dirty.
+  // The same answer feeds the unsaved-work registry, so a deploy never
+  // reloads a dirty settings page on its own (StaleBundleWatcher).
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (!isDirty(pageRef.current?.save)) return;
@@ -206,7 +209,11 @@ export function SettingsShellProvider({ children }: { children: ReactNode }) {
       e.returnValue = '';
     };
     window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
+    const unregister = registerUnsavedWork(() => isDirty(pageRef.current?.save));
+    return () => {
+      window.removeEventListener('beforeunload', handler);
+      unregister();
+    };
   }, []);
 
   const value = useMemo<SettingsShellContextValue>(

@@ -8764,5 +8764,10 @@
       "DRILL_APPROVALS_UNREADABLE": "El servidor no pudo leer las aprobaciones, así que no se cambió nada. Inténtelo de nuevo.",
       "generic": "No funcionó y no se cambió nada. Inténtelo de nuevo."
     }
+  },
+  "appUpdate": {
+    "available": "Hay una versión nueva disponible",
+    "reload": "Recargar",
+    "later": "Más tarde"
   }
 }
