@@ -31,6 +31,7 @@ import {
   createRedisSessionStore,
 } from './security/redis-session.store';
 import { mountPlayerLogsBodyParser } from './player-logs/player-logs-body';
+import { mountGameStateBodyParser } from './screens/game-state-body';
 
 // Last-resort crash guards. ioredis, Prisma, and passport-saml can all
 // surface unhandled rejections on network flaps; we'd rather log than
@@ -202,6 +203,13 @@ async function bootstrap() {
     /^\/api\/v1\/screens\/[^/]+\/play-log\/?$/,
     expressBody.json({ limit: '64kb' }),
   );
+
+  // Scoreboard bridge snapshots (2026-11-23, SDW-02): a real body is 311-579
+  // bytes and every accepted one is signed and published on the alert bus, so
+  // this route gets its own 16 KB parser ahead of the global 5 MB one, for the
+  // same reason as telemetry above. See screens/game-state-body.ts (the HTTP
+  // spec mounts the same one). The controller re-checks Content-Length.
+  mountGameStateBodyParser(app);
 
   // Player diagnostics upload (2026-10-03). The APK posts its log as
   // `text/plain`; with only the JSON/form parsers below, Express 5 left the
