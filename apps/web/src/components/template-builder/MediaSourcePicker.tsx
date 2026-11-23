@@ -270,6 +270,7 @@ function ConnectSheet({
           {picked.auth === 'customHls' && (
             <>
               <input
+                spellCheck={false}
                 value={creds.playbackUrl || ''}
                 onChange={(e) => setCreds({ ...creds, playbackUrl: e.target.value })}
                 placeholder="https://…/master.m3u8"
@@ -284,6 +285,7 @@ function ConnectSheet({
 
           {picked.auth === 'apiKey' && (
             <input
+              spellCheck={false}
               value={creds.apiKey || ''}
               onChange={(e) => setCreds({ ...creds, apiKey: e.target.value })}
               placeholder="API key from your provider account"
@@ -293,6 +295,7 @@ function ConnectSheet({
 
           {picked.auth === 'license' && (
             <input
+              spellCheck={false}
               value={creds.licenseNumber || ''}
               onChange={(e) => setCreds({ ...creds, licenseNumber: e.target.value })}
               placeholder="Commercial account / license number"

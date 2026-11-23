@@ -91,6 +91,8 @@ import { needsResize } from '@/components/templates/create-template-flow';
 // scratch/design/templates-page/TEMPLATES-GALLERY-V1-DESIGN-HANDOFF.md
 import { TemplateOverflowMenu, type OverflowItem } from '@/components/templates/TemplateOverflowMenu';
 import { TemplateUsagePill } from '@/components/templates/TemplateUsagePill';
+import { ConnectedTemplateBulkDeleteDialog } from '@/components/templates/TemplateBulkDeleteDialog';
+import type { BulkDeleteSummary, BulkDeleteTarget } from '@/components/templates/template-bulk-delete';
 import {
   type TemplateUsageState,
   deriveTemplateUsage,
@@ -130,7 +132,7 @@ import { isFeatureEnabled, FLAGS } from '@/lib/feature-flags';
 import { useUIStore } from '@/store/ui-store';
 import { useTenantCopy } from '@/hooks/use-tenant-copy';
 import { getAiTemplatePrompts } from '@cms/api-types';
-import { appConfirm, appAlert } from '@/components/ui/app-dialog';
+import { appAlert } from '@/components/ui/app-dialog';
 import { DateField } from '@/components/ui/date-field';
 import { getAiStatusSource } from '@/components/ai/AiGenerateButton';
 import { useOverlayLock } from '@/hooks/use-overlay-lock';
@@ -141,7 +143,7 @@ import { PageToolbar } from '@/components/ui/page-toolbar';
 import { StatusPill } from '@/components/ui/status-pill';
 import { Segmented } from '@/components/ui/segmented';
 import { ActionDock, SelectionToolbar, type SelectionBarProps } from '@/components/ui/selection-toolbar';
-import { SelectionCheckbox, SelectionTileCheckbox, selectionState, selectAllTitle } from '@/components/common/SelectionCheckbox';
+import { SelectionCheckbox, SelectionTileCheckbox, SELECTED_TILE_CLASS, selectionState, selectAllTitle } from '@/components/common/SelectionCheckbox';
 import { transformedImageUrl } from '@/lib/asset-image';
 
 // ─────────────────────────────────────────────────────
@@ -1076,6 +1078,10 @@ export default function TemplatesPage() {
   const isPhone = usePhoneWidth();
   const [tplSelected, setTplSelected] = useState<Set<string>>(() => new Set());
   const [tplBulkBusy, setTplBulkBusy] = useState(false);
+  // The bulk delete's one confirmation (TemplateBulkDeleteDialog): the selection
+  // as it was when Delete was pressed.
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState<BulkDeleteTarget[] | null>(null);
+  const tBulkDel = useTranslations('templateBulkDelete');
   const importTemplate = useImportTemplate();
   // Express lane — "Put on a screen". Creates a one-item playlist FROM this
   // board/template (same path the New-Playlist "From Template" mode uses) and
@@ -2398,10 +2404,37 @@ export default function TemplatesPage() {
     input.click();
   }
 
-  // Selection — only templates the operator can SEE stay selected.
-  const selectableTplIds = !isViewer && viewMode === 'grid' ? visibleCustom.map((t: Template) => t.id) : [];
-  const selectedTpls = visibleCustom.filter((t: Template) => tplSelected.has(t.id));
+  // Selection (2026-11-23) — the box over the tiles and the bar's "Select all N"
+  // both reach EVERY one of your templates the current search and filters
+  // match, including the ones past "View all" (the owner's select all used to
+  // stop at the first page, so the rest were never deleted). The bar's
+  // "N selected" and the dialog's "Delete N templates?" state the true number.
+  // Never a preset (customTemplates has none), never one the filter hides.
+  // Grid and list select the same set (owner, 2026-11-23: "pick multiple
+  // templates and delete" — a box on every tile and every row, as Assets
+  // has), so the selection is independent of the view and survives a toggle.
+  const matchedTplIds = isViewer ? [] : customTemplates.map((t: Template) => t.id);
+  const canSelectTpls = !isViewer;
+  const selectableTplIds = canSelectTpls ? matchedTplIds : [];
+  const selectedTpls = canSelectTpls ? customTemplates.filter((t: Template) => tplSelected.has(t.id)) : [];
   const tplSelState = selectionState(selectedTpls.length, selectableTplIds.length);
+  // A search or filter that hides a selected template drops it from the
+  // selection, so clearing the filter later does not bring back a selection
+  // nobody can see (and a bulk action never reaches it). Pruned against what
+  // the filter matches, not the view mode: a grid/list/grid toggle keeps it.
+  // (React's "adjust state when a value changes" pattern: during render, not in an effect.)
+  const matchedTplKey = matchedTplIds.join('\n');
+  const [prunedForKey, setPrunedForKey] = useState(matchedTplKey);
+  if (prunedForKey !== matchedTplKey) {
+    setPrunedForKey(matchedTplKey);
+    const allowed = new Set(matchedTplIds);
+    setTplSelected((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => { if (allowed.has(id)) next.add(id); else changed = true; });
+      return changed ? next : prev;
+    });
+  }
   const toggleTpl = (id: string) => setTplSelected((prev) => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -2418,30 +2451,40 @@ export default function TemplatesPage() {
   async function bulkExportTpls() {
     for (const t of selectedTpls) await handleExport(t);
   }
-  async function bulkDeleteTpls() {
-    if (!isAdmin || tplBulkBusy) return;
+  function bulkDeleteTpls() {
+    if (!isAdmin || tplBulkBusy || bulkDeleteTargets) return;
     const targets = selectedTpls;
+    if (targets.length === 0) return;
+    // One selected template keeps the single delete's own dialog.
     if (targets.length === 1) { void handleDeleteTemplate(targets[0]); return; }
-    const ok = await appConfirm({
-      title: tTpl('bulkDeleteTitle', { count: targets.length }),
-      message: tTpl('bulkDeleteBody'),
-      tone: 'danger',
-      confirmLabel: tTpl('delete'),
-    });
-    if (!ok) return;
-    setTplBulkBusy(true);
-    let deleted = 0, skipped = 0;
-    try {
-      // Never forced: a template that is on a screen answers 409 and is skipped.
-      for (const t of targets) {
-        try { await deleteTemplate.mutateAsync({ id: t.id }); deleted += 1; }
-        catch { skipped += 1; }
-      }
-    } finally {
-      setTplBulkBusy(false);
-      setTplSelected(new Set());
+    setBulkDeleteTargets(targets.map((t: Template) => ({ id: t.id, name: t.name, listedPlaylists: listedPlaylistsFor(t) })));
+  }
+  /**
+   * What the gallery already knows about a template's playlists: the list's
+   * `_count.playlists`, raised by the usage summary when that says more. Only a
+   * positive 0 lets the bulk delete skip the fresh usage read.
+   */
+  function listedPlaylistsFor(t: Template): number | undefined {
+    const listed = t._count?.playlists;
+    const summary = (usageByTemplate as Record<string, { playlists?: unknown }> | undefined)?.[t.id]?.playlists;
+    const fromSummary = typeof summary === 'number' && Number.isFinite(summary) ? summary : undefined;
+    if (typeof listed !== 'number' || !Number.isFinite(listed)) return fromSummary !== undefined && fromSummary > 0 ? fromSummary : undefined;
+    return Math.max(listed, fromSummary ?? 0);
+  }
+  function finishBulkDelete(summary: BulkDeleteSummary) {
+    setBulkDeleteTargets(null);
+    // Only what was settled leaves the selection; a failed one stays selected to retry.
+    const handled = new Set(summary.handled);
+    setTplSelected((prev) => new Set([...prev].filter((id) => !handled.has(id))));
+    const parts = [tBulkDel('resultDeleted', { count: summary.deleted })];
+    if (summary.keptEmergency > 0) parts.push(tBulkDel('resultKeptEmergency', { count: summary.keptEmergency }));
+    if (summary.keptByChoice > 0) parts.push(tBulkDel('resultKeptByChoice', { count: summary.keptByChoice }));
+    if (summary.failed > 0) {
+      parts.push(tBulkDel('resultFailed', { count: summary.failed, message: summary.firstError || tDel('deleteFailed') }));
+      toast.error(parts.join(' · '), { duration: ERROR_TOAST_DURATION_MS });
+    } else {
+      toast.success(parts.join(' · '));
     }
-    toast.success(tTpl('bulkDeleteDone', { deleted, skipped }));
   }
   const tplBarProps: SelectionBarProps = {
     count: selectedTpls.length,
@@ -2455,7 +2498,7 @@ export default function TemplatesPage() {
     actions: [
       { id: 'export', label: tTpl('export'), icon: <Download className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void bulkExportTpls(); }, disabled: tplBulkBusy },
       { id: 'duplicate', label: tTpl('duplicate'), icon: <Copy className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void bulkDuplicateTpls(); }, disabled: tplBulkBusy, busy: tplBulkBusy },
-      ...(isAdmin ? [{ id: 'delete', variant: 'danger' as const, label: tTpl('delete'), icon: <Trash2 className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { void bulkDeleteTpls(); }, disabled: tplBulkBusy }] : []),
+      ...(isAdmin ? [{ id: 'delete', variant: 'danger' as const, label: tTpl('delete'), icon: <Trash2 className="w-3.5 h-3.5" aria-hidden />, onSelect: () => { bulkDeleteTpls(); }, disabled: tplBulkBusy || !!bulkDeleteTargets }] : []),
     ],
   };
 
@@ -3388,12 +3431,32 @@ export default function TemplatesPage() {
           });
         }
         const selecting = !isPhone && selectedTpls.length > 0;
+        // The grid/list switch stays at the row's right end while the row is
+        // the selection bar: grid and list share one selection (2026-11-23),
+        // so switching views mid-selection is a thing an operator does.
+        const viewSwitch = isPhone ? undefined : (
+          <Segmented
+            value={viewMode}
+            onChange={setViewMode}
+            ariaLabel={tUi('view')}
+            iconOnly
+            options={[
+              { value: 'grid', label: tUi('gridView'), icon: Grid3X3 },
+              { value: 'list', label: tUi('listView'), icon: AlignLeft },
+            ] as const}
+          />
+        );
         return (
           <>
             <PageToolbar
               testId="templates-toolbar"
               compact={isPhone}
-              selection={selecting ? <SelectionToolbar {...tplBarProps} /> : undefined}
+              selection={selecting ? (
+                <div className="flex h-full min-w-0 items-center gap-3">
+                  <div className="h-full min-w-0 flex-1"><SelectionToolbar {...tplBarProps} /></div>
+                  {viewSwitch}
+                </div>
+              ) : undefined}
               tabs={
                 <TabRow
                   value={activeCategory}
@@ -3471,18 +3534,7 @@ export default function TemplatesPage() {
                   </>
                 )
               }
-              trailing={isPhone ? undefined : (
-                <Segmented
-                  value={viewMode}
-                  onChange={setViewMode}
-                  ariaLabel={tUi('view')}
-                  iconOnly
-                  options={[
-                    { value: 'grid', label: tUi('gridView'), icon: Grid3X3 },
-                    { value: 'list', label: tUi('listView'), icon: AlignLeft },
-                  ] as const}
-                />
-              )}
+              trailing={viewSwitch}
             />
             {isPhone && <ActionDock {...tplBarProps} />}
           </>
@@ -3603,8 +3655,8 @@ export default function TemplatesPage() {
                   <SelectionCheckbox
                     checked={tplSelState === 'all'}
                     indeterminate={tplSelState === 'some'}
-                    label={tTpl('selectAllShown')}
-                    title={selectAllTitle(tplSelState, tTpl('selectAllShown'), tUi('clearSelection'))}
+                    label={tTpl('selectAllYours', { count: selectableTplIds.length })}
+                    title={selectAllTitle(tplSelState, tTpl('selectAllYours', { count: selectableTplIds.length }), tUi('clearSelection'))}
                     onChange={() => setTplSelected(tplSelState === 'all' ? new Set() : new Set(selectableTplIds))}
                     testId="templates-select-all"
                   />
@@ -3649,12 +3701,21 @@ export default function TemplatesPage() {
                 onPreview={(t) => setPreviewTemplate(t)}
                 onPrimary={isViewer ? undefined : (t) => openTemplate(t)}
                 primaryLabel={isViewer ? 'Preview' : 'Edit'}
+                // Your templates only — the ready-made list below passes none.
+                selection={canSelectTpls ? {
+                  selected: tplSelected,
+                  onToggle: toggleTpl,
+                  labelFor: (t) => tTpl('selectTemplate', { name: t.name }),
+                } : undefined}
               />
             ) : (
               <div className={GALLERY_GRID_CLASS}>
                 {visibleCustom.map((t: Template) => (
-                  <div key={t.id} className="relative" data-selected={tplSelected.has(t.id) || undefined}>
-                    {selectableTplIds.length > 0 && (
+                  // `group`: SelectionTileCheckbox reveals on hover of this
+                  // wrapper (its sibling card's own `group` is not an ancestor
+                  // of the box), exactly as an Assets tile does.
+                  <div key={t.id} className="group relative" data-selected={tplSelected.has(t.id) || undefined}>
+                    {canSelectTpls && (
                       <SelectionTileCheckbox
                         checked={tplSelected.has(t.id)}
                         anySelected={selectedTpls.length > 0}
@@ -3665,6 +3726,7 @@ export default function TemplatesPage() {
                     )}
                   <GalleryCard
                     template={t}
+                    selected={tplSelected.has(t.id)}
                     portraitSibling={portraitSiblingFor(t)}
                     onEdit={() => openTemplate(t)}
                     onPutOnScreen={() => putOnScreen(t)}
@@ -3760,6 +3822,15 @@ export default function TemplatesPage() {
             </section>
           )}
         </>
+      )}
+
+      {/* Several selected: one confirmation for all of them (in-use rows pre-checked). */}
+      {bulkDeleteTargets && (
+        <ConnectedTemplateBulkDeleteDialog
+          targets={bulkDeleteTargets}
+          onDone={finishBulkDelete}
+          onCancel={() => setBulkDeleteTargets(null)}
+        />
       )}
 
       {/* One delete confirmation: fresh usage and any errors stay here. */}
@@ -3881,9 +3952,20 @@ export default function TemplatesPage() {
  * is a cached image, not a mounted board.
  */
 export function TemplateListView({
-  templates, categoryLabelFor, usageFor, onPreview, onPrimary, primaryLabel,
+  templates, categoryLabelFor, usageFor, onPreview, onPrimary, primaryLabel, selection,
 }: {
   templates: Template[];
+  /**
+   * A box on every row (owner, 2026-11-23: "pick multiple templates and
+   * delete", as on Assets). The same selection the grid's tiles use, so a
+   * grid/list toggle keeps it; select-all is the box on the heading line,
+   * which serves both views. Omitted for presets, which are never selected.
+   */
+  selection?: {
+    selected: ReadonlySet<string>;
+    onToggle: (id: string) => void;
+    labelFor: (t: Template) => string;
+  };
   categoryLabelFor: (key: string) => string;
   /** Omitted for presets, which have no playlists or screens to report. */
   usageFor?: (t: Template) => TemplateUsageState;
@@ -3900,8 +3982,25 @@ export function TemplateListView({
           const reach = usage ? usageReachLabel(usage) : null;
           const pill = usage ? usagePillLabel(usage) : null;
           const edited = t.isSystem ? null : lastEditedLabel(t.updatedAt);
+          const isSelected = !!selection && !t.isSystem && selection.selected.has(t.id);
           return (
-            <li key={t.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50/70">
+            <li
+              key={t.id}
+              data-selected={isSelected || undefined}
+              className={`flex items-center gap-3 px-3 py-2.5 ${isSelected ? 'bg-indigo-50/60' : 'hover:bg-slate-50/70'}`}
+            >
+              {/* The row's own box — the shared one, as an Assets table row has.
+                  24 px for a mouse, 44 px on a touch screen (negative margin,
+                  so the row does not grow). Never on a preset. */}
+              {selection && !t.isSystem && (
+                <SelectionCheckbox
+                  compact
+                  checked={isSelected}
+                  label={selection.labelFor(t)}
+                  onChange={() => selection.onToggle(t.id)}
+                  testId={`templates-list-select-${t.id}`}
+                />
+              )}
               {/* 2026-09-24 — a REAL thumbnail: the same still frame the grid
                   card draws (an EXTERNAL_HTML board's poster PNG, a zone
                   template's frozen scaled render). This row used to paint only
@@ -5032,9 +5131,11 @@ function sportsSurfaceForCategory(category: string): 'scoreboard' | 'ribbon' | '
 export function GalleryCard({
   template, portraitSibling, onEdit, onPutOnScreen, putOnScreenBusy = false,
   onDuplicate, onExport, onAdaptForLED, onDelete, onPreview, onUseForGame,
-  isViewerDisabled = false, usage, needsAttention = false, categoryLabel,
+  isViewerDisabled = false, usage, needsAttention = false, categoryLabel, selected = false,
 }: {
   template: Template;
+  /** In the gallery's selection: the shared selected-tile ring (SELECTED_TILE_CLASS), as on an Assets tile. */
+  selected?: boolean;
   /** If this template has a portrait sibling preset, pass it here. The
    *  card shows a single canvas badge; the LANDSCAPE / PORTRAIT switch
    *  itself lives in the full-screen preview (§4.4) so it stops competing
@@ -5199,7 +5300,9 @@ export function GalleryCard({
     // template" entirely: the operator could see the menu open and simply
     // could not reach half of it. The clip belongs on the preview band
     // (which is the only thing that needs it), never here.
-    <div className="group flex flex-col rounded-xl border border-slate-200 bg-white transition-shadow duration-200 hover:border-slate-300 hover:shadow-md motion-reduce:transition-none">
+    <div className={`group flex flex-col rounded-xl border bg-white transition-shadow duration-200 motion-reduce:transition-none ${
+      selected ? SELECTED_TILE_CLASS : 'border-slate-200 hover:border-slate-300 hover:shadow-md'
+    }`}>
       {/* ── Preview (§6.2) ──────────────────────────────────────────────
           A real button, not a div with a click handler: Enter and Space
           work for free, the focus ring is the browser's own, and screen
@@ -5770,7 +5873,7 @@ function TemplateBuilder({ template, onBack, onSaved }: {
                     <input type="color" value={bgColor || '#ffffff'}
                       onChange={e => { setBgColor(e.target.value); setBgGradient(''); setIsDirty(true); setSaveStatus('idle'); }}
                       className="w-10 h-8 rounded border border-slate-200 cursor-pointer" />
-                    <input value={bgColor || ''} placeholder="#ffffff"
+                    <input spellCheck={false} value={bgColor || ''} placeholder="#ffffff"
                       onChange={e => { setBgColor(e.target.value); setBgGradient(''); setIsDirty(true); setSaveStatus('idle'); }}
                       className="flex-1 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                     {bgColor && <button onClick={() => { setBgColor(''); setIsDirty(true); setSaveStatus('idle'); }}
@@ -5810,7 +5913,7 @@ function TemplateBuilder({ template, onBack, onSaved }: {
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Image URL</label>
                   <div className="flex gap-2 items-center">
-                    <input value={bgImage || ''} placeholder="https://..."
+                    <input spellCheck={false} value={bgImage || ''} placeholder="https://..."
                       onChange={e => { setBgImage(e.target.value); setIsDirty(true); setSaveStatus('idle'); }}
                       className="flex-1 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300" />
                     {bgImage && <button onClick={() => { setBgImage(''); setIsDirty(true); setSaveStatus('idle'); }}
@@ -6339,7 +6442,7 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
     return (
       <div className="space-y-3 pt-2 border-t border-slate-100">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Website URL</label>
-        <input value={config.url || ''} onChange={e => setConfig({ url: e.target.value })} onBlur={e => {
+        <input spellCheck={false} value={config.url || ''} onChange={e => setConfig({ url: e.target.value })} onBlur={e => {
           const v = e.target.value.trim();
           if (v && !v.startsWith('http://') && !v.startsWith('https://') && !v.startsWith('//')) {
             setConfig({ url: `https://${v}` });
@@ -6578,7 +6681,7 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
     return (
       <div className="space-y-3 pt-2 border-t border-slate-100">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Calendar Feed</label>
-        <input value={config.feedUrl || ''} onChange={e => setConfig({ feedUrl: e.target.value })} placeholder="iCal/Google Calendar URL" className={inputClass} />
+        <input spellCheck={false} value={config.feedUrl || ''} onChange={e => setConfig({ feedUrl: e.target.value })} placeholder="iCal/Google Calendar URL" className={inputClass} />
         <input type="number" min={1} max={20} value={config.maxEvents || 5} onChange={e => setConfig({ maxEvents: parseInt(e.target.value) || 5 })}
           className={inputClass} />
         <span className="text-[10px] text-slate-400">Max events to show</span>
@@ -6622,7 +6725,7 @@ function WidgetConfig({ zone, idx, updateZone }: { zone: Zone; idx: number; upda
     return (
       <div className="space-y-3 pt-2 border-t border-slate-100">
         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">RSS Feed</label>
-        <input value={config.feedUrl || ''} onChange={e => setConfig({ feedUrl: e.target.value })} placeholder="https://example.com/rss" className={inputClass} />
+        <input spellCheck={false} value={config.feedUrl || ''} onChange={e => setConfig({ feedUrl: e.target.value })} placeholder="https://example.com/rss" className={inputClass} />
         <input type="number" min={1} max={20} value={config.maxItems || 5} onChange={e => setConfig({ maxItems: parseInt(e.target.value) || 5 })}
           className={inputClass} />
         <span className="text-[10px] text-slate-400">Max headlines to show</span>

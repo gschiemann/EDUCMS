@@ -994,6 +994,7 @@ function TeamBrand({
     <div className="mt-2 space-y-2">
       <div className="flex items-center gap-1.5">
         <Input
+          spellCheck={false}
           value={site}
           onChange={(e) => setSite(e.target.value)}
           placeholder="Team website — pull logo + colors"
@@ -1043,6 +1044,7 @@ function TeamBrand({
           Logo
         </Button>
         <Input
+          spellCheck={false}
           value={logoUrl}
           onChange={(e) => onLogo(e.target.value)}
           placeholder="…or paste a logo URL"

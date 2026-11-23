@@ -240,6 +240,7 @@ export function AppLibraryPanel() {
         <div>
           <label htmlFor="app-paste-anything" className="sr-only">Paste any link</label>
           <input
+            spellCheck={false}
             id="app-paste-anything"
             type="text"
             inputMode="url"

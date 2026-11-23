@@ -1327,9 +1327,10 @@
         "templatesTitle": "Plantillas",
         "templatesDesc": "Lleva esta marca a las plantillas de pantalla o elimina la marca por completo.",
         "applyTemplates": "Aplicar la marca a las plantillas",
-        "applyTemplatesHelp": "Rellena los colores de marca en las zonas de plantilla que siguen con los valores predeterminados. Las zonas que ya personalizaste no se tocan.",
+        "applyTemplatesHelp": "Coloca tu logotipo, nombre, lema, colores y fuentes en tus plantillas donde un espacio esté vacío o aún muestre una marca anterior, incluida una marca detectada para una sola plantilla en el editor. Lo que cambiaste a mano no se toca.",
         "applying": "Aplicando…",
         "applyDone": "Aplicado a {count} plantillas · {zones} zonas actualizadas.",
+        "applyIdentityDone": "Nombre en {name} · lema en {tagline} · logotipo en {logo} lugares.",
         "applyFailed": "Error al aplicar: no se cambió nada. {message}",
         "previewTitle": "Vista previa en vivo",
         "previewUnsaved": "Sin guardar",
@@ -5871,6 +5872,26 @@
     "deleteAnyway": "Eliminar de todos modos",
     "deleteTemplate": "Eliminar plantilla"
   },
+  "templateBulkDelete": {
+    "title": "¿Eliminar {count, plural, one {# plantilla} other {# plantillas}}?",
+    "followUpTitle": "{count, plural, one {# plantilla acaba de empezar a usarse} other {# plantillas acaban de empezar a usarse}}",
+    "followUpBody": "Cambió dónde se usan mientras se eliminaban. Están marcadas abajo; desmarca las que quieras conservar.",
+    "checking": "Comprobando dónde se usan estas plantillas…",
+    "checkingShort": "Comprobando…",
+    "inUseIntro": "{count, plural, one {# se usa en listas de reproducción.} other {# se usan en listas de reproducción.}} Al eliminarlas se quitan de esas listas, que pasan a su siguiente diseño. Desmarca las que quieras conservar.",
+    "inUse": "En uso",
+    "keptEmergency": "Se conserva: la usa una lista de emergencia",
+    "keptUnknown": "Se conserva: no se pudo comprobar dónde se usa",
+    "usageUnknown": "No se pudo comprobar dónde se usa esta plantilla.",
+    "untitled": "Sin título",
+    "confirm": "Eliminar {count, plural, one {# plantilla} other {# plantillas}}",
+    "nothingToDelete": "Nada que eliminar",
+    "progress": "Eliminando {done} de {total}…",
+    "resultDeleted": "{count, plural, =0 {No se eliminó ninguna plantilla} one {# plantilla eliminada} other {# plantillas eliminadas}}",
+    "resultKeptEmergency": "{count, plural, one {# conservada} other {# conservadas}} (lista de emergencia)",
+    "resultKeptByChoice": "{count, plural, one {# conservada} other {# conservadas}}",
+    "resultFailed": "{count, plural, one {# no se pudo eliminar} other {# no se pudieron eliminar}}: {message}"
+  },
   "builderPanel": {
     "deleteLocked": "Bloqueado — desbloquéalo para eliminarlo",
     "deleteTextElement": "Eliminar elemento de texto",
@@ -6596,6 +6617,8 @@
     "brandIntro": "Un clic hace todo esto:",
     "check": {
       "logo": "Tu logotipo en los espacios de logotipo",
+      "name": "Tu nombre, {name}, y sus iniciales en los espacios del nombre",
+      "tagline": "Tu lema, “{tagline}”, en los espacios del lema",
       "fonts": "Títulos y texto en {fonts}",
       "colors": "Colores de marca en textos, cintas y cuentas regresivas",
       "background": "Un fondo de marca"
@@ -6666,6 +6689,8 @@
     "applySummary": "Marca aplicada: {parts}.",
     "applyWidgets": "{count} de {total} widgets con nuevo estilo",
     "applyLogos": "{count, plural, one {# logotipo colocado} other {# logotipos colocados}}",
+    "applyName": "tu nombre colocado",
+    "applyNameTagline": "tu nombre y tu lema colocados",
     "applyFonts": "fuentes de marca en el texto",
     "applyBgGradient": "fondo con degradado de marca",
     "applyBgSolid": "fondo con color de marca",
@@ -7522,13 +7547,10 @@
     "filterHoliday": "Festividad",
     "categoryTabs": "Categoría",
     "selectTemplate": "Seleccionar {name}",
-    "selectAllShown": "Seleccionar todas tus plantillas mostradas",
+    "selectAllYours": "{count, plural, one {Seleccionar tu # plantilla} other {Seleccionar tus # plantillas}}",
     "duplicate": "Duplicar",
     "export": "Exportar",
-    "delete": "Eliminar",
-    "bulkDeleteTitle": "¿Eliminar {count, plural, one {# plantilla} other {# plantillas}}?",
-    "bulkDeleteBody": "Las plantillas que se muestran en pantallas se omiten: elimínalas una por una para ver dónde se reproducen.",
-    "bulkDeleteDone": "{deleted, plural, one {# plantilla eliminada} other {# plantillas eliminadas}}{skipped, plural, =0 {} one {, # omitida (en uso)} other {, # omitidas (en uso)}}"
+    "delete": "Eliminar"
   },
   "acceptInvite": {
     "title": "Acepta tu invitación",

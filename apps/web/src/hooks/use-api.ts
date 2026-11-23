@@ -5020,6 +5020,24 @@ export function useAdoptTemplateBrandKit(templateId: string) {
 }
 
 /**
+ * "Brand this template" stamped the ORGANISATION brand onto this template's
+ * canvas: record it in the template's brand history (Template.brandKit
+ * `stamped`) so the next Settings > Brand "Apply to templates" recognises
+ * those values and replaces them. The server reads the brand itself; the
+ * body carries nothing. Appends — the snapshot is kept.
+ */
+export function useRecordTemplateBrandStamp(templateId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true; changed: boolean; brandKit: unknown }, Error, void>({
+    mutationFn: () =>
+      apiFetch(`/branding/templates/${templateId}/stamped`, { method: 'POST', body: '{}' }),
+    onSuccess: (res) => {
+      if (res?.changed) qc.invalidateQueries({ queryKey: ['templates', templateId] });
+    },
+  });
+}
+
+/**
  * Clear a template's brand kit. Doesn't touch tenant branding.
  */
 export function useClearTemplateBrandKit(templateId: string) {
@@ -5041,7 +5059,14 @@ export function useClearTemplateBrandKit(templateId: string) {
 export function useApplyBrandToTemplates() {
   const qc = useQueryClient();
   return useMutation<
-    { count: number; zonesPatched: number; mode: string; message: string },
+    {
+      count: number;
+      zonesPatched: number;
+      /** Zones whose name / tagline / initials / logo changed (absent when there were no templates). */
+      identityZonesPatched?: { name: number; tagline: number; initials: number; logo: number };
+      mode: string;
+      message: string;
+    },
     Error,
     { mode?: 'fill-blanks' | 'override' } | void
   >({

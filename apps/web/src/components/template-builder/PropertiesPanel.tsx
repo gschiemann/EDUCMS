@@ -2147,6 +2147,7 @@ function TapActionTargetPicker({
   return (
     <>
       <input
+        spellCheck={kind === 'url' ? false : undefined}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -8016,6 +8017,9 @@ function KioskActionRow({
       </select>
       {needsTarget && (
         <input
+          // A URL, webhook or asset/template ID — except request-help's
+          // message title, which is words.
+          spellCheck={current.type === 'request-help' ? undefined : false}
           type="text"
           className="w-full text-[12px] rounded-md border border-slate-300 bg-white px-2 py-1.5"
           placeholder={meta?.targetPlaceholder || ''}
@@ -10321,6 +10325,7 @@ export function CanvasBackdropSection({
         <div>
           <label htmlFor={bgGradientId} className="block text-[10px] font-semibold text-slate-500 mb-1.5">CSS gradient (advanced)</label>
           <input
+            spellCheck={false}
             id={bgGradientId}
             type="text"
             value={bgGradient}
@@ -10689,6 +10694,7 @@ function AdvancedJson({ zone, configString, configId, updateZone }: { zone: any;
         <div className="bg-slate-50/50 rounded-xl p-3 border border-slate-100 shadow-sm">
           <p className="text-[10px] text-slate-400 mb-1.5">For power users — edit the raw config JSON. Most fields are available in the Content section above.</p>
           <textarea
+            spellCheck={false}
             id={configId}
             rows={5}
             defaultValue={configString}
@@ -11051,6 +11057,7 @@ function ControlledUrlInput({ value, onChange }: { value: string; onChange: (v: 
   }, [value]);
   return (
     <input
+      spellCheck={false}
       type="text"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}

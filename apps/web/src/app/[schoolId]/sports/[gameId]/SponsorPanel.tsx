@@ -377,6 +377,7 @@ function SponsorEditorModal({
                   aria-label="Banner accent color"
                 />
                 <Input
+                  spellCheck={false}
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
                   placeholder="#4f46e5"

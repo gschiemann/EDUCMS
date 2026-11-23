@@ -36,6 +36,7 @@ export function OneTimeLink({
       </p>
       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         <input
+          spellCheck={false}
           readOnly
           value={url}
           onFocus={(e) => e.currentTarget.select()}

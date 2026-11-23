@@ -2202,6 +2202,7 @@ function LoginContent() {
           {useBackupCode ? t('backupCode') : t('authCode')}
         </label>
         <input
+          spellCheck={false}
           id="mfa-code"
           name="mfa-code"
           type="text"
@@ -2296,6 +2297,7 @@ function LoginContent() {
           {t('emailCodeLabel')}
         </label>
         <input
+          spellCheck={false}
           id="mfa-email-code"
           type="text"
           inputMode="numeric"
@@ -2831,6 +2833,7 @@ function LoginContent() {
                         {t('authCode')}
                       </label>
                       <input
+                        spellCheck={false}
                         id="mfa-enroll-code"
                         name="mfa-enroll-code"
                         type="text"
@@ -3100,6 +3103,7 @@ function LoginContent() {
                   {t('orgSlug')}
                 </label>
                 <input
+                  spellCheck={false}
                   id="sso-slug"
                   type="text"
                   autoFocus

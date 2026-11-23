@@ -1,8 +1,17 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import {
+  BOARD_INITIALS_FIELDS,
+  BOARD_LOGO_SLOTS,
+  BOARD_MONOGRAM_FIELDS,
+  BOARD_NAME_FIELDS,
+  BOARD_TAGLINE_FIELDS,
   backgroundBaseColor,
   brandBackgrounds,
   brandChecklist,
   brandColors,
+  brandIdentity,
+  brandInitials,
   brandTemplateBackground,
   brandTextZone,
   brandZoneConfig,
@@ -11,9 +20,12 @@ import {
   hasBrand,
   kitFromTenantBranding,
   logoCornerGeometry,
+  identitySnapshot,
   logoSize,
+  pickBrandKit,
   placeBox,
   readableOn,
+  type BrandKitLike,
 } from '../brand-kit-actions';
 
 const px = (g: { width: number; height: number }, c: { width: number; height: number }) =>
@@ -175,5 +187,173 @@ describe('Brand this template', () => {
     expect(ticker.bgColor).toBe('#1d4ed8');
     expect(contrastRatio(String(ticker.color), '#1d4ed8')).toBeGreaterThanOrEqual(4.5);
     expect(brandZoneConfig({ widgetType: 'SOMETHING', defaultConfig: { a: 1 } }, KIT)).toEqual({ a: 1 });
+  });
+});
+
+describe('Brand this template — the organisation name, tagline and initials (owner, demo rebrand)', () => {
+  const REBRAND = { ...KIT, displayName: 'Lincoln High School', tagline: 'Home of the Eagles' };
+
+  it('brandInitials: the same rule a new template gets from the API', () => {
+    expect(brandInitials('Lincoln High School')).toBe('LHS');
+    expect(brandInitials('The Academy of Arts')).toBe('AA');
+    expect(brandInitials('north-west_college/east campus')).toBe('NWC');
+    expect(brandInitials('')).toBe('');
+    expect(brandInitials(null)).toBe('');
+    expect(brandIdentity(REBRAND)).toEqual({ name: 'Lincoln High School', tagline: 'Home of the Eagles', initials: 'LHS', monogram: 'L' });
+    expect(brandIdentity({ displayName: '   ', tagline: '' })).toEqual({ name: null, tagline: null, initials: null, monogram: null });
+  });
+
+  it('the checklist names the name and tagline when the brand has them', () => {
+    expect(brandChecklist(REBRAND)).toEqual(['logo', 'name', 'tagline', 'fonts', 'colors', 'background']);
+    expect(brandChecklist({ ...KIT, displayName: 'Lincoln High School' })).toEqual(['logo', 'name', 'fonts', 'colors', 'background']);
+    expect(brandChecklist({ ...KIT, displayName: ' ', tagline: '' })).toEqual(['logo', 'fonts', 'colors', 'background']);
+  });
+
+  it('a packaged board gets the name, tagline, initials, monogram AND the logo, replacing the old brand', () => {
+    const cfg = brandZoneConfig({
+      widgetType: 'EXTERNAL_HTML',
+      defaultConfig: {
+        url: '/templates/x.html',
+        textOverrides: { 'brand.name': 'Old Academy', 'brand.tagline': 'Old motto', 'school.initials': 'OA', 'menu.item1': 'Tacos' },
+        imageOverrides: { 'brand.logo': 'https://cdn.example/old.png', 'hero.photo': 'h.jpg' },
+      },
+    }, REBRAND);
+    const text = cfg.textOverrides as Record<string, string>;
+    for (const k of BOARD_NAME_FIELDS) expect(text[k]).toBe('Lincoln High School');
+    for (const k of BOARD_TAGLINE_FIELDS) expect(text[k]).toBe('Home of the Eagles');
+    for (const k of BOARD_INITIALS_FIELDS) expect(text[k]).toBe('LHS');
+    expect(text['brand.monogram']).toBe('L');
+    expect(text['menu.item1']).toBe('Tacos');
+    expect(cfg.imageOverrides).toEqual({ 'brand.logo': KIT.logoUrl, 'school.logo': KIT.logoUrl, 'hero.photo': 'h.jpg' });
+    // Mixed-meaning fields are never written.
+    for (const k of ['brand.tag', 'school.sub', 'brand.promise', 'brand.descriptor', 'school.systemName']) expect(text[k]).toBeUndefined();
+  });
+
+  it('a LOGO widget gets the logo, name and tagline; initials only where it already carries them', () => {
+    const plain = brandZoneConfig({ widgetType: 'LOGO', defaultConfig: { variant: 'logo-wordmark', schoolName: 'Old Academy', tagline: 'Old motto' } }, REBRAND);
+    expect(plain).toMatchObject({ assetUrl: KIT.logoUrl, logoUrl: KIT.logoUrl, schoolName: 'Lincoln High School', tagline: 'Home of the Eagles' });
+    expect(plain).not.toHaveProperty('initials');
+    const crest = brandZoneConfig({ widgetType: 'LOGO', defaultConfig: { theme: 'stem-lab', initials: 'OA' } }, REBRAND);
+    expect(crest).toMatchObject({ schoolName: 'Lincoln High School', initials: 'LHS' });
+  });
+
+  it('an HS_* widget gets the name uppercased and its school initials', () => {
+    const cfg = brandZoneConfig({ widgetType: 'HS_VARSITY', defaultConfig: { schoolName: 'OLD ACADEMY', schoolInitials: 'OA', department: 'Athletics' } }, REBRAND);
+    expect(cfg).toMatchObject({ schoolName: 'LINCOLN HIGH SCHOOL', schoolInitials: 'LHS', department: 'Athletics' });
+    expect(cfg).not.toHaveProperty('tagline');
+  });
+
+  it('a widget whose initials / tagline mean a person or a sponsor (no schoolName) is left alone', () => {
+    const staff = { initials: 'JD', name: 'Jane Doe' };
+    expect(brandZoneConfig({ widgetType: 'STAFF_SPOTLIGHT', defaultConfig: staff }, REBRAND)).toMatchObject(staff);
+    const sponsor = { sponsor: 'Acme Hardware', tagline: 'Proud supporter of student athletes.' };
+    expect(brandZoneConfig({ widgetType: 'RIBBON_SPONSOR', defaultConfig: sponsor }, REBRAND)).toEqual(sponsor);
+  });
+
+  it('a widget that carries schoolName gets the name and only the identity keys it already has', () => {
+    const cfg = brandZoneConfig({ widgetType: 'SOMETHING', defaultConfig: { schoolName: 'Old Academy', initials: 'OA', tagline: 'Old' } }, REBRAND);
+    expect(cfg).toEqual({ schoolName: 'Lincoln High School', initials: 'LHS', tagline: 'Home of the Eagles' });
+    expect(brandZoneConfig({ widgetType: 'SOMETHING', defaultConfig: { schoolName: 'Old Academy' } }, REBRAND)).toEqual({ schoolName: 'Lincoln High School' });
+  });
+
+  it('a brand with no tagline writes no tagline and never an empty string', () => {
+    const noTagline = { ...KIT, displayName: 'Lincoln High School', tagline: '' };
+    const board = brandZoneConfig({ widgetType: 'EXTERNAL_HTML', defaultConfig: { textOverrides: { 'brand.tagline': 'Kept motto' } } }, noTagline);
+    const text = board.textOverrides as Record<string, string>;
+    expect(text['brand.tagline']).toBe('Kept motto');
+    expect(text['school.motto']).toBeUndefined();
+    expect(text['brand.name']).toBe('Lincoln High School');
+    const logo = brandZoneConfig({ widgetType: 'LOGO', defaultConfig: { tagline: 'Kept motto' } }, noTagline);
+    expect(logo.tagline).toBe('Kept motto');
+    expect(Object.values(text)).not.toContain('');
+  });
+
+  it('a brand with no name and no tagline leaves every text field as it was', () => {
+    const before = { url: '/templates/x.html', textOverrides: { 'brand.name': 'Kept' } };
+    const cfg = brandZoneConfig({ widgetType: 'EXTERNAL_HTML', defaultConfig: before }, { palette: KIT.palette });
+    expect(cfg.textOverrides).toEqual({ 'brand.name': 'Kept' });
+    expect(brandZoneConfig({ widgetType: 'LOGO', defaultConfig: { schoolName: 'Kept' } }, { palette: KIT.palette }).schoolName).toBe('Kept');
+    expect(brandZoneConfig({ widgetType: 'HS_VARSITY', defaultConfig: { schoolName: 'KEPT' } }, { palette: KIT.palette }).schoolName).toBe('KEPT');
+  });
+
+  it('identitySnapshot sees a name change and ignores everything else', () => {
+    const a = { schoolName: 'A', color: '#000000' };
+    expect(identitySnapshot(a)).toBe(identitySnapshot({ ...a, color: '#ffffff' }));
+    expect(identitySnapshot(a)).not.toBe(identitySnapshot({ ...a, schoolName: 'B' }));
+    expect(identitySnapshot({ textOverrides: { 'brand.name': 'A' } })).not.toBe(identitySnapshot({ textOverrides: { 'brand.name': 'B' } }));
+  });
+
+  it('the organisation tagline reaches the kit', () => {
+    expect(kitFromTenantBranding({ displayName: 'Lincoln High School', tagline: 'Home of the Eagles', logoUrl: 'l.png' })).toMatchObject({ displayName: 'Lincoln High School', tagline: 'Home of the Eagles' });
+  });
+
+  it('which kit: a per-template detection wins; a copy taken at creation gives way to the current organisation brand', () => {
+    const org: BrandKitLike = { ...REBRAND };
+    const detected: BrandKitLike = { logoUrl: 'site.png', displayName: 'Site Name' };
+    const inherited: BrandKitLike = { logoUrl: 'old.png', displayName: 'Old Academy', inheritedFrom: 'tenant-branding' };
+    expect(pickBrandKit(detected, org)).toEqual({ kit: detected, source: 'template' });
+    expect(pickBrandKit(inherited, org)).toEqual({ kit: org, source: 'org' });
+    expect(pickBrandKit(inherited, null)).toEqual({ kit: inherited, source: 'template' });
+    expect(pickBrandKit(null, org)).toEqual({ kit: org, source: 'org' });
+    expect(pickBrandKit(null, null)).toEqual({ kit: null, source: null });
+  });
+});
+
+// ── Parity with the API ─────────────────────────────────────────────────
+// apps/api/src/branding/brand-identity.spec.ts pins the SAME lists and
+// initials table. Settings > Brand "Apply to templates" recognises what
+// "Brand this template" stamped only if both sides agree.
+describe('parity with the API (apps/api/src/branding/brand-identity.ts)', () => {
+  const PINNED = {
+    BOARD_NAME_FIELDS: ['brand.name', 'school.name', 'brand.restaurant'],
+    BOARD_TAGLINE_FIELDS: ['brand.tagline', 'school.motto'],
+    BOARD_INITIALS_FIELDS: ['school.initials', 'brand.initials', 'brand.mark'],
+    BOARD_MONOGRAM_FIELDS: ['brand.monogram'],
+    BOARD_LOGO_SLOTS: ['brand.logo', 'school.logo'],
+  };
+  const INITIALS: Array<[string, string]> = [
+    ['Lincoln High School', 'LHS'],
+    ['The Academy of Arts', 'AA'],
+    ['Buena Park High School', 'BPH'],
+    ['north-west elementary', 'NWE'],
+    ['St. Mary_Catholic/School', 'SMC'],
+    ['A School for the Arts', 'SA'],
+    ['Lincoln & Sons', 'L&S'],
+    ['   ', ''],
+    ['', ''],
+  ];
+
+  it('pins the board field lists', () => {
+    expect([...BOARD_NAME_FIELDS]).toEqual(PINNED.BOARD_NAME_FIELDS);
+    expect([...BOARD_TAGLINE_FIELDS]).toEqual(PINNED.BOARD_TAGLINE_FIELDS);
+    expect([...BOARD_INITIALS_FIELDS]).toEqual(PINNED.BOARD_INITIALS_FIELDS);
+    expect([...BOARD_MONOGRAM_FIELDS]).toEqual(PINNED.BOARD_MONOGRAM_FIELDS);
+    expect([...BOARD_LOGO_SLOTS]).toEqual(PINNED.BOARD_LOGO_SLOTS);
+  });
+
+  it.each(INITIALS)('initials of %j are %j', (name, want) => {
+    expect(brandInitials(name)).toBe(want);
+    const id = brandIdentity({ displayName: name });
+    expect(id.initials).toBe(want || null);
+    expect(id.monogram).toBe(want ? want[0] : null);
+  });
+
+  it('the API file declares the same lists and the same skip words', () => {
+    const apiFile = resolve(__dirname, '../../../../../api/src/branding/brand-identity.ts');
+    const ownFile = resolve(__dirname, '../brand-kit-actions.ts');
+    const lists = (src: string): Record<string, string[]> => {
+      const out: Record<string, string[]> = {};
+      const re = /export const (BOARD_[A-Z_]+)\s*=\s*\[([^\]]*)\]/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src))) out[m[1]] = Array.from(m[2].matchAll(/'([^']+)'/g), (x) => x[1]);
+      return out;
+    };
+    const skipWords = (src: string) => /\/\^\(([a-z|]+)\)\$\/i/.exec(src)?.[1] ?? null;
+    const api = readFileSync(apiFile, 'utf8');
+    const own = readFileSync(ownFile, 'utf8');
+    expect(lists(api)).toEqual(PINNED);
+    expect(lists(own)).toEqual(PINNED);
+    expect(skipWords(own)).toBe('the|of|at|and|for|in|a|an');
+    expect(skipWords(api)).toBe(skipWords(own));
   });
 });

@@ -400,6 +400,7 @@ function SponsorModal({ sponsor, onClose }: { sponsor: Sponsor | null; onClose: 
             )}
           </div>
           <Input
+            spellCheck={false}
             className="mt-2"
             value={logoUrl}
             onChange={(e) => setLogoUrl(e.target.value)}
