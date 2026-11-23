@@ -1437,6 +1437,7 @@ export default function AssetsPage() {
       {showUrlForm && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex gap-3">
           <input
+            spellCheck={false}
             ref={urlInputRef}
             value={webUrl}
             onChange={e => setWebUrl(e.target.value)}

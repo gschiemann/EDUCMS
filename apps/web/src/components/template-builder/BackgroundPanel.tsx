@@ -501,6 +501,7 @@ export function BackgroundPanel() {
                 Custom CSS gradient
               </label>
               <input
+                spellCheck={false}
                 id="bg-panel-custom-gradient"
                 type="text"
                 value={meta.bgGradient || ''}
@@ -514,6 +515,7 @@ export function BackgroundPanel() {
                 Solid color (hex)
               </label>
               <input
+                spellCheck={false}
                 id="bg-panel-solid-color"
                 type="text"
                 value={meta.bgColor || ''}

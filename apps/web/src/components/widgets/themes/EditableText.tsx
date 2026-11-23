@@ -178,7 +178,12 @@ export function EditableText({
           else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
           e.stopPropagation();
         }}
-        spellCheck={false}
+        // Spell check ON (2026-11-23): these words go on screens, so a typo
+        // caught here is one that never reaches the glass. This textarea
+        // exists only in edit mode, and edit mode needs `onConfigChange`,
+        // which only the template builder passes — no screen route
+        // (/player, /board, …) ever renders it. Autocorrect is untouched.
+        spellCheck
         style={{
           width: '100%',
           height: '100%',

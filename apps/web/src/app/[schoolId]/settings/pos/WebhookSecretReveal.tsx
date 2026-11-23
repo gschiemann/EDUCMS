@@ -32,6 +32,7 @@ export function WebhookSecretReveal({ secret, onDone }: { secret: string; onDone
       <p className="text-xs text-slate-600">{t('billingCommerce.webhookSecretIssuedBody')}</p>
       <div className="flex items-center gap-2">
         <input
+          spellCheck={false}
           readOnly
           value={secret}
           aria-label={t('billingCommerce.webhookSecretIssuedTitle')}

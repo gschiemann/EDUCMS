@@ -6522,6 +6522,7 @@ export function DivingJudgePadSection({
               Dive code
             </span>
             <input
+              spellCheck={false}
               type="text"
               value={diveCode}
               onChange={(e) => setDiveCode(e.target.value)}
@@ -7275,6 +7276,7 @@ function PresentationSettingsSection({
             Celebration sound
           </label>
           <Input
+            spellCheck={false}
             id="celebration-sound-url"
             className="mt-1"
             value={audioUrl}
@@ -8844,6 +8846,7 @@ function SpotlightControl({
             Choose
           </Button>
           <Input
+            spellCheck={false}
             id="spotlight-photo-url"
             value={photoUrl}
             onChange={(e) => setPhotoUrl(e.target.value)}
