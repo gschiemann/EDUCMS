@@ -18,9 +18,14 @@
  *   1. Both screens lock their clocks (uncertainty gate passes).
  *   2. EVERY flip on both screens resolves the right slide for its slot on
  *      the epoch grid: boundaryT is a multiple of SLOT_MS and
- *      toIdx === (boundaryT / SLOT_MS) mod ITEM_COUNT. For B's engage this
- *      is the late-joiner property — it boots seconds after A and lands on
- *      A's timeline, with no start-from-zero.
+ *      toIdx === (boundaryT / SLOT_MS) mod ITEM_COUNT. That proves the
+ *      timeline is anchored to the Unix-epoch grid. For every ENGAGE it is
+ *      also checked against the shared clock: the decision instant (wallT,
+ *      moved onto the mocked server clock by the page's measured wall
+ *      basis) plus its lead falls inside the slot it resolved, within
+ *      ENGAGE_CLOCK_TOLERANCE_MS. For B's engage that is the late-joiner
+ *      property itself — it boots seconds after A and lands on the slot
+ *      that was current, with no start-from-zero.
  *   3. EPOCH ANCHORING against the shared clock: paintWallT - boundaryT
  *      (when the new slide was painted, on the machine's wall clock, versus
  *      the boundary it belongs to) within GRID_TOLERANCE_MS.
@@ -29,7 +34,20 @@
  *      sees, including each screen's clock-estimate error and its own
  *      render lead.
  *   5. THE JOIN WINDOW: B's first boundary crossing after its engage is
- *      asserted on its own, with JOIN_SKEW_BOUND_MS, never folded into 4.
+ *      asserted on its own, with JOIN_SKEW_BOUND_MS, never folded into 4:
+ *      paint skew, and both screens' anchors at that boundary.
+ *   6. CONTINUITY: B's boundary crossings from the join on are consecutive
+ *      slots, so a crossing B took as a re-engage after joining (a stand-down
+ *      and re-lock, or a multi-slot jump) cannot drop out of 4 unseen.
+ *
+ * NOT asserted, annotated only ('sync-a-before-join'): A's crossings before
+ * B's first boundary. B is booting then, and on this one machine B's boot
+ * competes with A for CPU: in 24 local runs A's anchors there went up to
+ * 276 ms, with decision-to-paint up to 187 ms, over the anchoring tolerance,
+ * while every anchor from the join on stayed under 20 ms. That is harness
+ * contention, not the product, and the check before 2026-11-23 never
+ * measured it either (it measured the render lead), so leaving it out is not
+ * a loosening.
  *
  * Crossings are chosen by the log's `kind` ('boundary' — the screen was
  * conducting when the boundary passed), not by a timing window. Until
@@ -141,6 +159,23 @@ const GRID_TOLERANCE_MS = process.env.CI ? 120 : 60;
  * 'sync-join' annotations.
  */
 const JOIN_SKEW_BOUND_MS = 250;
+
+/**
+ * Engage-on-the-shared-clock tolerance: how far an engage's decision instant,
+ * on the mocked server clock, may sit outside the slot the engage resolved
+ * (decision + lead must fall in [boundaryT, boundaryT + SLOT_MS)).
+ *
+ * Everything inside it is the screen's clock-estimate error at the engage:
+ * the wall basis (Date.now() - performance wall, annotated as
+ * 'sync-clock-basis', -0.9..0 ms locally) is applied first. Here that
+ * error is about 1-3 ms by construction (see HARNESS LIMIT; locally -1.8 to
+ * -0.1 ms over 24 runs), so 10 ms is margin, not slack. The check can only
+ * fail when the clock error exceeds the tolerance, and then only for an
+ * engage that lands within that error of a slot edge; a clock wrong by a
+ * slot, or a resolver off by one, fails it wherever the engage lands.
+ * Smaller clock errors are caught later by the anchoring checks.
+ */
+const ENGAGE_CLOCK_TOLERANCE_MS = 10;
 
 const PNG_1PX = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -529,6 +564,22 @@ test.describe('frame-locked multi-screen sync', () => {
           expect(f.toIdx, `[${tag}] wrong slide for its slot on the epoch grid: ${JSON.stringify(f)}`).toBe(slotIndexOf(f.boundaryT));
         }
       }
+      // The two checks above come from the page's own resolveTimeline call,
+      // so they prove the grid, not the clock. For each engage, also check
+      // the slot it resolved against the SHARED clock: the decision instant
+      // on the mocked server clock (wallT + this page's wall basis) plus the
+      // lead it used must fall inside [boundaryT, boundaryT + SLOT_MS).
+      for (const [tag, flips, basis] of [['A', flipsA, basisA], ['B', flipsB, basisB]] as const) {
+        for (const f of flips) {
+          if (f.kind !== 'engage') continue;
+          expect(f.wallT, `[${tag}] engage has no wall-clock decision instant: ${JSON.stringify(f)}`).not.toBeNull();
+          const offsetOnSharedClock = f.wallT! + basis + f.leadMs - f.boundaryT;
+          const msg = `[${tag}] engage resolved a slot that was not current on the shared clock ` +
+            `(decision + lead at ${r1(offsetOnSharedClock)} ms into the slot, tolerance ${ENGAGE_CLOCK_TOLERANCE_MS} ms): ${JSON.stringify(f)}`;
+          expect(offsetOnSharedClock, msg).toBeGreaterThanOrEqual(-ENGAGE_CLOCK_TOLERANCE_MS);
+          expect(offsetOnSharedClock, msg).toBeLessThan(SLOT_MS + ENGAGE_CLOCK_TOLERANCE_MS);
+        }
+      }
 
       expect(join, 'screen B recorded no boundary crossing').not.toBeNull();
       const joinB = join!.fb;
@@ -540,10 +591,26 @@ test.describe('frame-locked multi-screen sync', () => {
         join!.row.paintSkewMs!,
         `join-window paint skew, B's first boundary after engage (bound ${JOIN_SKEW_BOUND_MS}ms, ${browserName}): ${JSON.stringify(join!.row)}`,
       ).toBeLessThan(JOIN_SKEW_BOUND_MS);
-      expect(
-        Math.abs(joinB.paintWallT! - joinB.boundaryT),
-        `join-window anchor, B (bound ${JOIN_SKEW_BOUND_MS}ms, ${browserName}): ${JSON.stringify(join!.row)}`,
-      ).toBeLessThan(JOIN_SKEW_BOUND_MS);
+      for (const [tag, f] of [['A', join!.fa!], ['B', joinB]] as const) {
+        expect(
+          Math.abs(f.paintWallT! - f.boundaryT),
+          `join-window anchor, ${tag} (bound ${JOIN_SKEW_BOUND_MS}ms, ${browserName}): ${JSON.stringify(join!.row)}`,
+        ).toBeLessThan(JOIN_SKEW_BOUND_MS);
+      }
+
+      // ── 6. Continuity: from the join on, B crossed every slot as a
+      // 'boundary'. A crossing B took as an 'engage' after joining (a
+      // stand-down and re-lock, or a multi-slot jump) would otherwise be
+      // left out of the steady-state pairs without a trace. (A duplicate
+      // re-log of the same flip, from a tick that runs before React commits
+      // the index, is correctly an 'engage' and leaves no gap here.)
+      const boundarySeqB = boundaryB.map((f) => f.boundaryT);
+      for (let i = 1; i < boundarySeqB.length; i++) {
+        expect(
+          Math.abs(boundarySeqB[i] - boundarySeqB[i - 1] - SLOT_MS),
+          `B's boundary crossings after the join are not consecutive slots: ${JSON.stringify(boundaryB.map(describeFlip))}`,
+        ).toBeLessThan(1);
+      }
 
       // ── 3+4. Steady state: both screens conducting.
       expect(steady.length, 'too few steady-state boundaries after the join').toBeGreaterThanOrEqual(STEADY_BOUNDARIES);
