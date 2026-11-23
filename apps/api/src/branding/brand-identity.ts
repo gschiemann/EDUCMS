@@ -26,6 +26,12 @@
 export type BrandApplyMode = 'fill-blanks' | 'override';
 
 // ── Board (EXTERNAL_HTML) field keys ─────────────────────────────────
+// PARITY: these lists and deriveInitials() must stay identical to the web
+// editor's copies in apps/web/src/components/template-builder/brand-kit-actions.ts
+// (BOARD_*_FIELDS, brandInitials). A rebrand recognises what the editor's
+// "Brand this template" stamped only if both sides write the same keys with
+// the same initials. Both test suites pin the same lists and examples, and
+// brand-identity.spec.ts reads the web file to check it.
 // `data-field` keys in apps/web/public/templates/**/*.html, applied by the
 // in-iframe shim from cfg.textOverrides. A key a board does not carry is
 // ignored by the shim, so writing every alias is safe. Deliberately NOT
@@ -254,7 +260,8 @@ export interface ZoneIdentityResult {
  *                  initials ← initials (only when the zone already has that key)
  *   HS_*           schoolName ← NAME (uppercase); schoolInitials ← initials
  *   anything else  only when the config already carries `schoolName`:
- *                  schoolName, and tagline / initials where those keys exist
+ *                  schoolName, and tagline / initials / schoolInitials where
+ *                  those keys exist
  *                  (a STAFF_SPOTLIGHT `initials` is a person's; a sponsor
  *                  `tagline` is the sponsor's — neither has a schoolName).
  */
@@ -343,6 +350,11 @@ export function patchZoneIdentity(
     if (
       'initials' in cfg &&
       put(cfg, 'initials', id.initials, prevInitials, mode)
+    )
+      changed.add('initials');
+    if (
+      'schoolInitials' in cfg &&
+      put(cfg, 'schoolInitials', id.initials, prevInitials, mode)
     )
       changed.add('initials');
   }

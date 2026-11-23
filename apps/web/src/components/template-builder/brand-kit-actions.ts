@@ -110,6 +110,13 @@ export function pickBrandKit<K extends BrandKitLike>(
 }
 
 // ── Organisation identity: name, tagline, initials ──────────────────────
+// PARITY: these lists and brandInitials() must stay identical to the API's
+// copies in apps/api/src/branding/brand-identity.ts (BOARD_*_FIELDS,
+// deriveInitials), which Settings > Brand "Apply to templates" and new
+// templates use. A rebrand recognises what this editor stamped only if both
+// sides write the same keys with the same initials. Both test suites pin the
+// same lists and examples, and brand-kit-actions.test.ts reads the API file
+// to check it.
 
 /** Board text fields (`data-field` keys) that hold the organisation's name. */
 export const BOARD_NAME_FIELDS = ['brand.name', 'school.name', 'brand.restaurant'] as const;
@@ -123,8 +130,8 @@ export const BOARD_MONOGRAM_FIELDS = ['brand.monogram'] as const;
 const INITIALS_SKIP = /^(the|of|at|and|for|in|a|an)$/i;
 
 /**
- * Initials for an organisation name — the same rule the API uses when a
- * template is created: split on whitespace / - / _ / slash, skip
+ * Initials for an organisation name — the same rule as the API's
+ * deriveInitials (apps/api/src/branding/brand-identity.ts): split on whitespace / - / _ / slash, skip
  * the/of/at/and/for/in/a/an, first letter of up to three words, uppercase.
  * "Lincoln High School" → "LHS"; "The Academy of Arts" → "AA".
  */
@@ -456,8 +463,8 @@ export function brandTemplateBackground(kit: BrandKitLike): { bgColor: string; b
   return null;
 }
 
-/** Image-slot keys packaged boards use for the organisation logo. */
-export const BOARD_LOGO_SLOTS = ['brand.logo', 'school.logo'];
+/** Image-slot keys packaged boards use for the organisation logo (same list as the API's BOARD_LOGO_SLOTS). */
+export const BOARD_LOGO_SLOTS = ['brand.logo', 'school.logo'] as const;
 
 /**
  * The name, tagline and initials for ONE React widget. "Brand this template"

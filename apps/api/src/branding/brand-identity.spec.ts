@@ -7,7 +7,9 @@
  * must replace what the first one stamped — but never text typed by hand.
  */
 import {
+  BOARD_INITIALS_FIELDS,
   BOARD_LOGO_SLOTS,
+  BOARD_MONOGRAM_FIELDS,
   BOARD_NAME_FIELDS,
   BOARD_TAGLINE_FIELDS,
   BrandLike,
@@ -557,5 +559,101 @@ describe('brandKitSnapshot / brandKitAsBrand', () => {
     expect(brandKitAsBrand(null)).toBeNull();
     expect(brandKitAsBrand([])).toBeNull();
     expect(brandKitAsBrand('not json')).toBeNull();
+  });
+});
+
+// ── Parity with the web editor ───────────────────────────────────────
+// apps/web/src/components/template-builder/__tests__/brand-kit-actions.test.ts
+// pins the SAME lists and initials table. A rebrand recognises what the
+// editor's "Brand this template" stamped only if both sides agree.
+describe('parity with the web editor (brand-kit-actions.ts)', () => {
+  const PINNED = {
+    BOARD_NAME_FIELDS: ['brand.name', 'school.name', 'brand.restaurant'],
+    BOARD_TAGLINE_FIELDS: ['brand.tagline', 'school.motto'],
+    BOARD_INITIALS_FIELDS: ['school.initials', 'brand.initials', 'brand.mark'],
+    BOARD_MONOGRAM_FIELDS: ['brand.monogram'],
+    BOARD_LOGO_SLOTS: ['brand.logo', 'school.logo'],
+  };
+  const INITIALS: Array<[string, string]> = [
+    ['Lincoln High School', 'LHS'],
+    ['The Academy of Arts', 'AA'],
+    ['Buena Park High School', 'BPH'],
+    ['north-west elementary', 'NWE'],
+    ['St. Mary_Catholic/School', 'SMC'],
+    ['A School for the Arts', 'SA'],
+    ['Lincoln & Sons', 'L&S'],
+    ['   ', ''],
+    ['', ''],
+  ];
+
+  it('pins the board field lists', () => {
+    expect([...BOARD_NAME_FIELDS]).toEqual(PINNED.BOARD_NAME_FIELDS);
+    expect([...BOARD_TAGLINE_FIELDS]).toEqual(PINNED.BOARD_TAGLINE_FIELDS);
+    expect([...BOARD_INITIALS_FIELDS]).toEqual(PINNED.BOARD_INITIALS_FIELDS);
+    expect([...BOARD_MONOGRAM_FIELDS]).toEqual(PINNED.BOARD_MONOGRAM_FIELDS);
+    expect([...BOARD_LOGO_SLOTS]).toEqual(PINNED.BOARD_LOGO_SLOTS);
+  });
+
+  it.each(INITIALS)('initials of %j are %j', (name, want) => {
+    expect(deriveInitials(name)).toBe(want);
+    const id = identityFromBrand({ displayName: name });
+    expect(id.initials).toBe(want || null);
+    expect(id.monogram).toBe(want ? want[0] : null);
+  });
+
+  it('the web file declares the same lists and the same skip words', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('path') as typeof import('path');
+    const webFile = path.resolve(
+      __dirname,
+      '../../../web/src/components/template-builder/brand-kit-actions.ts',
+    );
+    const web = fs.readFileSync(webFile, 'utf8');
+    const own = fs.readFileSync(
+      path.resolve(__dirname, 'brand-identity.ts'),
+      'utf8',
+    );
+    const lists = (src: string): Record<string, string[]> => {
+      const out: Record<string, string[]> = {};
+      const re = /export const (BOARD_[A-Z_]+)\s*=\s*\[([^\]]*)\]/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(src))) {
+        out[m[1]] = Array.from(m[2].matchAll(/'([^']+)'/g), (x) => x[1]);
+      }
+      return out;
+    };
+    const skipWords = (src: string) =>
+      /\/\^\(([a-z|]+)\)\$\/i/.exec(src)?.[1] ?? null;
+    expect(lists(web)).toEqual(PINNED);
+    expect(lists(own)).toEqual(PINNED);
+    expect(skipWords(web)).toBe('the|of|at|and|for|in|a|an');
+    expect(skipWords(own)).toBe(skipWords(web));
+  });
+});
+
+describe('patchZoneIdentity — schoolInitials on a widget that carries schoolName (web parity)', () => {
+  it('fills schoolInitials only where the key exists', () => {
+    const r = patchZoneIdentity(
+      {
+        widgetType: 'THEME_CREST',
+        cfg: { schoolName: '', schoolInitials: '' },
+      },
+      { displayName: 'Lincoln High School' },
+      null,
+      'fill-blanks',
+    );
+    expect(r.cfg).toEqual({
+      schoolName: 'Lincoln High School',
+      schoolInitials: 'LHS',
+    });
+    const none = patchZoneIdentity(
+      { widgetType: 'THEME_CREST', cfg: { schoolName: '' } },
+      { displayName: 'Lincoln High School' },
+      null,
+      'fill-blanks',
+    );
+    expect(none.cfg).toEqual({ schoolName: 'Lincoln High School' });
   });
 });
