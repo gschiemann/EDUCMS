@@ -1727,6 +1727,9 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       await expect(full, 'a refused banner posture is shown as the full broadcast presentation').toBeVisible({ timeout: 10_000 });
       await expect(full).toContainText(BANNER_TEXT);
       await expect(banner).toHaveCount(0);
+      // Review round 2: with no tenant alert up, the takeover surface under the
+      // full broadcast must not carry the protective "EMERGENCY" words.
+      await expect(page.locator('[data-edu-emergency-pending]'), 'no pending EMERGENCY words under a broadcast when no alert is up').toHaveCount(0);
       const fullId = await full.getAttribute('data-edu-emergency-identity');
       expect(fullId).toBeTruthy();
 
@@ -1755,6 +1758,7 @@ test.describe('Emergency path — P0-8 regression suite', () => {
       await expect(full, 'the still-active broadcast comes back after the all-clear').toBeVisible({ timeout: 10_000 });
       await expect(full).toContainText(BANNER_TEXT);
       expect(await full.getAttribute('data-edu-emergency-identity')).toBe(fullId);
+      await expect(page.locator('[data-edu-emergency-pending]'), 'no pending EMERGENCY words under the broadcast after the all-clear').toHaveCount(0);
       const tSync = Date.now();
       expect(await send('SYNC', {})).toBe(true);
       await expect.poll(async () => holds(await postsSince(page, tSync)).some((a) => a.length === 1 && a[0] === true), {
