@@ -28,6 +28,7 @@ import {
   currentPlacement,
   hasBrand,
   identitySnapshot,
+  zoneLogoChanged,
   isTextZone,
   kitFromTenantBranding,
   logoSize,
@@ -177,8 +178,8 @@ export function BrandKitPanel() {
             summary.widgets += 1;
             const brand = cfg.brand as Record<string, unknown> | undefined;
             if ((k.fontHeading || k.fontBody) && (cfg.fontFamily || brand?.fontDisplay || brand?.fontBody)) summary.fonts = true;
-            if (z.widgetType === 'LOGO' && k.logoUrl) summary.logos += 1;
-            if (identitySnapshot(cfg) !== identitySnapshot(z.defaultConfig)) summary.identity = true;
+            if (z.widgetType === 'LOGO' ? !!k.logoUrl : zoneLogoChanged(z.widgetType, z.defaultConfig, cfg)) summary.logos += 1;
+            if (identitySnapshot(cfg, z.widgetType) !== identitySnapshot(z.defaultConfig, z.widgetType)) summary.identity = true;
           }
           return { defaultConfig: cfg };
         });

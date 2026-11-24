@@ -1327,7 +1327,7 @@
         "templatesTitle": "模板",
         "templatesDesc": "将此品牌应用到屏幕模板，或彻底清除品牌。",
         "applyTemplates": "将品牌应用到模板",
-        "applyTemplatesHelp": "在模板中空白或仍显示旧品牌的位置放入你的标志、名称、标语、颜色和字体，包括在编辑器中为单个模板检测到的品牌。你手动更改过的内容不会被改动。",
+        "applyTemplatesHelp": "在模板中空白、仍显示模板示例名称、标语或标志，或仍显示旧品牌的位置放入你的标志、名称、标语、颜色和字体，包括在编辑器中为单个模板检测到的品牌。你手动更改过的内容不会被改动。",
         "applying": "正在应用…",
         "applyDone": "已应用到 {count} 个模板 · 更新了 {zones} 个区域。",
         "applyIdentityDone": "名称更新了 {name} 处 · 标语 {tagline} 处 · 标志 {logo} 处。",

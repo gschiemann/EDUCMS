@@ -3,7 +3,8 @@
  *
  * Owner, before a demo: "make sure that when I rebrand something everything
  * gets updated that's available". A clone now fills the organisation name,
- * tagline, initials and logo (blanks only — a preset's own text wins), and
+ * tagline, initials and logo (blanks, and a widget's own sample text nobody
+ * typed — a preset's or a duplicated template's other text wins), and
  * its Template.brandKit snapshot carries the tagline, so a later rebrand
  * (POST /branding/apply-to-templates) can recognise what this clone stamped.
  */
@@ -86,6 +87,17 @@ const SOURCE = {
       sortOrder: 2,
       defaultConfig: null,
     },
+    {
+      name: 'Arcade',
+      widgetType: 'MS_ARCADE',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      zIndex: 3,
+      sortOrder: 3,
+      defaultConfig: null,
+    },
   ],
 };
 
@@ -129,13 +141,13 @@ describe('clone from a preset — identity + snapshot', () => {
     controller = module.get<TemplatesController>(TemplatesController);
   });
 
-  it("fills the name, tagline, initials and logo on blanks; a preset's own text wins", async () => {
+  it("fills the name, tagline, initials and logo on blanks; a preset's own text that is not a registered placeholder wins", async () => {
     await controller.createFromPreset(req, 'sys-board', {
       name: 'Mine',
     } as any);
     const data = prisma.client.template.create.mock.calls[0][0].data;
     expect(data.tenantId).toBe('ten1');
-    const [board, varsity, logo] = data.zones.create.map((z: any) =>
+    const [board, varsity, logo, arcade] = data.zones.create.map((z: any) =>
       JSON.parse(z.defaultConfig),
     );
 
@@ -164,6 +176,12 @@ describe('clone from a preset — identity + snapshot', () => {
       schoolName: 'Buena Park Academy',
       tagline: 'Learning without limits',
     });
+    // An MS scene gets the FLAT keys its pick() reads (registry), nothing else of identity.
+    expect(arcade).toMatchObject({
+      'school.name': 'BUENA PARK ACADEMY',
+      'school.logoUrl': 'https://cdn.example/new-logo.png',
+    });
+    expect(arcade).not.toHaveProperty('schoolName');
   });
 
   it('the brandKit snapshot carries the tagline (and the name and logo) for the next rebrand', async () => {
@@ -186,7 +204,7 @@ describe('clone from a preset — identity + snapshot', () => {
       name: 'Mine',
     } as any);
     const data = prisma.client.template.create.mock.calls[0][0].data;
-    const [board, varsity, logo] = data.zones.create.map((z: any) =>
+    const [board, varsity, logo, arcade] = data.zones.create.map((z: any) =>
       z.defaultConfig ? JSON.parse(z.defaultConfig) : null,
     );
     expect(board).toEqual({
@@ -195,6 +213,222 @@ describe('clone from a preset — identity + snapshot', () => {
     });
     expect(varsity).toBeNull();
     expect(logo).toBeNull();
+    expect(arcade).toBeNull();
     expect(data.brandKit).toBeUndefined();
+  });
+
+  it('a duplicate replaces a sample name nobody typed; a typed name survives', async () => {
+    const zone = (
+      name: string,
+      widgetType: string,
+      cfg: unknown,
+      i: number,
+    ) => ({
+      name,
+      widgetType,
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      zIndex: i,
+      sortOrder: i,
+      defaultConfig: JSON.stringify(cfg),
+    });
+    prisma.client.template.findFirst.mockResolvedValue({
+      ...SOURCE,
+      id: 'mine-old',
+      isSystem: false,
+      tenantId: 'ten1',
+      brandKit: null,
+      zones: [
+        zone('Sample', 'HS_VARSITY', { schoolName: 'WESTRIDGE WILDCATS' }, 0),
+        zone('Typed', 'HS_VARSITY', { schoolName: 'LINCOLN EAGLES' }, 1),
+        zone('Studio', 'MS_STUDIO', { 'school.name': 'Westridge' }, 2),
+      ],
+    });
+    await controller.duplicate(req, 'mine-old', {} as any);
+    const data = prisma.client.template.create.mock.calls[0][0].data;
+    expect(data.tenantId).toBe('ten1');
+    const [sample, typed, studio] = data.zones.create.map((z: any) =>
+      JSON.parse(z.defaultConfig),
+    );
+    expect(sample.schoolName).toBe('BUENA PARK ACADEMY');
+    expect(typed.schoolName).toBe('LINCOLN EAGLES');
+    expect(studio['school.name']).toBe('BUENA PARK ACADEMY');
+    expect(studio['school.logoUrl']).toBe('https://cdn.example/new-logo.png');
+  });
+
+  // POST /templates carries zones of unknown provenance: the editor's "Save
+  // as copy" posts the tenant's own (typed) zones, and importTemplate()
+  // reuses this path. A generic word there is treated as typed.
+  it('POST /templates (Save as copy, import) keeps a generic word; a sample organisation and blanks still fill', async () => {
+    const z = (widgetType: string, cfg: unknown, i: number) => ({
+      name: `z${i}`,
+      widgetType,
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      zIndex: i,
+      sortOrder: i,
+      defaultConfig: cfg,
+    });
+    await controller.create(req, {
+      name: 'Varsity board copy',
+      zones: [
+        z(
+          'HS_VARSITY_PORTRAIT',
+          { schoolName: 'WILDCATS', schoolInitials: 'WHS' },
+          0,
+        ),
+        z(
+          'LOGO',
+          { theme: 'office-dashboard', schoolName: 'Central Administration' },
+          1,
+        ),
+        z('HS_VARSITY', { schoolName: 'WESTRIDGE WILDCATS' }, 2),
+      ],
+    } as any);
+    const data = prisma.client.template.create.mock.calls[0][0].data;
+    expect(data.tenantId).toBe('ten1');
+    const [portrait, office, varsity] = data.zones.create.map((zz: any) =>
+      JSON.parse(zz.defaultConfig),
+    );
+    expect(portrait).toMatchObject({
+      schoolName: 'WILDCATS',
+      schoolInitials: 'WHS',
+    });
+    expect(office.schoolName).toBe('Central Administration');
+    expect(office.assetUrl).toBe('https://cdn.example/new-logo.png');
+    expect(varsity).toMatchObject({
+      schoolName: 'BUENA PARK ACADEMY',
+      schoolInitials: 'BPA',
+    });
+  });
+
+  // #347 round-3 review: duplicating the tenant's own template must not
+  // revert a generic word ('WILDCATS', 'WHS') the tenant typed. The source's
+  // brand history decides, exactly as the source's own rebrand would.
+  it("a duplicate keeps a generic word typed under the source's named brand; a source with no brand history replaces it", async () => {
+    const zone = (widgetType: string, cfg: unknown, i: number) => ({
+      name: `z${i}`,
+      widgetType,
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      zIndex: i,
+      sortOrder: i,
+      defaultConfig: JSON.stringify(cfg),
+    });
+    const source = (brandKit: unknown) => ({
+      ...SOURCE,
+      id: 'mine-named',
+      isSystem: false,
+      tenantId: 'ten1',
+      brandKit,
+      zones: [
+        zone(
+          'HS_VARSITY_PORTRAIT',
+          { schoolName: 'WILDCATS', schoolInitials: 'WHS' },
+          0,
+        ),
+        zone(
+          'LOGO',
+          { theme: 'office-dashboard', schoolName: 'Central Administration' },
+          1,
+        ),
+        zone('HS_VARSITY', { schoolName: 'WESTRIDGE WILDCATS' }, 2),
+      ],
+    });
+    const LINCOLN_KIT = {
+      displayName: 'Lincoln High School',
+      palette: { primary: '#334455' },
+      inheritedFrom: 'tenant-branding',
+    };
+
+    prisma.client.template.findFirst.mockResolvedValue(source(LINCOLN_KIT));
+    await controller.duplicate(req, 'mine-named', {} as any);
+    const kept =
+      prisma.client.template.create.mock.calls[0][0].data.zones.create.map(
+        (z: any) => JSON.parse(z.defaultConfig),
+      );
+    expect(kept[0]).toMatchObject({
+      schoolName: 'WILDCATS',
+      schoolInitials: 'WHS',
+    });
+    expect(kept[1].schoolName).toBe('Central Administration');
+    // A sample ORGANISATION is not generic: replaced even under a named brand.
+    expect(kept[2].schoolName).toBe('BUENA PARK ACADEMY');
+
+    prisma.client.template.create.mockClear();
+    prisma.client.template.findFirst.mockResolvedValue(source(null));
+    await controller.duplicate(req, 'mine-named', {} as any);
+    const replaced =
+      prisma.client.template.create.mock.calls[0][0].data.zones.create.map(
+        (z: any) => JSON.parse(z.defaultConfig),
+      );
+    expect(replaced[0]).toMatchObject({
+      schoolName: 'BUENA PARK ACADEMY',
+      schoolInitials: 'BPA',
+    });
+    expect(replaced[1].schoolName).toBe('Buena Park Academy');
+  });
+
+  // #347 round-2 review of the placeholders branch: the AI generator writes
+  // its zones from the tenant's prompt, so a generic word it emitted is the
+  // tenant's text, as in POST /templates.
+  it('an AI-generated LOGO keeps a generic word; a sample organisation and blanks still fill', async () => {
+    const zoneCreates: any[] = [];
+    const tx = {
+      template: {
+        create: jest.fn().mockResolvedValue({ id: 'ai-new' }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'ai-new' }),
+      },
+      templateScene: {
+        create: jest.fn().mockResolvedValue({ id: 'scene-1' }),
+      },
+      templateZone: {
+        create: jest.fn().mockImplementation(async (args: any) => {
+          zoneCreates.push(args.data);
+          return {};
+        }),
+      },
+    };
+    prisma.client.$transaction = jest.fn((fn: any) => fn(tx));
+    const zone = (widgetType: string, defaultConfig: unknown) => ({
+      name: widgetType,
+      widgetType,
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      defaultConfig,
+    });
+    await (controller as any).persistGeneratedTemplate(
+      req,
+      {
+        name: 'Front office',
+        zones: [
+          zone('LOGO', { theme: 'office-dashboard', schoolName: 'Central Administration' }),
+          zone('LOGO', { variant: 'logo-neon', schoolName: 'Roosevelt Academy' }),
+          zone('LOGO', {}),
+        ],
+      },
+      1920,
+      1080,
+      false,
+    );
+    expect(tx.template.create.mock.calls[0][0].data.tenantId).toBe('ten1');
+    const [office, neon, blank] = zoneCreates.map((d) =>
+      JSON.parse(d.defaultConfig),
+    );
+    expect(office.schoolName).toBe('Central Administration');
+    expect(office.assetUrl).toBe('https://cdn.example/new-logo.png');
+    expect(neon.schoolName).toBe('Buena Park Academy');
+    expect(blank).toMatchObject({
+      schoolName: 'Buena Park Academy',
+      tagline: 'Learning without limits',
+    });
   });
 });
