@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { EmergencyPaintWatcher, emergencyRenderHash, type EmergencyPaintProof, type NativeEmergencyPaintState } from './emergencyPaintProof';
 import { bannerRefusalFromState, noteNativeBannerRefused, reassertDisplayEmergencyHold } from './emergencyHold';
 import { apkVersionFromUserAgent, hasNativeBridge, nativeCall, nativeFire, nativeHas } from './nativeBridge';
+import { noteNativeBannerSupport } from './broadcastLayout';
 
 type ValueRef<T> = { current: T };
 /** Delays before each re-post of a refused / failed paint proof (~62 s in all). */
@@ -64,6 +65,12 @@ export function useEmergencyPaintMonitor(refs: EmergencyPaintMonitorRefs, option
         if (!nativeHas('sharedVideoState')) return undefined;
         const reply = await nativeCall<unknown>('sharedVideoState');
         const state = typeof reply === 'string' ? JSON.parse(reply) : reply;
+        // 2026-11-24: the same reply says whether the app transforms its native
+        // site views under a banner itself (broadcastLayout.ts). The boot read
+        // can time out or answer late; this read repeats while any emergency
+        // root (the held banner included) is on the glass, so the Website Tabs
+        // remount after an all-clear sees it. Only ever turns the note on.
+        noteNativeBannerSupport(state);
         // 2026-11-02: the app refused banner posture (its live native video
         // could not be proven correct under a banner) — show the full alert.
         const refusal = bannerRefusalFromState(state);

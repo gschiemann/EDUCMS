@@ -197,7 +197,67 @@ class BroadcastBannerTakeoverEndedTest {
         assertFalse("the other face's takeover still holds playback", BroadcastBanner.allowsPlayback(setOf(0, 1)))
     }
 
+    /**
+     * 2026-11-24 review: the promotion does not evaluate [BannerPosturePolicy]
+     * itself; it relies on a refusal recorded earlier in the episode, and that
+     * memory is in process memory only. Two sequences promote with no earlier
+     * refusal: a broadcast FIRST pushed during a takeover on a rotated display
+     * (its geometry is only ever `pending`), and an app restart under a
+     * persisted hold (BroadcastBanner is volatile). Both are safe because the
+     * policy only refuses a LIVE native output, and none is live at promotion
+     * (the takeover stopped it): the policy runs again where one would start
+     * under the banner (FaceVideoBox.begin, pinned below), and a refusal there
+     * puts the face back into a full takeover for the rest of the episode.
+     */
+    @Test fun aPromotionWithNoEarlierRefusalIsCheckedAgainWhenNativeVideoWouldStartUnderTheBanner() {
+        // A takeover first; the broadcast arrives during it, on a display rotated from natural.
+        assertTrue(BroadcastBanner.set(face, false, 0.0, emptySet()))
+        BroadcastBanner.hold(face, true, false)
+        assertFalse(BroadcastBanner.allowsPlayback(held))
+        assertFalse("held, no insets: refused, kept pending", BroadcastBanner.set(face, true, 0.1, held, 90))
+        // At promotion nothing native is live, which the policy allows on any rotation.
+        assertNull(BannerPosturePolicy.refusal(false, 1))
+        assertEquals(BroadcastBanner.Downgrade(true, BroadcastBanner.PROMOTED),
+            BroadcastBanner.hold(face, true, true, heldBefore = true, takeoverEnded = true))
+        assertTrue(BroadcastBanner.allowsPlayback(held))
+        // The page intends native video again: FaceVideoBox.begin evaluates the policy for a LIVE output.
+        val reason = BannerPosturePolicy.refusal(true, 1)
+        assertEquals(BannerPosturePolicy.REASON_DISPLAY_ROTATED, reason)
+        BroadcastBanner.refuse(face, reason!!)
+        assertFalse("the refusal is a full takeover again: the session is stopped, playback held", BroadcastBanner.allowsPlayback(held))
+        assertEquals(reason, BroadcastBanner.refusal(face))
+        // …for the rest of the hold episode: the next live manifest's takeover-ended is kept, and reported.
+        assertEquals(BroadcastBanner.Downgrade(false, reason), askBanner(takeoverEnded = true))
+        assertFalse(BroadcastBanner.allowsPlayback(held))
+        assertEquals(reason, BroadcastBanner.takeoverKept(face))
+    }
+
+    @Test fun anAppRestartUnderAPersistedHoldPromotesOnlyUntilTheNextNativeStartIsChecked() {
+        // A fresh process: the persisted hold, no banner memory (no refusal, no episode).
+        assertFalse(BroadcastBanner.set(face, true, 0.1, held))
+        assertEquals(BroadcastBanner.Downgrade(true, BroadcastBanner.PROMOTED),
+            BroadcastBanner.hold(face, true, true, heldBefore = true, takeoverEnded = true))
+        assertTrue(BroadcastBanner.allowsPlayback(held))
+        BroadcastBanner.refuse(face, BannerPosturePolicy.refusal(true, null)!!)
+        assertFalse(BroadcastBanner.allowsPlayback(held))
+        assertEquals(BannerPosturePolicy.REASON_ROTATION_UNKNOWN, askBanner(takeoverEnded = true)!!.reason)
+    }
+
     // ── wiring, as source facts (the Android halves cannot run on a plain JVM) ──
+
+    @Test fun aNativeStartUnderTheBannerIsCheckedAgainstThePolicyBeforeTheHoldDecides() {
+        val box = source("media/FaceVideoBox.kt"); Assume.assumeTrue(box != null)
+        val begin = box!!.substring(box.indexOf("private fun begin("), box.indexOf("fun banner(host: SharedVideoHost"))
+        val check = begin.indexOf("if (BroadcastBanner.active(host.face) && refuseBannerIfUnprovable(host, true) != null) BroadcastContentViews.refresh()")
+        val heldStop = begin.indexOf("if (DisplayEmergency.isPlaybackHeld(host.ctx)) { stopSession(host, session, heldReason(host)); return null }")
+        assertTrue("a native start under a banner evaluates the posture policy", check >= 0)
+        assertTrue("…before the hold decides whether it may start", heldStop > check)
+        val refuse = box.substring(box.indexOf("private fun refuseBannerIfUnprovable("), box.indexOf("private fun afterBannerLayout("))
+        assertTrue(refuse.contains("BannerPosturePolicy.refusal(liveNativeOutput, rotation)"))
+        assertTrue(refuse.contains("BroadcastBanner.refuse(host.face, reason)"))
+        val de = source("display/DisplayEmergency.kt"); Assume.assumeTrue(de != null)
+        assertTrue("the hold reads the refusal", de!!.contains("!com.educms.player.media.BroadcastBanner.allowsPlayback(holdingFaces(ctx))"))
+    }
 
     private fun source(path: String): String? {
         var dir: File? = File("").absoluteFile

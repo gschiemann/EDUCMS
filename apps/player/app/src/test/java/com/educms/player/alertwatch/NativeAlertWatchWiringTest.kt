@@ -84,7 +84,20 @@ class NativeAlertWatchWiringTest {
         // Exactly two callers of the shared body: the page's and the watch's.
         assertEquals(2, Regex("setHoldFrom\\(").findAll(emergency).count() - 1)
         // The page's own entry is untouched in meaning: both directions, as before.
-        assertTrue(emergency.contains("setHoldFrom(ctx, faceIndex, active, fromPage = true, bannerOnly = bannerOnly)"))
+        // Since 2026-11-23 it also forwards the page's live-manifest "the takeover
+        // ended, only the banner remains" (BroadcastBanner.hold decides it). That
+        // argument never raises and never releases: `active` is still the page's.
+        assertTrue(
+            emergency.contains(
+                "setHoldFrom(ctx, faceIndex, active, fromPage = true, bannerOnly = bannerOnly, takeoverEnded = takeoverEnded)",
+            ),
+        )
+        // The watch's door carries no takeover-ended: a raise the watch made can never be downgraded by it…
+        assertFalse("the native entry point must never pass `takeoverEnded`", raise.contains("takeoverEnded"))
+        // …and the shared body only honours it from the page, while it records a watch raise for the episode.
+        val shared = body(emergency, "private fun setHoldFrom(")
+        assertTrue(shared.contains("takeoverEnded = fromPage && takeoverEnded"))
+        assertTrue(shared.contains("if (active && !fromPage) watchRaisedThisHold = true"))
     }
 
     @Test

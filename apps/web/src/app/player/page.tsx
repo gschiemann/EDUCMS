@@ -3294,7 +3294,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const face = nativeFirstFaceRef.current ?? (nativeFirstFaceRef.current = new NativeFirstFace({
       has: (m) => nativeHas(m),
       fire: (m, arg) => nativeFire(m, arg),
-      state: () => nativeCall('sharedVideoState'),
+      // 2026-11-24 — also the banner-support note, in case the boot discovery read timed out (broadcastLayout.ts).
+      state: () => nativeCall('sharedVideoState').then((reply) => { noteNativeBannerSupport(reply); return reply; }),
     }));
     const unsubscribe = face.subscribe((facts) => {
       setNativeFirstSig(nativeFirstDecisionSignature(facts));
