@@ -15,7 +15,9 @@ import {
   PlaylistFallbackLedger,
   RecoveryProof,
   everyItemOut,
+  fallbackDecisionLog,
   fallbackEligible,
+  fallbackEpisodeLogLine,
   fallbackReport,
   nextFallbackEpisode,
   pickReplaceWinner,
@@ -462,6 +464,133 @@ describe('the episode — what the report says from the first backup to the reco
     const open: FallbackEpisode = { fromId: '4k', toId: 'hb', startedAtMs: T0, state: 'backup' };
     expect(nextFallbackEpisode(open, o({ glass: { firstChoiceId: 'hb', onGlassId: 'hb', fellBack: true }, backupShowing: true }))).toBe(open);
     expect(nextFallbackEpisode(null, o({ glass: { firstChoiceId: null, onGlassId: 'hb', fellBack: true }, backupShowing: true }))).toBeNull();
+  });
+});
+
+describe('the console — ONE PLAYLIST_FALLBACK line per change (rule 20)', () => {
+  const backup = (toId: string, fromId = '4k'): FallbackEpisode => ({ fromId, toId, startedAtMs: T0, state: 'backup' });
+  const retrying: FallbackEpisode = { ...backup('hb'), state: 'retrying' };
+  const recovered: FallbackEpisode = { fromId: '4k', toId: '4k', startedAtMs: T0, state: 'recovered', endedAtMs: T0 + 30 * MIN };
+  const RETRYING_LINE = '[Player] PLAYLIST_FALLBACK episode retrying: scheduled 4k, backup hb';
+  const RECOVERED_LINE = '[Player] PLAYLIST_FALLBACK episode recovered: scheduled 4k, playing 4k';
+  const DECISION_LINE = '[Player] PLAYLIST_FALLBACK nothing in "4k" can be shown on this screen — showing "Everyday" instead; the first is tried again later or as soon as its content changes';
+  const P4K = { id: 'pl-4k', name: '4k' };
+  const EVERYDAY = { id: 'pl-everyday', name: 'Everyday' };
+
+  it('entering a backup is the decision line’s, never the episode’s — the first time, after a failed retry, a move, a new episode', () => {
+    expect(fallbackEpisodeLogLine(null, backup('hb'))).toBeNull();
+    expect(fallbackEpisodeLogLine(retrying, backup('hb'))).toBeNull();
+    expect(fallbackEpisodeLogLine(backup('hb'), backup('board'))).toBeNull();
+    expect(fallbackEpisodeLogLine(backup('hb'), backup('hb', 'lunch'))).toBeNull();
+    expect(fallbackEpisodeLogLine(recovered, backup('hb'))).toBeNull();
+  });
+
+  it('the first choice back on the glass being tried: one line, naming the backup it left', () => {
+    expect(fallbackEpisodeLogLine(backup('hb'), retrying)).toBe(RETRYING_LINE);
+  });
+
+  it('the first choice back for good: one line, naming the playlist that plays — from retrying, or straight from a backup', () => {
+    expect(fallbackEpisodeLogLine(retrying, recovered)).toBe(RECOVERED_LINE);
+    expect(fallbackEpisodeLogLine(backup('hb'), recovered)).toBe(RECOVERED_LINE);
+    expect(fallbackEpisodeLogLine(retrying, { ...recovered, toId: 'lunch' }))
+      .toBe('[Player] PLAYLIST_FALLBACK episode recovered: scheduled 4k, playing lunch');
+  });
+
+  it('nothing the line names changed: nothing said (a new object with the same facts too)', () => {
+    expect(fallbackEpisodeLogLine(retrying, retrying)).toBeNull();
+    expect(fallbackEpisodeLogLine(retrying, { ...retrying, startedAtMs: T0 + MIN })).toBeNull();
+    expect(fallbackEpisodeLogLine(recovered, recovered)).toBeNull();
+    expect(fallbackEpisodeLogLine(recovered, { ...recovered, endedAtMs: T0 + 31 * MIN })).toBeNull();
+    expect(fallbackEpisodeLogLine(backup('hb'), backup('hb'))).toBeNull();
+  });
+
+  it('no episode next (over, forgotten, the kill switch): nothing said', () => {
+    expect(fallbackEpisodeLogLine(null, null)).toBeNull();
+    expect(fallbackEpisodeLogLine(backup('hb'), null)).toBeNull();
+    expect(fallbackEpisodeLogLine(retrying, null)).toBeNull();
+    expect(fallbackEpisodeLogLine(recovered, null)).toBeNull();
+    expect(fallbackEpisodeLogLine(undefined, undefined)).toBeNull();
+  });
+
+  it('the decision line: the words operators search for, with the names the screen has', () => {
+    expect(fallbackDecisionLog(true, P4K, EVERYDAY).line).toBe(DECISION_LINE);
+    expect(fallbackDecisionLog(true, { id: 'pl-4k' }, { id: 'tpl-1', template: { name: 'Lobby board' } }).line)
+      .toContain('nothing in "pl-4k" can be shown on this screen — showing "Lobby board" instead');
+    expect(fallbackDecisionLog(true, P4K, { id: 'pl-x' }).line).toContain('showing "pl-x" instead');
+  });
+
+  it('not on a fallback (or a pick with a missing side): no line, and an empty key so the next fallback is said again', () => {
+    expect(fallbackDecisionLog(false, P4K, EVERYDAY)).toEqual({ key: '', line: null });
+    expect(fallbackDecisionLog(true, null, EVERYDAY)).toEqual({ key: '', line: null });
+    expect(fallbackDecisionLog(true, P4K, null)).toEqual({ key: '', line: null });
+    expect(fallbackDecisionLog(true, undefined, undefined)).toEqual({ key: '', line: null });
+  });
+
+  it('the decision line is keyed by the two ids AND the text: two backups that share a name are still two changes', () => {
+    const a = fallbackDecisionLog(true, P4K, { id: 'pl-a', name: 'Everyday' });
+    const b = fallbackDecisionLog(true, P4K, { id: 'pl-b', name: 'Everyday' });
+    expect(a.line).toBe(b.line);
+    expect(a.key).not.toBe(b.key);
+    // A different first choice with the same name is a change too.
+    expect(fallbackDecisionLog(true, { id: 'pl-4k-2', name: '4k' }, { id: 'pl-a', name: 'Everyday' }).key).not.toBe(a.key);
+    // The same pick again is the same key: said once.
+    expect(fallbackDecisionLog(true, { ...P4K }, { id: 'pl-a', name: 'Everyday' }).key).toBe(a.key);
+    // A rename is a different line, so a different key.
+    expect(fallbackDecisionLog(true, P4K, { id: 'pl-a', name: 'Everyday 2' }).key).not.toBe(a.key);
+  });
+
+  /** The page's two emitters, replayed over a sequence of (selection, glass) facts: every line printed. */
+  function replay(steps: Array<{ pick: { fellBack: boolean; primary: typeof P4K; winner: { id: string; name: string } }; obs: Partial<EpisodeObservation> }>) {
+    const out: string[] = [];
+    let logged = '';
+    let ep: FallbackEpisode | null = null;
+    const base: EpisodeObservation = {
+      disabled: false, frozen: false, glass: { firstChoiceId: 'pl-4k', onGlassId: 'pl-4k', fellBack: false },
+      backupShowing: false, firstChoiceProven: false, nowMs: T0,
+    };
+    for (const s of steps) {
+      const d = fallbackDecisionLog(s.pick.fellBack, s.pick.primary, s.pick.winner);
+      if (d.key !== logged) { logged = d.key; if (d.line) out.push(d.line); }
+      const next = nextFallbackEpisode(ep, { ...base, ...s.obs });
+      if (next !== ep) { const line = fallbackEpisodeLogLine(ep, next); if (line) out.push(line); ep = next; }
+    }
+    return out;
+  }
+
+  it('the incident end to end: each change said exactly once — never the decision line and an episode "backup" line for one fallback', () => {
+    const first = { fellBack: false, primary: P4K, winner: P4K };
+    const fell = { fellBack: true, primary: P4K, winner: EVERYDAY };
+    const onBackup = { firstChoiceId: 'pl-4k', onGlassId: 'pl-everyday', fellBack: true };
+    const onFirst = { firstChoiceId: 'pl-4k', onGlassId: 'pl-4k', fellBack: false };
+    const lines = replay([
+      { pick: first, obs: {} }, // the schedule's choice is on the card
+      { pick: fell, obs: { glass: onBackup, nowMs: T0 + 2 * MIN } }, // set aside: the backup is committed
+      { pick: fell, obs: { glass: onBackup, backupShowing: true, nowMs: T0 + 2 * MIN + 66 } }, // …and proven on the glass 66 ms later
+      { pick: fell, obs: { glass: onBackup, backupShowing: true, nowMs: T0 + 10 * MIN } }, // steady
+      { pick: first, obs: { glass: onFirst, nowMs: T0 + 17 * MIN } }, // the 15-minute retry
+      { pick: fell, obs: { glass: onBackup, backupShowing: true, nowMs: T0 + 20 * MIN } }, // it fails again
+      { pick: first, obs: { glass: onFirst, nowMs: T0 + 50 * MIN } }, // the next retry
+      { pick: first, obs: { glass: onFirst, firstChoiceProven: true, nowMs: T0 + 55 * MIN } }, // five minutes of play
+      { pick: first, obs: { glass: onFirst, nowMs: T0 + 55 * MIN + FALLBACK_RECOVERED_REPORT_MS } }, // forgotten
+    ]);
+    expect(lines).toEqual([
+      DECISION_LINE,
+      '[Player] PLAYLIST_FALLBACK episode retrying: scheduled pl-4k, backup pl-everyday',
+      DECISION_LINE,
+      '[Player] PLAYLIST_FALLBACK episode retrying: scheduled pl-4k, backup pl-everyday',
+      '[Player] PLAYLIST_FALLBACK episode recovered: scheduled pl-4k, playing pl-4k',
+    ]);
+  });
+
+  it('a move from one backup to another with the same name is said once, by the decision line', () => {
+    const a = { id: 'pl-a', name: 'Everyday' };
+    const b = { id: 'pl-b', name: 'Everyday' };
+    const lines = replay([
+      { pick: { fellBack: true, primary: P4K, winner: a }, obs: { glass: { firstChoiceId: 'pl-4k', onGlassId: 'pl-a', fellBack: true }, backupShowing: true } },
+      { pick: { fellBack: true, primary: P4K, winner: b }, obs: { glass: { firstChoiceId: 'pl-4k', onGlassId: 'pl-b', fellBack: true }, backupShowing: true, nowMs: T0 + 3 * MIN } },
+      { pick: { fellBack: true, primary: P4K, winner: b }, obs: { glass: { firstChoiceId: 'pl-4k', onGlassId: 'pl-b', fellBack: true }, backupShowing: true, nowMs: T0 + 4 * MIN } },
+    ]);
+    expect(lines).toEqual([DECISION_LINE, DECISION_LINE]);
   });
 });
 

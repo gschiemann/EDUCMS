@@ -12,7 +12,7 @@
  *      frame; a tap switches sites; a site that blocks framing gets the
  *      honest card; Home returns to the first site.
  *   3. OUR APP — with a native channel that advertises `webTabsShow`, the
- *      player posts the URL + device-pixel bounds + default-deny allowlist
+ *      player posts the URL + window-pixel bounds + default-deny allowlist
  *      to the APK and mounts no frame at all.
  *   4. NO ESCAPE — a Touch Button `url` action opens the in-place overlay
  *      (Close button focus-parked); it never opens a second page.
@@ -333,7 +333,10 @@ test.describe('Website Tabs — our app (native channel)', () => {
       (window as any).__eduCmsNativeChannelMethods = ['webTabsShow', 'webTabsHide', 'heartbeat', 'showUrlOverlay', 'hideUrlOverlay'];
     });
     await installPlayerMocks(page, 'tabs');
-    await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android&w=1920&h=1080`);
+    // The panel size the APK puts on the URL (physical px). The goto and the
+    // assertions below both read it, so the input and the check cannot drift.
+    const PANEL = { w: 1920, h: 1080 };
+    await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android&w=${PANEL.w}&h=${PANEL.h}`);
 
     await page.getByTestId('website-tabs-bar').waitFor({ state: 'visible', timeout: 60_000 });
     await expect(page.getByTestId('website-tabs-content')).toHaveAttribute('data-native', '1');
@@ -351,15 +354,44 @@ test.describe('Website Tabs — our app (native channel)', () => {
     expect(last.url).toBe('https://www.district.example/');
     expect(last.allowHosts).toEqual(['district.example', 'lunch.example', 'google.com']);
     expect(last.incognito).toBe(true);
-    // The site area sits BELOW the top tab bar: a real, non-empty rectangle
-    // in DEVICE pixels (Desktop Safari runs at deviceScaleFactor 2, the
-    // G-fleet at 3) that starts under the bar and reaches the bottom of
-    // the canvas.
-    const dpr: number = await page.evaluate(() => window.devicePixelRatio || 1);
-    expect(last.bounds.top).toBeGreaterThan(40 * dpr);
-    expect(last.bounds.width).toBeGreaterThan(1000 * dpr);
-    expect(last.bounds.height).toBeGreaterThan(500 * dpr);
-    expect(last.bounds.top + last.bounds.height).toBeLessThanOrEqual(1080 * dpr + 1);
+    // The site area sits BELOW the top tab bar: a real, non-empty rectangle in
+    // the APK's WINDOW pixels. The player pins its layout viewport to the panel
+    // size on the URL, so one CSS px is PANEL.w / innerWidth window px, NOT
+    // window.devicePixelRatio: Desktop Safari reports 2 here, and the G-fleet
+    // reports 3 while running 1:1. Multiplying by it was the 2026-11-07
+    // "corner" bug (cssToWindowRatio), and this test used to assert it.
+    const ratio: number = await page.evaluate((w) => w / window.innerWidth, PANEL.w);
+    expect(last.bounds.left).toBeGreaterThanOrEqual(0);
+    expect(last.bounds.top).toBeGreaterThan(40 * ratio);
+    expect(last.bounds.width).toBeGreaterThan(1000 * ratio);
+    expect(last.bounds.height).toBeGreaterThan(500 * ratio);
+    // …and it stays ON the glass: never past the panel's own edges. These two
+    // lines are the regression guard; the dpr math posts 2× the panel in WebKit.
+    expect(last.bounds.left + last.bounds.width, 'right edge on the panel').toBeLessThanOrEqual(PANEL.w + 1);
+    expect(last.bounds.top + last.bounds.height, 'bottom edge on the panel').toBeLessThanOrEqual(PANEL.h + 1);
+    // Exactly the site area: the last posted rect is the content box scaled by
+    // that ratio and rounded edge by edge as toNativeBounds rounds. The only
+    // check that catches a mis-scaled rect that still fits on the panel. Polled:
+    // the widget's settle burst (16 ms to 2.5 s) may post a later show.
+    await expect.poll(async () => page.evaluate((panel) => {
+      const sent = (window as unknown as { __posted: string[] }).__posted;
+      const shows = sent.map((m) => JSON.parse(m) as { method: string; args: string[] }).filter((m) => m.method === 'webTabsShow');
+      const posted = (JSON.parse(shows[shows.length - 1].args[0]) as { bounds: Record<'left' | 'top' | 'width' | 'height', number> }).bounds;
+      const el = document.querySelector('[data-testid="website-tabs-content"]');
+      if (!el) return 'no website-tabs-content';
+      const r = el.getBoundingClientRect();
+      const s = panel.w / window.innerWidth;
+      const left = Math.round(r.left * s);
+      const top = Math.round(r.top * s);
+      const want = {
+        left,
+        top,
+        width: Math.max(0, Math.round((r.left + r.width) * s) - left),
+        height: Math.max(0, Math.round((r.top + r.height) * s) - top),
+      };
+      const same = posted.left === want.left && posted.top === want.top && posted.width === want.width && posted.height === want.height;
+      return same ? 'equal' : `posted ${JSON.stringify(posted)}, content box × ${s} = ${JSON.stringify(want)}`;
+    }, PANEL), { timeout: 10_000, message: 'the posted bounds are the site area, in window px' }).toBe('equal');
 
     // A tap re-shows with the new URL — no frame, the APK switches the site.
     await page.getByTestId('website-tab-google').click();
