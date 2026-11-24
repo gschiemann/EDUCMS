@@ -4,6 +4,9 @@
  * WARN text broadcast overlays the running content; nothing regular mounts
  * while an alert's identity is still pending.
  */
+import * as fs from 'fs';
+import * as path from 'path';
+import * as ts from 'typescript';
 import { decideEmergencySurface, drawnPushedMessage, isBannerEmergencyMessage, pendingTextHiddenBy, tenantAlertOnGlass, type EmergencySurfaceInput } from '../emergencySurface';
 
 const base: EmergencySurfaceInput = {
@@ -145,5 +148,49 @@ describe('a tenant alert outranks a banner (2026-11-23, a drill over a broadcast
     expect(pendingTextHiddenBy(warn, false)).toBe(true);
     expect(pendingTextHiddenBy(sos, false)).toBe(true);
     expect(pendingTextHiddenBy(null, false)).toBe(false);
+  });
+});
+
+// The helpers above are only half the protection: the page must hand them the
+// tenant alert. If the call site passed `false` instead of `tenantAlertUp`, a
+// banner held while a signed OVERRIDE is confirmed would leave a coloured
+// surface with no words, and every case above would still pass. So pin the
+// wiring in the real file, parsed (comments cannot satisfy it).
+describe('page.tsx hands the tenant alert to the banner, the paint identity and the pending words', () => {
+  const file = path.join(__dirname, '..', 'page.tsx');
+  const sf = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const text = (n: ts.Node) => n.getText(sf).replace(/\s+/g, ' ');
+  const nodes: ts.Node[] = [];
+  const visit = (n: ts.Node) => { nodes.push(n); ts.forEachChild(n, visit); };
+  visit(sf);
+  const callArgs = (name: string) => nodes
+    .filter((n): n is ts.CallExpression => ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === name)
+    .map((c) => c.arguments.map(text));
+  const objectProp = (call: string[] | undefined, key: string) => {
+    const obj = call?.[0] ?? '';
+    const m = obj.match(new RegExp(`\\b${key}: ([^,}]+)`));
+    return m ? m[1].trim() : null;
+  };
+
+  it('tenantAlertUp is the tenant alert, read from the same pending-OVERRIDE ref the surface decision reads', () => {
+    const decl = nodes.find((n): n is ts.VariableDeclaration => ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === 'tenantAlertUp');
+    expect(decl?.initializer && ts.isCallExpression(decl.initializer) && text(decl.initializer.expression)).toBe('tenantAlertOnGlass');
+    const alert = callArgs('tenantAlertOnGlass');
+    expect(alert).toHaveLength(1);
+    expect(objectProp(alert[0], 'pendingOverrideConfirm')).toBe('!!pendingOverrideConfirmRef.current');
+    expect(objectProp(alert[0], 'activeEmergency')).toBe('!!activeEmergency');
+    expect(objectProp(alert[0], 'playlistIsEmergency')).toBe('playlist?.isEmergency === true');
+    const surface = callArgs('decideEmergencySurface');
+    expect(surface).toHaveLength(1);
+    expect(objectProp(surface[0], 'pendingOverrideConfirm')).toBe('!!pendingOverrideConfirmRef.current');
+  });
+
+  it('the pending words, the drawn message and the overlay banner all take tenantAlertUp', () => {
+    expect(callArgs('pendingTextHiddenBy')).toEqual([['pushedEmergencyMessage', 'tenantAlertUp']]);
+    expect(callArgs('drawnPushedMessage')).toEqual([['pushedEmergencyMessage', 'tenantAlertUp']]);
+    const suppress = nodes
+      .filter((n): n is ts.JsxAttribute => ts.isJsxAttribute(n) && text(n.name) === 'suppressBanner')
+      .map((a) => (a.initializer ? text(a.initializer) : ''));
+    expect(suppress).toEqual(['{tenantAlertUp}']);
   });
 });

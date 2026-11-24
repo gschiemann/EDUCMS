@@ -10,7 +10,8 @@
 | `57519f116` | Handoff after round 1 (approved in round 2) |
 | `40a42483d` | Round 2 should-fix, **after the round-2 approval and not seen by that reviewer**: the pending "EMERGENCY" words follow the tenant alert, not the message class (see "Review") |
 | `7118e647d` | The same fix as an e2e check: two added assertions in 8i (red on the approved head, green here) |
-| this commit | This handoff, moved to the 2026-11-23 name (the day of the demo) with its two references |
+| `8867e9fc1` | This handoff, moved to the 2026-11-23 name (the day of the demo) with its two references |
+| this commit | Review round 3 (the two commits above): approved; its should-fix 1 as a parsed source pin in `emergencySurface.test.ts` |
 
 Not pushed, no PR, not merged, not deployed. **CI has not run on any of it**: `player-kotlin-check.yml` (`testDebugUnitTest` + `lintDebug`) and both Emergency path jobs (WebKit included, which nobody has run) must be green on the PR before anything is called ready. Everything said about a real screen is **unverified** until the owner's bench drill.
 
@@ -85,13 +86,26 @@ The plan (A6) said to post the Website Tabs site area in canvas coordinates. Tha
 
 | Round-2 should-fix | Disposition |
 |---|---|
-| The pending "EMERGENCY" words (role=alert) rendered under an INFO / WARN broadcast in its full-screen form with no tenant alert | **Fixed** in `40a42483d`, after the approval: `pendingTextHiddenBy` takes the tenant alert; with none, a banner-class message hides the words as on `master`. Strictly narrower than the approved head. A unit case added that fails on the approved helper, and two 8i assertions (`7118e647d`) that fail on a build of the approved head and pass here. Not re-reviewed |
+| The pending "EMERGENCY" words (role=alert) rendered under an INFO / WARN broadcast in its full-screen form with no tenant alert | **Fixed** in `40a42483d`, after the approval: `pendingTextHiddenBy` takes the tenant alert; with none, a banner-class message hides the words as on `master`. Strictly narrower than the approved head. A unit case added that fails on the approved helper, and two 8i assertions (`7118e647d`) that fail on a build of the approved head and pass here. Reviewed in round 3 |
 | The handoff said 868 passed, 0 failed on the plain JVM; the reviewer got 867 / 1 failed (`BridgeNonceDeliveryTest` writes `apps/player/app/build/nonce-delivery-fixture.json`, and that folder did not exist) | **Corrected.** The folder is Gradle's build directory, which always exists in CI; the final run below creates it first and says so |
 | The 0.1 reserved inset applied when the page's measured banner height has not arrived yet | On the bench drill checklist (step 2) |
 | Episode memory (watch raise, refusal) is in process memory only | Named in the PR body and below; JVM tests pin the later posture check |
 | `takeover-kept` changes what the page shows; a reload under a held banner regains banner posture | On the bench drill checklist and in the PR body |
 | Commit attribution | Checked: this session's attribution line is the one the commits carry |
 | CI (both Emergency path jobs with WebKit, `player-kotlin-check`), the owner's drill, a field candidate | Still owed (see "What is unverified") |
+
+- **Round 3: approved** (`40a42483d`, `7118e647d`; read-only, an independent reviewer). Its findings:
+  - **Correct and strictly narrower.** The words are hidden: on `master`, under any pushed message; on the approved head, under a full-screen pushed message; on `40a42483d`, under a full-screen pushed message, or under a banner-class message with no tenant alert. The new head differs from the approved head only for a banner with no tenant alert (back to `master`), and from `master` only for a banner under a tenant alert (the words now show: the fix).
+  - **No sequence hides the words while a signed OVERRIDE is pending.** `tenantAlertUp` and `decideEmergencySurface` read the same `pendingOverrideConfirmRef.current` in the same render. A held banner under a pending OVERRIDE is suppressed and the words show; SOS / MEDIA_ALERT / CRITICAL paint their own alert; a manifest alert (live, drill, cached, provisional) renders `emergencyFallback` ahead of the words; the 30 s unconfirmed-OVERRIDE timeout with a refused banner still held draws the opaque full broadcast. No cache, hold or `applyManifest` logic changed.
+  - **Paint proof unchanged.** `emergencyExpectedIdentityRef` is not touched; `data-edu-emergency-pending` has no consumer outside `page.tsx`, so it is not a proof input.
+  - **The 8i assertions pin it**: two added `toHaveCount(0)` lines, each after a visibility assertion, so neither passes vacuously. Nothing loosened. Taurus: no style change; `check-inset-serialization.cjs` 0 confirmed.
+  - Ran `emergencySurface.test.ts` and `softBlankRenderExits.test.ts`: 26 tests pass.
+
+| Round-3 should-fix | Disposition |
+|---|---|
+| No test pins the protective wiring at the call site: `pendingTextHiddenBy(pushedEmergencyMessage, false)` would leave a wordless coloured surface under a banner held during a typeless signed OVERRIDE, and nothing would fail | **Fixed** in this commit: `emergencySurface.test.ts` parses `page.tsx` with the TypeScript compiler (comments cannot satisfy it) and pins that `tenantAlertUp` is `tenantAlertOnGlass(...)` reading `!!pendingOverrideConfirmRef.current` (the same ref `decideEmergencySurface` reads), and that `pendingTextHiddenBy`, `drawnPushedMessage` and the overlay's `suppressBanner` each take `tenantAlertUp`. Negative control: with the call site and `suppressBanner` set to `false` it fails (1 failed, 20 passed); restored, 21 pass. ESLint and `tsc` clean on the file |
+| A banner known only to the overlay's poll (`pushedEmergencyMessage` still null) with a refused posture would show the words under the full broadcast | Not changed: identical to `master` and the approved head, transient (the page adopts the polled message into its held set) and covered by the opaque full form. Named below as a follow-up |
+| The handoff's behaviour list should state the three-way rule | Done: the table row above under "Web player" already states it; this section states it in full |
 
 ## Evidence
 
@@ -162,7 +176,7 @@ Run by the final-gates step on one 16 GB / 4 CPU machine, every heavy command th
 - **WebKit.** Not installed on this machine; both Emergency path jobs run it in CI.
 - **The APK half's Android code has never been compiled.** There is no Android SDK here. The pure `BroadcastBanner` logic and every unit-test class that compiles without Android classes ran on a plain JVM; `DisplayEmergency`, `WebAppBridge`, the channel, both hosts, `SharedVideoHost`, `BroadcastContentViews` and `MainActivity`, and the 20 test classes that need Android classes (`HoldReleasePageProofTest`, `FaceBridgeIsolationTest`, `FaceEmergencyHoldTest` and others), are compiled and run only by `player-kotlin-check.yml`.
 - **The real L55VEC.** Which APK the demo screen ran is inferred. Native video after the downgrade is not proven: the page must intend it again, and D5 below could make a later web-to-native flip on the glass.
-- **The round-2 fix (`40a42483d`, `7118e647d`)** was not seen by the reviewer.
+- **The round-3 source pin** ran as one jest file (with a negative control), not as part of a full suite run; CI runs the full web jest.
 
 ## Behaviour changes to name in the drill (the skeptic's amendment 7)
 
@@ -193,6 +207,7 @@ Run by the final-gates step on one 16 GB / 4 CPU machine, every heavy command th
 - **The qualification checklist's drill row** has no broadcast step (Investigation 2, item 6). Proposed wording is above.
 - Fail-closed option: also require the native `ManifestAlertScanner` to read NO_ALERT before a downgrade. Not done.
 - Persisting the episode memory across an app restart. Not done (behaviour change 6).
+- **Poll-only banner and the pending words** (round 3, should-fix 2): pass the drawn-or-polled message to `pendingTextHiddenBy` so a banner seen only by the overlay's poll is treated like a held one. Same behaviour as `master` today, covered by the opaque full form.
 - The `E2E_PORT` override does not move the CORS origin several specs answer with (`E2E_BASE`, default :3000), so a local run on another port fails specs like the builder happy path for a reason that is not the code. A one-line fix in `playwright.config.ts`; not done here.
 
 ## Rollback
