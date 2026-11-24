@@ -341,8 +341,10 @@ touching the player or realtime layer:
    `syncActiveRef.current` — one screen advancing out-of-band breaks the whole
    group's phase. The rAF conductor in `player/page.tsx` owns advancement.
 2. Pure math lives in `apps/web/src/app/player/sync/` (`syncClock.ts`,
-   `syncTimeline.ts`) — unit-tested without mounting the 16k-line page (`player/page.tsx`). Keep
-   it pure (no React/DOM/network).
+   `syncTimeline.ts`, `renderLead.ts`) — unit-tested without mounting the 16k-line page (`player/page.tsx`). Keep
+   it pure (no React/DOM/network). An engage snap (a screen joining or
+   re-locking mid-slot, `classifySyncFlip`) is not a boundary crossing: it never
+   feeds the flip-error telemetry or the render-lead estimate.
 3. Clock transport: WS `TIME_PING`→`TIME_PONG` (direct socket reply, like
    AUTH_OK) + HTTP `GET /api/v1/realtime/time` fallback. Server time comes from
    `TimeSyncService` (Redis-TIME-aligned so multi-replica agrees) — never raw
