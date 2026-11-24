@@ -96,7 +96,7 @@ import { HttpCode, NotFoundException, UnprocessableEntityException } from '@nest
 import { playlistEmergencyUse, type EmergencyUseDb } from '../emergency/emergency-content-use';
 import { DesignerJobsService, type DesignerJobStatus, type DesignerJobView } from './designer-jobs/designer-jobs.service';
 import { buildDesignerJobRequest, replayableRequest } from './designer-jobs/designer-job-request';
-import { brandKitSnapshot, duplicateBrandKit, patchZoneIdentity } from '../branding/brand-identity';
+import { brandKitSnapshot, duplicateBrandKit, patchZoneIdentity, previousBrands, type ZoneIdentityOptions } from '../branding/brand-identity';
 // AI board HISTORY (2026-09-23) — the list of finished batches (GET generate-designer/jobs).
 import { DesignerJobHistoryQuerySchema, type DesignerJobHistoryQuery, type DesignerHistoryPage } from './designer-jobs/designer-job-history';
 
@@ -575,8 +575,9 @@ export class TemplatesController {
    * "WESTRIDGE WILDCATS" defaults baked into the widget.
    *
    * Strict fill-blanks rule preserved — only writes a field when the
-   * preset's defaultConfig didn't already specify one. Operator can
-   * still override anything via the PropertiesPanel.
+   * preset's defaultConfig didn't already specify one, or (identity keys
+   * only) when it still holds the widget's own registered placeholder.
+   * Operator can still override anything via the PropertiesPanel.
    */
   private applyBrandToZoneConfig(
     raw: any,
@@ -589,6 +590,13 @@ export class TemplatesController {
       palette?: any | null;
     },
     widgetType?: string,
+    // Generic placeholders ('WILDCATS', 'WHS', 'CENTRAL ADMINISTRATION'):
+    // the duplicate passes the SOURCE template's brand history (a copy keeps
+    // what the source's own rebrand would keep; those values are not made
+    // replaceable); POST /templates and the AI generator pass
+    // genericPlaceholders: false (their zones may be the tenant's own: Save
+    // as copy, import, text the AI took from the tenant's prompt).
+    identityOpts: ZoneIdentityOptions = {},
   ): any {
     const cfg = (() => {
       if (!raw) return {};
@@ -642,11 +650,18 @@ export class TemplatesController {
     }
 
     // Identity (2026-11-23): the organisation name, tagline, initials and
-    // logo into board text fields / logo slots, LOGO, HS_* and schoolName
-    // widgets. A new template has no previous brand, so this fills blanks
-    // only — a preset's or the request's own text always wins.
+    // logo into board text fields / logo slots and the keys each themed
+    // widget's renderer reads (the WIDGET_IDENTITY_KEYS registry in
+    // @cms/api-types: LOGO, HS_*, MS_*, FITNESS_*, ANIMATED_*, and schoolName
+    // widgets). A new template has no previous brand, so this fills blanks
+    // only — a preset's or the request's own text wins unless it is a
+    // registered renderer placeholder (sample text nobody typed, such as
+    // HS_VARSITY's "WESTRIDGE WILDCATS"), which the organisation's identity
+    // replaces. A GENERIC placeholder (a word a tenant could type as their
+    // own: 'WILDCATS', 'WHS', 'CENTRAL ADMINISTRATION') is replaced only when
+    // the zones cannot hold the tenant's typed text (see identityOpts).
     if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return cfg;
-    return patchZoneIdentity({ widgetType: widgetType || '', cfg }, brand, null, 'fill-blanks').cfg;
+    return patchZoneIdentity({ widgetType: widgetType || '', cfg }, brand, null, 'fill-blanks', identityOpts).cfg;
   }
 
   // ───────────────────────────────────────────────────────
@@ -1416,7 +1431,9 @@ export class TemplatesController {
         zones: body.zones
           ? {
               create: body.zones.map((z, i) => {
-                const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
+                // These zones may be the tenant's own (the editor's "Save as
+                // copy", an import): a generic word in them was typed.
+                const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType, { genericPlaceholders: false });
                 return {
                   name: z.name,
                   widgetType: z.widgetType,
@@ -2397,7 +2414,11 @@ export class TemplatesController {
 
       for (let i = 0; i < parsed.zones.length; i++) {
         const z = parsed.zones[i];
-        const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
+        // The AI writes these zones from the tenant's own prompt, so a
+        // generic word in them ('Central Administration' on a LOGO) is the
+        // tenant's text, as in POST /templates; a sample organisation and
+        // blanks still take the brand.
+        const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType, { genericPlaceholders: false });
         await tx.templateZone.create({
           data: {
             templateId: tpl.id,
@@ -2798,6 +2819,9 @@ export class TemplatesController {
     // source already had a brand-filled config, the helper sees
     // existing keys and skips them; if blank, gets the tenant brand.
     const brand = await this.getBrandDefaults(req.user.tenantId);
+    // The brands the source's zones have carried: a generic placeholder the
+    // source holds under a named brand was typed, so the copy keeps it.
+    const sourceHistory = previousBrands((source as any).brandKit);
 
     // Default name. If canvas was overridden, encode the new dimensions
     // so the operator can tell siblings apart at a glance.
@@ -2832,7 +2856,7 @@ export class TemplatesController {
         createdById: req.user.id,
         zones: {
           create: source.zones.map((z) => {
-            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
+            const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType, { history: sourceHistory });
             return {
               name: z.name,
               widgetType: z.widgetType,

@@ -137,3 +137,42 @@ export function advanceCounterTo(currentCounter: number, resolvedIndex: number, 
   const delta = ((resolvedIndex - curMod) % itemCount + itemCount) % itemCount;
   return currentCounter + delta;
 }
+
+/**
+ * What kind of flip the conductor just took (2026-11-23).
+ *
+ * - `'boundary'`: this screen was conducting when a slot boundary passed and
+ *   stepped exactly one slot across it. These are the flips a viewer sees as
+ *   "the screens changed together", and the only ones whose timing measures
+ *   sync quality.
+ * - `'engage'`: anything else. The first locked tick after the clock locks (or
+ *   re-locks) snaps the counter to the current slot MID-slot, by design; a
+ *   multi-slot jump after a stall is the same resync. Its offset into the slot
+ *   is how long the screen was not conducting, not how late a flip was.
+ *
+ * Inputs are the conductor's evaluation instants (synced time + the flip lead):
+ * `prevEvalT` is the previous locked tick's, null when the conductor has just
+ * engaged; `boundaryT` is the start of the slot this tick resolved; `step` is
+ * how far the monotonic counter moves (advanceCounterTo result minus current).
+ *
+ * A step of 1 is a boundary crossing only when the boundary actually lies
+ * after the previous evaluation (a counter moved by something else is not a
+ * crossing) and the gap is shorter than a whole loop (a stall of a loop or
+ * more can also come out as a step of 1).
+ */
+export type SyncFlipKind = 'engage' | 'boundary';
+
+export function classifySyncFlip(input: {
+  prevEvalT: number | null;
+  evalT: number;
+  boundaryT: number;
+  step: number;
+  loopDurationMs: number;
+}): SyncFlipKind {
+  const { prevEvalT, evalT, boundaryT, step, loopDurationMs } = input;
+  if (prevEvalT === null || !Number.isFinite(prevEvalT)) return 'engage';
+  if (step !== 1) return 'engage';
+  if (!(boundaryT > prevEvalT)) return 'engage';
+  if (!(evalT - prevEvalT < loopDurationMs)) return 'engage';
+  return 'boundary';
+}
