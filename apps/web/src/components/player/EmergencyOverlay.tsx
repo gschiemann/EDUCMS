@@ -241,6 +241,20 @@ interface Props {
    */
   fullPresentation?: boolean;
   /**
+   * 2026-11-23 — a tenant alert (manifest override, live or drill; a signed
+   * OVERRIDE being confirmed; the staged emergency board) is on the glass and
+   * outranks an INFO / WARN broadcast banner. The banner-class message stays
+   * HELD (the page keeps it, this overlay's poll stays stopped because
+   * `message` is still set) but renders NOTHING — neither the top banner nor,
+   * when the app refused banner posture (`fullPresentation`), the full-screen
+   * broadcast form, which would otherwise cover the alert completely. Its
+   * layout is withdrawn, so the content (the staged board) is not inset under
+   * a banner that is not there. SOS / MEDIA_ALERT / CRITICAL text are not
+   * affected. At the all-clear the page drops this flag and the banner is
+   * back, unchanged.
+   */
+  suppressBanner?: boolean;
+  /**
    * P0-2 (life-safety) — paired kiosks carry a DEVICE JWT, not a user
    * session cookie. When set, the overlay polls the DEVICE-authed
    * GET /emergency/messages endpoint with `Authorization: Bearer`
@@ -274,7 +288,7 @@ const severityStyles = {
   },
 } as const;
 
-export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint, onPolledActiveChange, onPolledMessageChange, onBannerLayoutChange, fullPresentation = false }: Props) {
+export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, deviceToken, onTenantEmergencyHint, onPolledActiveChange, onPolledMessageChange, onBannerLayoutChange, fullPresentation = false, suppressBanner = false }: Props) {
   // F2b hint rate-limiter — survives effect re-runs, deliberately not state.
   const lastTenantHintAtRef = useRef(0);
   // E-P1-05 — consecutive-empty counter for the polled overlay (see below).
@@ -293,7 +307,8 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
   const faceStage = useEmergencyFaceStage();
   const bannerRef = useRef<HTMLDivElement>(null);
   const displayed = message || polled;
-  const bannerVisible = isBannerEmergencyMessage(displayed) && !fullPresentation;
+  const bannerSuppressed = suppressBanner && isBannerEmergencyMessage(displayed);
+  const bannerVisible = isBannerEmergencyMessage(displayed) && !fullPresentation && !bannerSuppressed;
   useLayoutEffect(() => {
     if (!bannerVisible) { onBannerLayoutChange?.(null); updateBroadcastBannerInset(0); return; }
     const banner = bannerRef.current;
@@ -400,6 +415,9 @@ export function EmergencyOverlay({ message, tenantId, apiUrl, pollMs = 10000, de
 
   const active = message || polled;
   if (!active) return null;
+  // A tenant alert outranks a banner (see `suppressBanner`): held, not drawn —
+  // in either presentation.
+  if (bannerSuppressed) return null;
 
   const style = severityStyles[active.severity] || severityStyles.CRITICAL;
   const Icon = style.icon;

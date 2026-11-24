@@ -18,6 +18,11 @@ internal object BroadcastContentViews {
     fun register(face: Int, view: View, desired: () -> Boolean) {
         val entry = Entry(face, view, desired)
         val previous = synchronized(entries) { entries.put(face, entry) }
+        // 2026-11-23 — a view that REPLACES one this file had masked (the site's
+        // renderer died during a takeover) inherits the mask, so the release (or
+        // a trusted takeover → banner) shows it again. It used to come back
+        // INVISIBLE with masked=false, and nothing ever showed it.
+        if (previous?.masked == true) entry.masked = true
         previous?.view?.get()?.let { old -> previous.listener?.let(old::removeOnLayoutChangeListener) }
         entry.listener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> apply(entry) }
         view.addOnLayoutChangeListener(entry.listener)

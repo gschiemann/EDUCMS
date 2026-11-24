@@ -45,6 +45,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { sceneCss } from './scene-css';
 import { hasNativeBridge, nativeFire, nativeHas } from '@/app/player/nativeBridge';
 import { DISPLAY_BLANK_EVENT, isDisplayBlanked } from '@/app/player/displayBlankSignal';
+import { nativeSiteViewRect } from '@/app/player/broadcastLayout';
 import { WidgetEmptyState } from './WidgetEmptyState';
 import {
   buildHidePayload,
@@ -251,7 +252,13 @@ export function WebsiteTabsWidget({ config, live }: { config: unknown; live?: bo
   const measureBounds = useCallback((): NativeBounds | null => {
     const el = contentRef.current;
     if (!el || typeof window === 'undefined') return null;
-    const r = el.getBoundingClientRect();
+    // 2026-11-23 — in CANVAS coordinates on an app that transforms the site
+    // view under a broadcast banner itself (BroadcastContentViews.kt; it says
+    // so on sharedVideoState). Measured on the glass, the site was transformed
+    // twice — shrunk and shifted — after an alert's all-clear left a broadcast
+    // up, or on a tab tap under a banner. Any other app: the glass rectangle,
+    // as before (broadcastLayout.ts `nativeSiteViewRect`).
+    const r = nativeSiteViewRect(el.getBoundingClientRect());
     if (!r.width || !r.height) return null;
     // CSS px → window px by the page's real ratio, not the ROM's reported
     // devicePixelRatio (see cssToWindowRatio — the 2026-11-07 "corner" bug).

@@ -474,6 +474,19 @@ class FacePlayerHost(
                 bannerOnly,
             )
         },
+        // 2026-11-23 — the channel's "takeover ended, only the banner remains"
+        // raise: trusted, banner posture, THIS host's own index.
+        displayEmergencyTakeoverEndedImpl = {
+            holdReported = true
+            DisplayControlApi.emergencyHoldJson(
+                activity.applicationContext,
+                active = true,
+                trusted = true,
+                faceIndex = faceIndex,
+                bannerOnly = true,
+                takeoverEnded = true,
+            )
+        },
         bridgeNonce = faceNonce,
     )
 

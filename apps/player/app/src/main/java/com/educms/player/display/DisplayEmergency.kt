@@ -443,8 +443,24 @@ object DisplayEmergency {
      * must not make a RAISE disappear, and must not create a member nothing
      * can ever release.
      */
-    fun setHold(ctx: Context, faceIndex: Int, active: Boolean, bannerOnly: Boolean = false): Boolean =
-        setHoldFrom(ctx, faceIndex, active, fromPage = true, bannerOnly = bannerOnly)
+    fun setHold(ctx: Context, faceIndex: Int, active: Boolean, bannerOnly: Boolean = false, takeoverEnded: Boolean = false): Boolean =
+        setHoldFrom(ctx, faceIndex, active, fromPage = true, bannerOnly = bannerOnly, takeoverEnded = takeoverEnded)
+
+    // ─── the takeover → banner transition (2026-11-23) ───────────────
+    //
+    // `takeoverEnded` is the page's LIVE manifest saying "no takeover alert,
+    // only the banner remains" (DisplayControlApi.emergencyHoldJson passes it
+    // only when trusted). BroadcastBanner.hold decides it; this file adds the
+    // one input BroadcastBanner cannot see: whether the NATIVE alert watch
+    // raised this hold episode. A takeover the watch raised (the panel was off
+    // or no page owned the alert) never downgrades — the website stays masked
+    // until the broadcast ends, the safe direction.
+
+    /** The native alert watch raised the hold in the current episode. Under [holdLock]; ends with [release]. */
+    private var watchRaisedThisHold = false
+
+    /** face → the last takeover-ended outcome logged, so a kept takeover logs once, not every poll. */
+    private val lastDowngradeLogged = mutableMapOf<Int, String>()
 
     // ─── the native alert watch (2026-10-05, player 1.1.22) ──────────
     //
@@ -502,7 +518,7 @@ object DisplayEmergency {
         return setHoldFrom(app, faceIndex, active = true, fromPage = false)
     }
 
-    private fun setHoldFrom(ctx: Context, faceIndex: Int, active: Boolean, fromPage: Boolean, bannerOnly: Boolean = false): Boolean {
+    private fun setHoldFrom(ctx: Context, faceIndex: Int, active: Boolean, fromPage: Boolean, bannerOnly: Boolean = false, takeoverEnded: Boolean = false): Boolean {
         val app = ctx.applicationContext
         synchronized(holdLock) {
             val live = liveFaces
@@ -525,12 +541,19 @@ object DisplayEmergency {
             )
             val next = nextHoldFaces(current, face, active)
             val wasHeld = current.isNotEmpty()
-            com.educms.player.media.BroadcastBanner.hold(face, active, fromPage && bannerOnly, face in current)
+            if (active && !fromPage) watchRaisedThisHold = true
+            val downgrade = com.educms.player.media.BroadcastBanner.hold(
+                face, active, fromPage && bannerOnly, face in current,
+                takeoverEnded = fromPage && takeoverEnded,
+                watchRaised = watchRaisedThisHold,
+            )
 
             if (active) {
                 // Arm the independent proof deadline BEFORE any OEM wake/brightness code can fail.
                 EmergencyPaintRecovery.raised(app, face)
-                return engage(app, wasHeld, next, face)
+                val persisted = engage(app, wasHeld, next, face)
+                if (downgrade != null) afterTakeoverEnded(face, downgrade)
+                return persisted
             }
             // Somebody else is still in an alert. Narrow the membership and
             // leave the screen exactly as it is.
@@ -538,6 +561,35 @@ object DisplayEmergency {
             if (persisted) EmergencyPaintRecovery.released(app, face)
             if (persisted) com.educms.player.media.BroadcastContentViews.refresh()
             return persisted
+        }
+    }
+
+    /**
+     * Under [holdLock], after the raise is committed. A promotion re-shows a
+     * masked native website under the banner (BroadcastContentViews) — the
+     * hold itself stays raised, so blanking, dimming and wake are unchanged —
+     * and native video presents again on the page's next intent (FaceVideoBox
+     * holds a surface that would START under a banner to the posture proof).
+     * Every promotion and every newly kept takeover writes one durable line.
+     */
+    private fun afterTakeoverEnded(face: Int, d: com.educms.player.media.BroadcastBanner.Downgrade) {
+        val previous = lastDowngradeLogged.put(face, d.reason)
+        if (d.reason == com.educms.player.media.BroadcastBanner.PROMOTED) {
+            PlayerLogger.durable(
+                "WARN", TAG,
+                "PLAYER_TAKEOVER_ENDED face=$face outcome=banner — the live manifest reports no takeover " +
+                    "alert and a broadcast banner remains: playback resumes under the banner; the display " +
+                    "hold stays raised until the broadcast ends",
+            )
+            runCatching { com.educms.player.media.BroadcastContentViews.refresh() }
+                .onFailure { PlayerLogger.w(TAG, "content views refresh after the takeover ended failed: ${it.message}") }
+        } else if (!d.promoted && d.reason != previous) {
+            PlayerLogger.durable(
+                "WARN", TAG,
+                "PLAYER_TAKEOVER_KEPT face=$face reason=${d.reason} — the live manifest reports the takeover " +
+                    "ended, and this app KEEPS the full takeover (native content stays hidden until the " +
+                    "broadcast ends)",
+            )
         }
     }
 
@@ -551,6 +603,8 @@ object DisplayEmergency {
      * membership moves.
      */
     private fun narrowHold(app: Context, remaining: Set<Int>, face: Int): Boolean {
+        com.educms.player.media.BroadcastBanner.endHold(face)
+        lastDowngradeLogged.remove(face)
         PlayerLogger.i(
             TAG,
             "face $face reports all-clear, but face(s) ${encodeHoldFaces(remaining)} are still in an " +
@@ -623,6 +677,10 @@ object DisplayEmergency {
         // A new hold period starts clean: a raise the page made for the last
         // alert says nothing about the next one.
         pageRaisedAt.clear()
+        // …and nor does a native-watch raise or a banner refusal (2026-11-23).
+        watchRaisedThisHold = false
+        lastDowngradeLogged.clear()
+        com.educms.player.media.BroadcastBanner.endHold()
         if (!wasHeld) return true
         val persisted = DisplayPrefs.commitEmergencyHold(
             app,

@@ -183,6 +183,81 @@ function isRefusal(result: unknown): boolean {
 }
 
 /**
+ * The kill switch, read from the manifest being applied:
+ * `EMERGENCY_BANNER_RESTORE_DISABLED` on the API → `playback.bannerRestore:
+ * 'off'` (absent by default, so no ETag moves). Anything but the exact string
+ * `'off'` leaves the transition on. Total; never throws.
+ */
+export function bannerRestoreAllowed(manifest: unknown): boolean {
+  try {
+    const playback = (manifest as { playback?: { bannerRestore?: unknown } } | null)?.playback;
+    return !(playback && typeof playback === 'object' && playback.bannerRestore === 'off');
+  } catch {
+    return true;
+  }
+}
+
+/** The live-manifest scope of {@link liveManifestHold}: set only while its `fn` runs. */
+let liveManifestScope: { downgradeAllowed: boolean } | null = null;
+
+/**
+ * 2026-11-23 — THE TAKEOVER → BANNER TRANSITION (the owner's demo on an
+ * L55VEC: broadcast, then a drill, then the all-clear — the native website
+ * never came back until the broadcast was killed).
+ *
+ * The APK refuses, on purpose, to let a banner DOWNGRADE a hold that was
+ * raised as a full takeover (`BroadcastBanner.kt`: "a banner cannot
+ * downgrade a takeover") — a stray geometry message must never re-open
+ * playback under a lockdown. But an all-clear that leaves a broadcast
+ * running is exactly that transition, and it had no trusted way to say so:
+ * the APK kept the takeover (site view masked, native video stopped) for as
+ * long as the broadcast lasted.
+ *
+ * {@link liveManifestHold} is that way. ONLY the manifest handler wraps its
+ * hold signal in it, on a LIVE answer (never a cached one): the 200 apply, the
+ * live 304 and the unconfirmed-OVERRIDE timeout — the same server of record,
+ * and the same call sites, that are already allowed to RELEASE the hold
+ * outright (rule 1). When such a call requests banner posture, the hold goes
+ * out as
+ * `displayEmergencyHold(true, true, true)`: the third argument says "the
+ * server of record shows no takeover alert; only the banner remains". Every
+ * such call carries it (not only a flip), because the flip may already have
+ * happened on the push path (an SOS over a banner, then cleared) and a
+ * reloaded page has no memory of the takeover the APK still holds; the APK
+ * applies it idempotently and only behind its own guards (trusted channel,
+ * no native-watch raise, no posture refusal in the hold episode).
+ *
+ * Never on the push / clear / reconcile / effect / paint-reassert paths, and
+ * never on the legacy transport (`legacyArgs` keeps one boolean). An APK
+ * that does not know the argument ignores it and stays a full takeover —
+ * today's behaviour, the safe direction. `downgradeAllowed: false` (the
+ * manifest kill switch `playback.bannerRestore: 'off'`) omits it.
+ *
+ * A scope rather than a fourth parameter, so every hold call keeps its exact
+ * shape (the wiring tests pin them): it covers ONLY the first
+ * signalDisplayEmergencyHold made inside `fn`, synchronously, and never
+ * outlives `fn`, even when it throws. `live: false` runs `fn` with no scope.
+ */
+export function liveManifestHold<T>(live: boolean, downgradeAllowed: boolean, fn: () => T): T {
+  const close = openLiveManifestHold(live, downgradeAllowed);
+  try {
+    return fn();
+  } finally {
+    close();
+  }
+}
+
+/**
+ * The same scope, opened and closed by the caller (the manifest apply keeps
+ * its hold statement exactly as the wiring tests pin it): call the returned
+ * function in a `finally` right after that one statement.
+ */
+export function openLiveManifestHold(live: boolean, downgradeAllowed: boolean): () => void {
+  liveManifestScope = live ? { downgradeAllowed } : null;
+  return () => { liveManifestScope = null; };
+}
+
+/**
  * Tell the native shell whether an emergency hold is in force.
  *
  * @param active  true while ANY emergency surface is displayed (tenant/
@@ -195,6 +270,9 @@ function isRefusal(result: unknown): boolean {
  *                expected outcome in a browser player.
  */
 export function signalDisplayEmergencyHold(active: boolean, force = false, requestedBanner = false): HoldOutcome {
+  // The live-manifest scope covers this one call only (see liveManifestHold).
+  const liveScope = liveManifestScope;
+  liveManifestScope = null;
   const isBanner = requestedBanner && !bannerRefused;
   // A live no-alert manifest ends any page-local native-held suppression,
   // whatever the device does with the release below.
@@ -212,9 +290,12 @@ export function signalDisplayEmergencyHold(active: boolean, force = false, reque
   try {
     if (!force && lastSent === active) { publishRenderHold(active); return 'skipped'; }
 
-    const outcome = active && isBanner
-      ? nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, true, true)
-      : nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, active);
+    const takeoverEnded = active && isBanner && liveScope !== null && liveScope.downgradeAllowed;
+    const outcome = takeoverEnded
+      ? nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, true, true, true)
+      : active && isBanner
+        ? nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, true, true)
+        : nativeFireChecked(DISPLAY_EMERGENCY_HOLD_METHOD, active);
 
     if (!outcome.delivered) {
       // No transport, or the method does not exist on this APK. There is no
@@ -295,10 +376,18 @@ export function noteNativeBannerRefused(reason?: string): void {
   try { signalDisplayEmergencyHold(true, true, false); } catch { /* emergency path never throws */ }
 }
 
-/** One `sharedVideoState` reply → the refusal reason, or null. Bounded and total. */
+/**
+ * One `sharedVideoState` reply → the refusal reason, or null. Bounded and total.
+ * `takeover-kept` (2026-11-23): the app was told the takeover ended (the live
+ * manifest's `displayEmergencyHold(true, true, true)`) and KEPT the full
+ * takeover anyway (its native alert watch raised this hold, or it refused
+ * banner posture earlier in it). The page then does what it does for a
+ * refusal: the full broadcast presentation, playback held, no native site
+ * claimed ready — never a banner over content the app is still hiding.
+ */
 export function bannerRefusalFromState(state: unknown): string | null {
   const posture = (state as { broadcastBannerPosture?: { posture?: unknown; reason?: unknown } } | null)?.broadcastBannerPosture;
-  if (!posture || typeof posture !== 'object' || posture.posture !== 'refused') return null;
+  if (!posture || typeof posture !== 'object' || (posture.posture !== 'refused' && posture.posture !== 'takeover-kept')) return null;
   return typeof posture.reason === 'string' && posture.reason.length <= 64 ? posture.reason : 'refused';
 }
 

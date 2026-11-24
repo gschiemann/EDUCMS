@@ -262,6 +262,10 @@ object DisplayControlApi {
         trusted: Boolean,
         faceIndex: Int = DisplayEmergency.PRIMARY_FACE,
         bannerOnly: Boolean = false,
+        // 2026-11-23 — the page's LIVE manifest: "the takeover ended, only the
+        // banner remains" (BroadcastBanner.hold). Honoured only when trusted,
+        // like the banner flag it qualifies; ignored on the every-frame object.
+        takeoverEnded: Boolean = false,
     ): String = try {
         val app = ctx.applicationContext
         if (!active && !trusted) {
@@ -273,7 +277,7 @@ object DisplayControlApi {
                     "every darkening action stays trusted-only there",
             )
         }
-        val persisted = DisplayEmergency.setHold(app, faceIndex, active, bannerOnly && trusted)
+        val persisted = DisplayEmergency.setHold(app, faceIndex, active, bannerOnly && trusted, takeoverEnded && bannerOnly && trusted)
         JSONObject()
             .put("ok", true)
             .put("emergencyHold", DisplayEmergency.isHeld(app))

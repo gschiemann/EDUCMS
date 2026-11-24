@@ -3409,6 +3409,18 @@ class MainActivity : ComponentActivity() {
                         bannerOnly,
                     )
                 },
+                // 2026-11-23 — the channel's "takeover ended, only the banner
+                // remains" raise: trusted, banner posture, the PRIMARY, from native.
+                displayEmergencyTakeoverEndedImpl = {
+                    DisplayControlApi.emergencyHoldJson(
+                        applicationContext,
+                        active = true,
+                        trusted = true,
+                        faceIndex = com.educms.player.display.DisplayEmergency.PRIMARY_FACE,
+                        bannerOnly = true,
+                        takeoverEnded = true,
+                    )
+                },
                 // 2026-08-14 — one-tap device-ADMIN enrolment, the tier
                 // that turns BLANK from "black overlay over a lit panel"
                 // into a real lockNow() panel-off. Activity-scoped and
@@ -3837,6 +3849,10 @@ class MainActivity : ComponentActivity() {
                     // P2-6 — never a full-screen WHITE sheet while the reload waits.
                     fresh.setBackgroundColor(android.graphics.Color.BLACK)
                     fresh.visibility = previousVisibility
+                    // 2026-11-23 — re-apply the takeover mask to the restored
+                    // visibility (the fresh view inherited the old one's mask
+                    // when it registered): never a site over a held alert.
+                    com.educms.player.media.BroadcastContentViews.refresh()
                     keepBlackoutAboveSiteViews("url-overlay renderer replaced")
                     // The overlay remains bridge-free and retains its navigation policy.
                     if (webTabsActive) fresh.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW

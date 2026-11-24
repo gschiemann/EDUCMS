@@ -4,7 +4,7 @@
  * WARN text broadcast overlays the running content; nothing regular mounts
  * while an alert's identity is still pending.
  */
-import { decideEmergencySurface, isBannerEmergencyMessage, type EmergencySurfaceInput } from '../emergencySurface';
+import { decideEmergencySurface, drawnPushedMessage, isBannerEmergencyMessage, pendingTextHiddenBy, tenantAlertOnGlass, type EmergencySurfaceInput } from '../emergencySurface';
 
 const base: EmergencySurfaceInput = {
   activeEmergency: false,
@@ -106,5 +106,37 @@ describe('decideEmergencySurface — the app refused banner posture (2026-11-02)
     expect(decideEmergencySurface({ ...base, pushed: sos, bannerRefused: true })).toBe('takeover');
     expect(decideEmergencySurface({ ...base, activeEmergency: true, bannerRefused: true })).toBe('takeover');
     expect(decideEmergencySurface({ ...base, playlistIsEmergency: true, pushed: info, bannerRefused: true })).toBe('content');
+  });
+});
+
+describe('a tenant alert outranks a banner (2026-11-23, a drill over a broadcast)', () => {
+  const none = { activeEmergency: false, pendingOverrideConfirm: false, playlistIsEmergency: false };
+  it('a manifest alert, a pending signed OVERRIDE or the staged emergency board is a tenant alert on the glass', () => {
+    expect(tenantAlertOnGlass(none)).toBe(false);
+    expect(tenantAlertOnGlass({ ...none, activeEmergency: true })).toBe(true);
+    expect(tenantAlertOnGlass({ ...none, pendingOverrideConfirm: true })).toBe(true);
+    expect(tenantAlertOnGlass({ ...none, playlistIsEmergency: true })).toBe(true);
+  });
+  it('an INFO / WARN banner is held but not drawn over a tenant alert; it is drawn again once the alert is gone', () => {
+    expect(drawnPushedMessage(info, true)).toBeNull();
+    expect(drawnPushedMessage(warn, true)).toBeNull();
+    expect(drawnPushedMessage(info, false)).toBe(info);
+    expect(drawnPushedMessage(null, true)).toBeNull();
+  });
+  it('a full-screen SOS / MEDIA_ALERT / CRITICAL text keeps today\'s draw over a tenant alert', () => {
+    expect(drawnPushedMessage(sos, true)).toBe(sos);
+    expect(drawnPushedMessage(media, true)).toBe(media);
+    expect(drawnPushedMessage(critical, true)).toBe(critical);
+  });
+  it('the takeover itself is unchanged: a tenant alert with a held banner is still a takeover', () => {
+    expect(decideEmergencySurface({ ...base, activeEmergency: true, pushed: info, renderHold: true })).toBe('takeover');
+    expect(decideEmergencySurface({ ...base, pendingOverrideConfirm: true, pushed: warn, renderHold: true })).toBe('takeover');
+  });
+  it('the protective pending words are hidden only by a full-screen pushed message, never by a banner', () => {
+    expect(pendingTextHiddenBy(null)).toBe(false);
+    expect(pendingTextHiddenBy(info)).toBe(false);
+    expect(pendingTextHiddenBy(warn)).toBe(false);
+    expect(pendingTextHiddenBy(sos)).toBe(true);
+    expect(pendingTextHiddenBy(critical)).toBe(true);
   });
 });

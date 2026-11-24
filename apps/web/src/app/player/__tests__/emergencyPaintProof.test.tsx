@@ -74,6 +74,38 @@ it('an INFO broadcast is a banner, and the FULL presentation when the app refuse
   expect(full!.textContent).toContain('test message to the staff');
 });
 
+it('a tenant alert outranks a banner (2026-11-23): a suppressed INFO / WARN broadcast draws nothing, in either presentation, and withdraws its layout', () => {
+  const info: EmergencyMessageView = { ...alert, id: 'test-info', severity: 'INFO', textBlob: 'Early dismissal at 1 PM' };
+  const warn: EmergencyMessageView = { ...info, id: 'test-warn', severity: 'WARN' };
+  const layouts: Array<unknown> = [];
+  const onLayout = (l: unknown) => { layouts.push(l); };
+  const banner = render(<EmergencyOverlay message={info} suppressBanner onBannerLayoutChange={onLayout} />);
+  expect(document.querySelector('[data-edu-emergency-root]')).toBeNull();
+  expect(document.body.textContent).not.toContain('Early dismissal at 1 PM');
+  expect(layouts.length).toBeGreaterThan(0);
+  expect(layouts.every((l) => l === null)).toBe(true);
+  banner.unmount();
+  // The refused-banner variant: the FULL broadcast form must not cover the alert either.
+  const full = render(<EmergencyOverlay message={warn} fullPresentation suppressBanner />);
+  expect(document.querySelector('[data-edu-emergency-root]')).toBeNull();
+  full.unmount();
+  // The alert ends: the same held message is drawn again, unchanged.
+  const back = render(<EmergencyOverlay message={info} suppressBanner={false} />);
+  const root = document.querySelector<HTMLElement>('[data-edu-emergency-root="banner"]');
+  expect(root).not.toBeNull();
+  expect(root!.dataset.eduEmergencyIdentity).toBe(emergencyPaintIdentity(info));
+  back.unmount();
+});
+
+it('a suppressed overlay still draws a full-screen SOS / MEDIA_ALERT / CRITICAL text (only the banner class is outranked)', () => {
+  const sos: EmergencyMessageView = { ...alert, id: 'test-sos', type: 'SOS', textBlob: 'SOS — Gym' };
+  for (const message of [alert, sos, { ...sos, id: 'test-media', type: 'MEDIA_ALERT' as const, severity: 'WARN' as const }]) {
+    const mounted = render(<EmergencyOverlay message={message} suppressBanner />);
+    expect(document.querySelector('[data-edu-emergency-root="full"]')).not.toBeNull();
+    mounted.unmount();
+  }
+});
+
 it('the actual message overlay reports paint only after two visible frame samples', () => {
   const root = mountMessage();
   expect(root.dataset.eduEmergencyIdentity).toBe(emergencyPaintIdentity(alert));

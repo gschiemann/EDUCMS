@@ -13,29 +13,113 @@ internal object BroadcastBanner {
      * ([BannerPosturePolicy]): their alert is a full takeover until the banner ends. */
     private val refused = mutableMapOf<Int, String>()
 
+    // ── 2026-11-23: the trusted takeover → banner transition ────────────
+    //
+    // The owner's demo on an L55VEC: a broadcast banner, then a drill, then
+    // the drill's all-clear with the broadcast still up. The page asked for
+    // banner posture again, and both halves were refused here on purpose ("a
+    // banner cannot downgrade a takeover"), so the native site stayed masked
+    // until the broadcast itself ended. That rule stays for every implicit
+    // path: geometry alone never downgrades, and neither does a re-raise. The
+    // ONE exit is [hold] with `takeoverEnded`, which only the page's LIVE
+    // manifest handler sends, only over the secure channel
+    // (DisplayControlApi.emergencyHoldJson: `takeoverEnded && trusted`), and
+    // which is still refused after a native-watch raise or any posture
+    // refusal in the same hold episode. In doubt the screen stays a full
+    // takeover.
+
+    /** Geometry the page sent while its face held a full takeover: refused by
+     * [set] as before, kept here so a trusted takeover-ended [hold] can apply it.
+     * Dropped by [clear], an inactive [set], a takeover [hold] and [endHold]. */
+    private val pending = mutableMapOf<Int, Layout>()
+    /** A posture refusal anywhere in the current HOLD EPISODE. Unlike [refused]
+     * it survives the inactive [set] the page sends when a takeover starts and a
+     * document retire ([clear]); it ends only with the face's hold ([endHold]). */
+    private val episodeRefused = mutableMapOf<Int, String>()
+    /** Why the last takeover-ended was refused for a lasting reason, for the
+     * page (SharedVideoHost.stateJson, `takeover-kept`). Ends with [endHold]. */
+    private val kept = mutableMapOf<Int, String>()
+
+    const val PROMOTED = "promoted"
+    const val ALREADY_BANNER = "already-banner"
+    const val KEPT_NATIVE_WATCH = "native-watch"
+    /** No banner geometry has arrived yet for this hold. Transient: the next
+     * live manifest asks again, so it is not reported to the page. */
+    const val KEPT_NO_GEOMETRY = "no-geometry"
+
+    /** What a trusted takeover-ended [hold] did: [promoted] = banner posture now
+     * holds (a downgrade, or it already did); otherwise [reason] it was kept. */
+    data class Downgrade(val promoted: Boolean, val reason: String)
+
     @Synchronized fun inset(face: Int): Double = insets[face]?.inset ?: 0.0
     @Synchronized fun rotation(face: Int): Int = insets[face]?.rotation ?: 0
     @Synchronized fun active(face: Int): Boolean = insets.containsKey(face)
-    @Synchronized fun clear(face: Int) { insets.remove(face); bannerHolders.remove(face); refused.remove(face) }
+    @Synchronized fun clear(face: Int) { insets.remove(face); bannerHolders.remove(face); refused.remove(face); pending.remove(face) }
+
+    /** The face's hold ended (DisplayEmergency release / narrow): the episode memory goes with it. */
+    @Synchronized fun endHold(face: Int) { pending.remove(face); episodeRefused.remove(face); kept.remove(face) }
+
+    /** The whole box's hold ended. */
+    @Synchronized fun endHold() { pending.clear(); episodeRefused.clear(); kept.clear() }
 
     /** Why banner posture was refused on [face], or null. */
     @Synchronized fun refusal(face: Int): String? = refused[face]
 
-    /** Sticky until the banner ends ([clear] / an inactive [set]): the face's
-     * alert becomes a full takeover, and the page is told (SharedVideoHost.stateJson). */
-    @Synchronized fun refuse(face: Int, reason: String) { refused[face] = reason; bannerHolders.remove(face) }
+    /** Why the app kept a takeover the page's live manifest said had ended, or null. */
+    @Synchronized fun takeoverKept(face: Int): String? = kept[face]
 
-    /** Called atomically with the display hold. Geometry alone never grants
-     * playback through a hold; a missing/untrusted type is a full takeover. */
-    @Synchronized fun hold(face: Int, active: Boolean, bannerOnly: Boolean, heldBefore: Boolean = false) {
+    /** Sticky until the banner ends ([clear] / an inactive [set]): the face's
+     * alert becomes a full takeover, and the page is told (SharedVideoHost.stateJson).
+     * Also remembered for the hold episode, so a later takeover-ended cannot
+     * re-open what this refused. */
+    @Synchronized fun refuse(face: Int, reason: String) { refused[face] = reason; episodeRefused[face] = reason; bannerHolders.remove(face) }
+
+    /**
+     * Called atomically with the display hold. Geometry alone never grants
+     * playback through a hold; a missing/untrusted type is a full takeover.
+     *
+     * [takeoverEnded] (trusted, live manifest only — see the block above) is the
+     * one way a hold raised as a takeover becomes banner posture again. It is
+     * refused when [watchRaised] (the native alert watch raised this hold
+     * episode), when the face's banner posture was refused in this episode, and
+     * when no banner geometry has arrived. Returns null when it was not asked.
+     */
+    @Synchronized fun hold(
+        face: Int, active: Boolean, bannerOnly: Boolean, heldBefore: Boolean = false,
+        takeoverEnded: Boolean = false, watchRaised: Boolean = false,
+    ): Downgrade? {
+        if (!active || !bannerOnly) pending.remove(face)
+        var outcome: Downgrade? = null
+        if (takeoverEnded && active && bannerOnly && heldBefore) {
+            val refusal = refused[face] ?: episodeRefused[face]
+            outcome = when {
+                face in bannerHolders && face in insets && refusal == null -> Downgrade(true, ALREADY_BANNER)
+                watchRaised -> Downgrade(false, KEPT_NATIVE_WATCH)
+                refusal != null -> Downgrade(false, refusal)
+                face !in insets && face !in pending -> Downgrade(false, KEPT_NO_GEOMETRY)
+                else -> {
+                    pending.remove(face)?.let { insets[face] = it }
+                    bannerHolders.add(face)
+                    Downgrade(true, PROMOTED)
+                }
+            }
+            when {
+                outcome.promoted -> kept.remove(face)
+                outcome.reason != KEPT_NO_GEOMETRY -> kept[face] = outcome.reason
+            }
+            if (outcome.promoted) return outcome
+        }
         if (active && bannerOnly && face in insets && face !in refused && (!heldBefore || face in bannerHolders)) bannerHolders.add(face)
         else bannerHolders.remove(face)
+        return outcome
     }
 
-    /** A banner cannot downgrade a hold already raised for a real takeover. */
+    /** A banner cannot downgrade a hold already raised for a real takeover.
+     * (Its geometry is kept as [pending] for a trusted takeover-ended [hold].) */
     @Synchronized fun set(face: Int, active: Boolean, inset: Double, holding: Set<Int>, rotation: Int = 0): Boolean {
-        if (!active) { insets.remove(face); bannerHolders.remove(face); refused.remove(face); return true }
-        if (!inset.isFinite() || inset !in 0.0..0.4 || rotation !in setOf(0, 90, 180, 270) || (face in holding && face !in insets)) return false
+        if (!active) { insets.remove(face); bannerHolders.remove(face); refused.remove(face); pending.remove(face); return true }
+        if (!inset.isFinite() || inset !in 0.0..0.4 || rotation !in setOf(0, 90, 180, 270)) return false
+        if (face in holding && face !in insets) { pending[face] = Layout(inset, rotation); return false }
         insets[face] = Layout(inset, rotation)
         return true
     }
