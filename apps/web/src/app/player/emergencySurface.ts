@@ -136,10 +136,15 @@ export function drawnPushedMessage<T extends SurfaceMessage>(pushed: T | null | 
 
 /**
  * The protective pending surface's words ("EMERGENCY" / the drill mark, while
- * a signed OVERRIDE awaits its manifest) are hidden only by a FULL-SCREEN
- * pushed message, which paints its own alert over them. A banner never hides
- * them: it is not drawn over a tenant alert.
+ * a signed OVERRIDE awaits its manifest) are hidden by a FULL-SCREEN pushed
+ * message, which paints its own alert over them. Under a tenant alert a banner
+ * never hides them: it is not drawn there. With NO tenant alert a banner-class
+ * message still hides them, as before 2026-11-23: the takeover surface is then
+ * only the full-screen form of an INFO / WARN broadcast (the app refused banner
+ * posture), and the words would claim an emergency that is not there.
  */
-export function pendingTextHiddenBy(pushed: SurfaceMessage | null | undefined): boolean {
-  return !!pushed && !isBannerEmergencyMessage(pushed);
+export function pendingTextHiddenBy(pushed: SurfaceMessage | null | undefined, tenantAlert: boolean): boolean {
+  if (!pushed) return false;
+  if (!isBannerEmergencyMessage(pushed)) return true;
+  return !tenantAlert;
 }

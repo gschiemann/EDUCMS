@@ -13668,12 +13668,14 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   if ((emergencySurface === 'takeover' || holdOnly) && !playlist?.isEmergency) {
     return (
       <div data-edu-emergency-transition="true" data-edu-emergency-hold={holdOnly ? 'true' : undefined} data-edu-emergency-drill={!holdOnly && pendingSurfaceIsDrill ? 'true' : undefined} style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', background: holdOnly ? '#000' : pendingSurfaceIsDrill ? '#3730a3' : '#dc2626', color: '#fff' }}>
-        {emergencyFallback || (!pendingTextHiddenBy(pushedEmergencyMessage) && !holdOnly && (
+        {emergencyFallback || (!pendingTextHiddenBy(pushedEmergencyMessage, tenantAlertUp) && !holdOnly && (
           // No alert identity yet: this is a protective pending surface,
-          // never an overlay-painted receipt for an unknown alert. Only a
+          // never an overlay-painted receipt for an unknown alert. A
           // FULL-SCREEN pushed message (which paints its own alert) hides
           // these words; a held banner is not drawn over a tenant alert
-          // (2026-11-23), so it never leaves the glass wordless.
+          // (2026-11-23), so it never leaves the glass wordless. With no
+          // tenant alert a banner-class message hides them too, as before:
+          // this surface is then only its full-screen form.
           <div role="alert" data-edu-emergency-pending="true" style={{ fontSize: 72, fontWeight: 900, textAlign: 'center', padding: 40 }}>{pendingSurfaceIsDrill ? tEmergency('drill.playerBanner') : tEmergency('trigger').toUpperCase()}</div>
         ))}
         {emergencyMessageOverlay}

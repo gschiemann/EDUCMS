@@ -132,11 +132,18 @@ describe('a tenant alert outranks a banner (2026-11-23, a drill over a broadcast
     expect(decideEmergencySurface({ ...base, activeEmergency: true, pushed: info, renderHold: true })).toBe('takeover');
     expect(decideEmergencySurface({ ...base, pendingOverrideConfirm: true, pushed: warn, renderHold: true })).toBe('takeover');
   });
-  it('the protective pending words are hidden only by a full-screen pushed message, never by a banner', () => {
-    expect(pendingTextHiddenBy(null)).toBe(false);
-    expect(pendingTextHiddenBy(info)).toBe(false);
-    expect(pendingTextHiddenBy(warn)).toBe(false);
-    expect(pendingTextHiddenBy(sos)).toBe(true);
-    expect(pendingTextHiddenBy(critical)).toBe(true);
+  it('under a tenant alert the protective pending words are hidden only by a full-screen pushed message, never by a banner', () => {
+    expect(pendingTextHiddenBy(null, true)).toBe(false);
+    expect(pendingTextHiddenBy(info, true)).toBe(false);
+    expect(pendingTextHiddenBy(warn, true)).toBe(false);
+    expect(pendingTextHiddenBy(sos, true)).toBe(true);
+    expect(pendingTextHiddenBy(critical, true)).toBe(true);
+  });
+  it('with no tenant alert a banner-class message hides the words as before: the surface is only its full-screen form (the app refused banner posture), and the words would claim an emergency that is not there', () => {
+    expect(decideEmergencySurface({ ...base, pushed: info, bannerRefused: true })).toBe('takeover');
+    expect(pendingTextHiddenBy(info, false)).toBe(true);
+    expect(pendingTextHiddenBy(warn, false)).toBe(true);
+    expect(pendingTextHiddenBy(sos, false)).toBe(true);
+    expect(pendingTextHiddenBy(null, false)).toBe(false);
   });
 });
