@@ -1,8 +1,6 @@
-'use client';
-
 /**
- * useShortPanicScreen — is /panic on a screen too short for the six trigger
- * buttons AND the panic-phone row above them? (2026-11-23)
+ * SHORT_PANIC_SCREEN_QUERY — is /panic on a screen too short for the six
+ * trigger buttons AND the panic-phone row above them? (2026-11-23)
  *
  * The 2026-11-16 release train put the "Keep this phone ready" card (and, on
  * a phone that is set up, the "This phone is ready" line) directly above the
@@ -18,34 +16,8 @@
  * was. It also matches a short laptop browser window (about 657 px on a
  * 1366 × 768 screen), which gets the same layout.
  *
- * Same shape as `use-short-landscape.ts`: event-driven (a matchMedia 'change'
- * listener, no polling) and false on the server and in jsdom, so SSR and the
- * first client paint agree.
+ * Read through `usePanicLayout` (`@/hooks/use-panic-layout`), which combines
+ * it with phone landscape; the boolean hook that lived here had no other user
+ * and was folded into that one.
  */
-import { useSyncExternalStore } from 'react';
-
 export const SHORT_PANIC_SCREEN_QUERY = '(max-height: 799px)';
-
-function subscribe(onChange: () => void): () => void {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
-  const mql = window.matchMedia(SHORT_PANIC_SCREEN_QUERY);
-  if (typeof mql.addEventListener === 'function') {
-    mql.addEventListener('change', onChange);
-    return () => mql.removeEventListener('change', onChange);
-  }
-  // Safari < 14 only knows the old listener pair.
-  mql.addListener(onChange);
-  return () => mql.removeListener(onChange);
-}
-
-function read(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia(SHORT_PANIC_SCREEN_QUERY).matches
-  );
-}
-
-export function useShortPanicScreen(): boolean {
-  return useSyncExternalStore(subscribe, read, () => false);
-}
