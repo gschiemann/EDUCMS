@@ -331,7 +331,9 @@ import {
   PlaylistFallbackLedger,
   RecoveryProof,
   everyItemOut,
+  fallbackDecisionLog,
   fallbackEligible,
+  fallbackEpisodeLogLine,
   fallbackReport,
   nextFallbackEpisode,
   pickReplaceWinner,
@@ -6102,9 +6104,12 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     });
     if (next === prev) return;
     fallbackEpisodeRef.current = next;
-    if (next && (next.state !== prev?.state || next.toId !== prev?.toId || next.fromId !== prev?.fromId)) {
-      console.warn(`[Player] PLAYLIST_FALLBACK episode ${next.state}: scheduled ${next.fromId}, ${next.state === 'recovered' ? 'playing' : 'backup'} ${next.toId}`);
-    }
+    // One PLAYLIST_FALLBACK line per change (rule 20). A backup taking the
+    // screen (the first time, again after a failed retry, or a move to another
+    // backup) is said by applyManifest's decision line; the episode says only
+    // what that line cannot know: the first choice tried again, and back.
+    const episodeLine = fallbackEpisodeLogLine(prev, next);
+    if (episodeLine) console.warn(episodeLine);
     try {
       const stored = storedFallbackEpisode(next);
       if (stored) window.localStorage.setItem(FALLBACK_EPISODE_STORE_KEY, stored);
@@ -8283,13 +8288,13 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             };
           }
           // Say it once per change — an operator must be able to find out why
-          // a screen is on its second playlist.
-          const fallbackLine = pick.fellBack && pick.primary && winner
-            ? `[Player] PLAYLIST_FALLBACK nothing in "${String(pick.primary.name || pick.primary.id)}" can be shown on this screen — showing "${String(winner.name || winner.template?.name || winner.id)}" instead; the first is tried again later or as soon as its content changes`
-            : '';
-          if (fallbackLine !== fallbackLoggedRef.current) {
-            fallbackLoggedRef.current = fallbackLine;
-            if (fallbackLine) console.warn(fallbackLine);
+          // a screen is on its second playlist. Keyed by the two playlist ids
+          // AND the text, so a move between two backups that share a name is
+          // still said; the episode does not repeat it (rule 20).
+          const fallbackDecision = fallbackDecisionLog(pick.fellBack, pick.primary, winner);
+          if (fallbackDecision.key !== fallbackLoggedRef.current) {
+            fallbackLoggedRef.current = fallbackDecision.key;
+            if (fallbackDecision.line) console.warn(fallbackDecision.line);
           }
         } else {
           templateWinner = manifest.playlists.find((pl: any) => pl.template) ?? null;
