@@ -278,7 +278,7 @@ test.describe('builder — Brand tab', () => {
     await shot(page, '12-ms-arcade-branded', browserName);
   });
 
-  // Owner rows (handoff 2026-11-23-rebrand-preset-placeholders): how a LONG
+  // Owner rows (handoff 2026-11-23-rebrand-placeholders): how a LONG
   // organisation name reads in the fixed slots, and the hallway tagline.
   test('long organisation name: Arcade, Studio, Fieldnotes and the hallway tagline (screenshots)', async ({ page, browserName }) => {
     const LONG = { ...ORG_BRAND, displayName: 'Riverside Academy of Science and Technology', tagline: 'Where curious minds grow into confident leaders' };

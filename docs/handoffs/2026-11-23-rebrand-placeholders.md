@@ -1,8 +1,10 @@
 # A rebrand replaces a widget's sample text nobody typed (2026-11-23)
 
-**Status.** Branch `claude/rebrand-placeholders`, cut from `origin/master` 31ebf86e7 (after #347 a884ada3b and #351). Committed, not pushed, no pull request, **not merged**. No schema change, no migration, no new environment variable, no new database read. Not life-safety: nothing under `apps/api/src/emergency/`, the player sync path or Taurus CSS changed.
+**Status.** Branch `claude/rebrand-placeholders`, cut from `origin/master` 31ebf86e7 (after #347 a884ada3b and #351). Four commits: the change (125315ef2), the review round 1 fix (539a585df), the review round 2 AI-generator should-fix (third commit), and this handoff (fourth commit: docs, plus a one-line comment pointer in `builder-brand-tab.spec.ts`). Committed, not pushed, no pull request, **not merged**. `origin/master` has since moved to 06e27df28 (#352, the panic short screen). Its five new commits touch none of this branch's files, so the branch needs an update-branch before merge but no conflict is expected. The final gates below ran on the branch as cut, not on a merge with 06e27df28. No schema change, no migration, no new environment variable, no new database read. Not life-safety: nothing under `apps/api/src/emergency/`, the player sync path or Taurus CSS changed.
 
-Author: a Claude Code cloud session (workflow agent). Review round 1 (a different session): changes required. The must-fix (fill-blanks overwrote a GENERIC word the tenant typed, such as 'WILDCATS', 'WHS' or 'Central Administration') is fixed in the branch's second commit; see "Generic placeholders" below.
+This file was `2026-11-23-rebrand-preset-placeholders.md` in the first two commits (the first commit's message still names that path); it was renamed with the final gates.
+
+Author: a Claude Code cloud session (workflow agent). Review round 1 (a different session, same vendor): changes required. The must-fix (fill-blanks overwrote a GENERIC word the tenant typed, such as 'WILDCATS', 'WHS' or 'Central Administration') is fixed in the branch's second commit; see "Generic placeholders" below. Review round 2 (same reviewer): **approve**, no must-fix. Its should-fix items are in "Review round 2: what the owner accepts or asks for" below; one of them (the AI generator) was applied in the third commit, after that review. The different-vendor review is waived by the owner in writing ("Don't worry about another model review").
 
 ## Situation
 
@@ -21,7 +23,7 @@ The owner: "make sure that when I rebrand something everything gets updated that
   - `patchZoneIdentity` drives every registered type from the registry (it replaces the hard-coded LOGO and `HS_*` branches); EXTERNAL_HTML boards and the unregistered `'schoolName' in cfg` fallback are unchanged.
   - Dotted keys are written flat. A nested shadow (`cfg.school.name`, from an old inline edit pick() never read) that holds typed text keeps the flat key in fill-blanks; a shadow equal to the placeholder does not.
 - **`applyBrandToTemplates`** (`apps/api/src/branding/branding.controller.ts`). #347's tenant-scope follow-up: the zone write is now `templateZone.updateMany({ where: { id, templateId, template: { tenantId, isSystem: false } } })`, and anything but one row throws, so the whole rebrand (with its audit row) rolls back.
-- **Clone, duplicate, create from preset** (`apps/api/src/templates/templates.controller.ts`) pick the registry up through `patchZoneIdentity`. The duplicate passes the SOURCE template's brand history as `opts.history` (`previous` stays null), so a copy keeps exactly the generic words the source's own Apply would keep. The history only blocks generic matching; it does not make the source brand's values replaceable. `POST /templates` (the editor's "Save as copy" posts the tenant's own zones there, and `importTemplate()` reuses it) passes `genericPlaceholders: false`: its zones carry no source id, so a generic word in them is treated as typed. Clone from a preset and the AI generator keep generic matching (no tenant typed those zones).
+- **Clone, duplicate, create from preset** (`apps/api/src/templates/templates.controller.ts`) pick the registry up through `patchZoneIdentity`. The duplicate passes the SOURCE template's brand history as `opts.history` (`previous` stays null), so a copy keeps exactly the generic words the source's own Apply would keep. The history only blocks generic matching; it does not make the source brand's values replaceable. `POST /templates` (the editor's "Save as copy" posts the tenant's own zones there, and `importTemplate()` reuses it) passes `genericPlaceholders: false`: its zones carry no source id, so a generic word in them is treated as typed. The AI generator (`persistGeneratedTemplate`, third commit) passes it too: the AI writes its zones from the tenant's own prompt. Clone from a preset keeps generic matching (no tenant typed those zones).
 - **"Brand this template"** (`apps/web/src/components/template-builder/brand-kit-actions.ts`) writes every registry key of a zone unconditionally (it is an explicit action), including the logo on MS, fitness and welcome scenes; `HS_TERMINAL` / `HS_TRANSIT` no longer get `schoolName`. `identitySnapshot(cfg, widgetType)` sees the registry's text keys, and the new `zoneLogoChanged` counts their logo keys in the toast (`BrandKitPanel.tsx`).
 - **Copy.** `settings.cc.brand.applyTemplatesHelp` now says "… wherever a spot is blank, still shows the template's sample name, tagline or logo, or still shows a previous brand …" in en, es and zh.
 
@@ -77,6 +79,16 @@ A generic word ('WILDCATS', 'WHS', 'HS', 'Central Administration') typed on a te
 | Sample names that are real school names | a school that typed 'Westridge', 'Westridge Middle', 'WESTRIDGE HIGH' or 'Roosevelt Academy' in a slot whose sample that is gets its Settings > Brand name there instead (see "What a typed value can still lose") | Jest |
 | **No opt-out from the newly filled slots — confirm before merge** | fitness `gymLogoUrl`, the Animated Welcome `logoUrl` (the logo replaces the emoji), the hallway `tagline`, and the MS name and logo keys are absent on every existing zone, so the next Apply fills them on EVERY existing MS, fitness, welcome and hallway template. A tenant cannot keep them empty: absent or `''` counts as blank and is refilled on every Apply (pre-existing (b)), and the hallway's sample tagline cannot be kept at all (it is a placeholder, so it is replaced whenever the brand has a tagline). This changes what is on the glass on the next Apply. | consistent with the design's owner rows; the owner has not confirmed it |
 
+## Review round 2: what the owner accepts or asks for
+
+Verdict: approve, nothing must be fixed. The reviewer re-ran the round-1 reproductions at 539a585df: on a template whose brand history names a brand, typed 'WILDCATS' (HS_VARSITY_PORTRAIT), 'Central Administration' (LOGO office-dashboard) and 'WHS' (HS_VARSITY) survive fill-blanks, override still replaces them, the duplicate keeps them through the source's history, and `POST /templates` never matches a generic placeholder. One code change came after that review: item 3, which the reviewer proposed. The other items are left to the owner:
+
+1. **Residual false positive 1 (accept or strike).** A generic word typed on a template that no NAMED brand has touched is replaced on the first Apply. That covers a template with no `brandKit` and one whose only previous brand had no name (reviewer's probe: a previous brand with a palette only, HS_VARSITY `schoolInitials` 'WHS' became 'LHS'). It cannot be told apart from the old click-blur capture of the sample. Templates cloned with a named brand are protected, because the pre-#347 clone snapshot already carried `displayName`.
+2. **Residual false positive 2 (accept or strike).** The non-generic samples that are also real names ('Westridge', 'WESTRIDGE', 'Westridge Middle', 'WESTRIDGE HIGH', 'Roosevelt Academy') are replaced even on a template with brand history. Reviewer's probe: MS_FIELDNOTES `'school.name'` 'Westridge' with previous brand 'Westridge Middle School' was overwritten with the organisation name. Only a school really named Westridge or Roosevelt that shortened its name for the '& Otters' or '.MS' lockup is affected, and its text is reverted on every Apply. Marking these generic would fix it, but would also stop replacing old flat-saved click-blur samples on MS templates that already have a named brand. It is a trade-off, so it was not changed.
+3. **AI-generated templates (applied in the third commit).** `persistGeneratedTemplate` in `apps/api/src/templates/templates.controller.ts` now passes `genericPlaceholders: false`, as `POST /templates` does. The AI writes its zones from the tenant's own prompt, so a generic word it emits is the tenant's text (a "front office" prompt that yields 'Central Administration' on a LOGO), not a preset's sample. A sample organisation ('Roosevelt Academy') and blank keys still take the brand. Re-checked: every generator path (generate-touch, create-from-candidate, the signage engine) goes through `sanitizeTouchTemplate`, which keeps only `TOUCH_GEN_ALLOWED_WIDGETS` in `apps/api/src/ai/ai.service.ts`, and LOGO is the only registered type in that set. The AI Designer path writes a single EXTERNAL_HTML board, which this branch does not change. New spec: `clone-brand-identity.spec.ts`, "an AI-generated LOGO keeps a generic word". It fails without the fix (`Expected "Central Administration"`, `Received "Buena Park Academy"`).
+4. **Sample text Apply still does not touch.** These keys are excluded as phrases or lockups, or not registered, so they keep the sample: MS_GREENHOUSE `'school.name'` 'Westridge ' + `'school.name2'` 'Middle' (a two-part lockup), MS_PLAYLIST `'brand.eyebrow'` 'Westridge MS · Lobby Display', MS_PAPER `'masthead.kicker'` 'Westridge Middle · Morning Edition', HS_TERMINAL `greetingHeadline` 'HELLO, WESTRIDGE.', HS_TRANSIT `brandStation` 'WESTRIDGE HIGH · MAIN TERMINAL', and the 'WHS' code chips (HS_TRANSIT and HS_BLUEPRINT `schoolCode`, HS_BROADCAST `schoolChip`). The owner asked that "everything gets updated", so these are known remaining sample text. Each needs an owner call: rewrite the phrase around the organisation name, register the chip as initials, or leave it.
+5. **A typed name does not stop the logo slot being filled.** MS_ARCADE `{'school.name': 'MY SCHOOL'}` still gains `'school.logoUrl'`. LOGO `{variant: 'logo-neon', logoUrl: <typed>}` still gains `assetUrl`, which that renderer does not read (see the LOGO note under pre-existing issues). Both follow the design and #347. The owner still has to confirm the no-opt-out logo fill on MS, fitness and welcome scenes (the bold owner row above): `''` counts as blank and is refilled on every Apply.
+
 ## Legacy templates
 
 - Absent registered keys (every MS, fitness, welcome and hallway zone, most HS and LOGO zones) are filled on the next Apply.
@@ -85,6 +97,29 @@ A generic word ('WILDCATS', 'WHS', 'HS', 'Central Administration') typed on a te
 - On the following rebrand rule (b) takes over, because Apply writes the snapshot.
 
 ## Evidence (run in this worktree)
+
+Final gates (2026-11-24). They ran on the tree of the third commit 373645635 plus this handoff's edits and the spec comment pointer, so the code is identical to the branch head. Heavy steps ran one at a time under the machine-wide lock. All passed:
+
+| Gate | Result |
+|---|---|
+| `pnpm install --frozen-lockfile --lockfile-only` (pnpm lockfile drift) | pass |
+| `prisma generate`, then build `@cms/api-types`, `@cms/scoreboard-cts`, `@cms/signage-design` and `api` (nest build) | pass |
+| `tsc --noEmit -p apps/api/tsconfig.build.json` | 0 errors |
+| `tsc --noEmit -p apps/web/tsconfig.json` | 0 errors |
+| web production build (`NEXT_PUBLIC_API_URL=http://api.invalid/api/v1`, clean `.next`) | compiled; then `check-bundle-budget.cjs` OK (2181 chunks, 20.16 MB, within the ceiling) |
+| API Jest `src/branding src/templates src/tenant-isolation` (`--ci --maxWorkers=2`) | 69 suites, 2023 tests passed |
+| web Jest, full suite (`--ci --maxWorkers=2`) | 725 suites, 10726 tests passed |
+| `check-i18n-parity.cjs` | 7691 keys in en, es and zh |
+| `check-tenant-isolation.cjs` | 0 unscoped, baseline 0 |
+| `check-env-declared.cjs`; `generate-env-docs.cjs --check` | 0 errors; docs and `.env.example` match |
+| `check-mobile-perf.cjs`; `check-pill-rules.cjs`; `check-inset-serialization.cjs` | clean; none above baseline; 0 landmines |
+| `check-rulebook.cjs` | PASS (re-run after the last handoff edit) |
+| `check-schema-has-migration.cjs` (`BASE_SHA` = merge-base 31ebf86e7) | schema unchanged |
+| Playwright `builder-brand-tab.spec.ts`, Chromium (headless shell 1243), **production build** (`CI=true E2E_PREBUILT=1`, `next start`) | 6 of 6 passed |
+
+The first final-gates attempt (2026-11-23, cut off by the reboot) timed out on the first Playwright test: the Brand tab never appeared within 90 s. That run set `E2E_PORT=3147` but not `E2E_BASE`. The spec's mocked API answers with `Access-Control-Allow-Origin: ${E2E_BASE || 'http://localhost:3000'}`, so the browser on :3147 rejected every mocked response. With `E2E_BASE=http://localhost:3147` all six pass. This was a mismatch in the local harness, not a product failure; CI runs on :3000. The long-name screenshot from this run (`chromium-13-long-name-ms-hallway.png`) matches the description below. Studio's two-line name sits tight against ON AIR and above "GOOD MORNING", which is the owner row.
+
+Review round 2 should-fix (third commit): `clone-brand-identity.spec.ts`, "an AI-generated LOGO keeps a generic word" (7 of 7 in that file). With the fix reverted it fails (`Expected "Central Administration"`, `Received "Buena Park Academy"`). The fix was restored.
 
 Review round 1 fix (second commit):
 
@@ -103,7 +138,8 @@ First commit:
 
 ## Unverified
 
-- `builder-brand-tab.spec.ts` under `--project=webkit`: the WebKit browser now downloads (`/opt/pw-browsers/webkit-2272`) but this container lacks its host libraries (libwoff2dec, libmanette, libenchant-2, libsecret-1, libGLESv2, libwayland-server, ...); `playwright install-deps webkit` is a system-wide apt install and was not run in this shared container. The web code is unchanged since the first commit. Also not run: Chromium against the production build (`next start`) rather than `next dev`.
+- `builder-brand-tab.spec.ts` under `--project=webkit`: the WebKit browser now downloads (`/opt/pw-browsers/webkit-2272`) but this container lacks its host libraries (libwoff2dec, libmanette, libenchant-2, libsecret-1, libGLESv2, libwayland-server, ...); `playwright install-deps webkit` is a system-wide apt install and was not run in this shared container. The web code is unchanged since the first commit. (Chromium against the production build now passes: see the final gates.)
+- The final gates ran on the branch as cut from 31ebf86e7, not on a merge with the current `origin/master` 06e27df28. CI will run them on the updated branch.
 - Apply against the production Postgres (Supavisor session mode) rather than a local one; a bench screen showing a rebranded HS and MS scene; `/api/v1/health` reporting the merge SHA.
 - The production catalogue count below (needs a production database the agent does not have). Expected 0; if not, add those literals to the static placeholders. Never add a runtime DB or audit read.
 
