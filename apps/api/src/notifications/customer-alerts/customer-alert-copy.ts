@@ -6,6 +6,7 @@
  * Privacy: the only names an email carries are screen and location names.
  * Never a person, an address, an IP or a device id.
  */
+import { alertTimeLabel } from './alert-time';
 
 export type AlertLocale = 'en' | 'es' | 'zh';
 
@@ -423,7 +424,8 @@ const E = {
     subjTrig: (type: string, drill: boolean, where: string) =>
       drill ? `VenueOS: Simulacro de ${type} iniciado en ${where}` : `VenueOS: Alerta de ${type} enviada a ${where}`,
     subjClear: (drill: boolean, where: string) => (drill ? `VenueOS: Simulacro terminado en ${where}` : `VenueOS: Fin de la alerta enviado a ${where}`),
-    where: (first: string, others: number) => (others > 0 ? `${first} y ${others} ubicación${others === 1 ? '' : 'es'} más` : first),
+    // "ubicaciones" — the plural drops the accent (it read "ubicaciónes" until 2026-11-23).
+    where: (first: string, others: number) => (others > 0 ? `${first} y ${others} ${others === 1 ? 'ubicación' : 'ubicaciones'} más` : first),
     trig: (type: string, drill: boolean, where: string, screens?: number) =>
       `${drill ? `Se inició un SIMULACRO de ${type} en` : `Se envió una alerta de ${type} a`} ${where}${screens ? ` (${screens} pantalla${screens === 1 ? '' : 's'})` : ''}.`,
     clear: (drill: boolean, where: string) =>
@@ -455,6 +457,36 @@ export function emergencyTypeLabel(locale: AlertLocale, type: string | null | un
   return ALERT_TYPE[locale][key] ?? E[locale].alertWord;
 }
 
+/** One clock an emergency record copy states the time on: a location, and the zone its reached screens show. */
+export interface AlertClock {
+  name: string;
+  /** IANA zone; null or unknown = UTC, labelled. */
+  zone: string | null;
+}
+
+/**
+ * The "Time" line(s) of a record copy (2026-11-23): the moment as each clock
+ * shows it, grouped by what the clock READS, in the order given (the alert's
+ * own target first). Clocks that agree collapse into one line — Denver and
+ * Phoenix read the same in winter and split in summer — so the usual email
+ * has exactly one: `Time: Mon, Nov 23, 2026, 2:41 PM CST`. Clocks that
+ * disagree (a district across a zone line) get one line each, naming the
+ * locations that read it.
+ */
+function emergencyTimeLines(locale: AlertLocale, atMs: number, clocks: readonly AlertClock[]): string[] {
+  const e = E[locale];
+  const groups = new Map<string, string[]>();
+  for (const c of clocks) {
+    const label = alertTimeLabel(locale, atMs, c.zone);
+    const names = groups.get(label) ?? [];
+    if (!names.includes(c.name)) names.push(c.name);
+    groups.set(label, names);
+  }
+  if (groups.size === 0) return [`${e.time}: ${alertTimeLabel(locale, atMs, null)}`];
+  if (groups.size === 1) return [`${e.time}: ${[...groups.keys()][0]}`];
+  return [`${e.time}:`, ...listLines([...groups], ([label, names]) => `${label} — ${e.where(names[0], names.length - 1)}`, T[locale].more)];
+}
+
 export function renderEmergencyEmail(
   locale: AlertLocale,
   input: {
@@ -464,6 +496,11 @@ export function renderEmergencyEmail(
     locationNames: readonly string[];
     screenCount?: number;
     at: Date;
+    /**
+     * The clocks to state `at` on (2026-11-23), target first. Absent or
+     * empty: the time is stated in UTC, labelled UTC.
+     */
+    clocks?: readonly AlertClock[];
   },
   links: { emergencyUrl: string; manageUrl: string },
 ): RenderedEmail {
@@ -472,7 +509,6 @@ export function renderEmergencyEmail(
   const where = e.where(names[0], names.length - 1);
   const type = emergencyTypeLabel(locale, input.alertType);
   const subject = input.event === 'TRIGGERED' ? e.subjTrig(type, input.isDrill, where) : e.subjClear(input.isDrill, where);
-  const when = input.at.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
   const body: string[] = [
     input.event === 'TRIGGERED' ? e.trig(type, input.isDrill, where, input.screenCount) : e.clear(input.isDrill, where),
     '',
@@ -480,6 +516,16 @@ export function renderEmergencyEmail(
   if (names.length > 1) {
     body.push(e.locations, ...listLines(names, (n) => n, T[locale].more), '');
   }
-  body.push(`${e.time}: ${when}`, '', e.record, '', `${e.open}: ${links.emergencyUrl}`, '', `${T[locale].manage}: ${links.manageUrl}`, '', T[locale].sign);
+  body.push(
+    ...emergencyTimeLines(locale, input.at.getTime(), input.clocks ?? []),
+    '',
+    e.record,
+    '',
+    `${e.open}: ${links.emergencyUrl}`,
+    '',
+    `${T[locale].manage}: ${links.manageUrl}`,
+    '',
+    T[locale].sign,
+  );
   return { subject, body: body.join('\n') };
 }

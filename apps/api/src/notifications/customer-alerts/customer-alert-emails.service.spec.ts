@@ -22,6 +22,8 @@ function makeWorld() {
   const displaySchedules: Row[] = [];
   const auditLogs: Row[] = [];
   const screenEvents: Row[] = [];
+  /** screen_emergency_overrides rows (2026-11-23: the reached screens of an alert, by `alertId`). */
+  const overrides: Row[] = [];
   let seq = 0;
 
   const inList = (v: any, c: any) => (c && typeof c === 'object' && 'in' in c ? c.in.includes(v) : c === undefined || v === c);
@@ -50,7 +52,10 @@ function makeWorld() {
     license: { findMany: jest.fn(async () => []) },
     screen: {
       findMany: jest.fn(async ({ where }: any) => {
-        if (where.id?.in) return [...screens.values()].filter((s) => where.id.in.includes(s.id));
+        if (where.id?.in)
+          return [...screens.values()].filter((s) => where.id.in.includes(s.id) && (where.tenantId === undefined || inList(s.tenantId, where.tenantId)));
+        // 2026-11-23: every screen of these locations (a school-wide alert's clocks).
+        if (where.tenantId?.in && Object.keys(where).length === 1) return [...screens.values()].filter((s) => where.tenantId.in.includes(s.tenantId));
         // 2026-11-09: the re-pair query (authState, the flip window, a fresh ping).
         if (where.authState) {
           return [...screens.values()].filter(
@@ -128,9 +133,12 @@ function makeWorld() {
       ),
     },
     screenEvent: { findMany: jest.fn(async ({ where }: any) => screenEvents.filter((e) => where.screenId.in.includes(e.screenId))) },
+    screenEmergencyOverride: {
+      findMany: jest.fn(async ({ where }: any) => overrides.filter((o) => inList(o.tenantId, where.tenantId) && o.alertId === where.alertId)),
+    },
   };
   const clock = { now: T0 };
-  return { client, tenants, users, screens, incidents, sends, schedules, displaySchedules, auditLogs, screenEvents, clock };
+  return { client, tenants, users, screens, incidents, sends, schedules, displaySchedules, auditLogs, screenEvents, overrides, clock };
 }
 
 type World = ReturnType<typeof makeWorld>;
@@ -768,6 +776,266 @@ describe('emergency record copy', () => {
     expect(p.subject).toBe('VenueOS: Lockdown alert sent to Lincoln Elementary');
     expect(p.body).toContain('A Lockdown alert was sent to Lincoln Elementary (12 screens).');
     expect(p.kind).toBe('ALERT_EMERGENCY');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// 2026-11-23 — the owner, after a live demo: "My alert email give me utc
+// time but I want local time of the screen". The record copy states the
+// alert's moment as the reached screens' clocks show it.
+// ═════════════════════════════════════════════════════════════════════════
+
+describe('emergency record copy — the time on the screen’s clock (2026-11-23)', () => {
+  const AT = Date.parse('2026-11-23T20:41:00Z');
+  const CHICAGO = { latitude: 41.8781, longitude: -87.6298 };
+  const record = (over: Partial<Parameters<CustomerAlertEmailsService['sendEmergencyRecord']>[0]> = {}) => ({
+    event: 'TRIGGERED' as const,
+    overrideId: 'alert-1',
+    alertType: 'LOCKDOWN',
+    isDrill: true,
+    tenantIds: ['lincoln'],
+    atMs: AT,
+    ...over,
+  });
+  const bodyTo = (email: any, to: string) => email.sendCustomerAlert.mock.calls.find((c: any[]) => c[0].to === to)![0].body as string;
+  const timeBlock = (body: string) => {
+    const lines = body.split('\n');
+    const i = lines.findIndex((x) => /^(Time|Hora|时间):/.test(x));
+    const out = [lines[i]];
+    for (let j = i + 1; j < lines.length && lines[j].startsWith('  '); j++) out.push(lines[j]);
+    return out;
+  };
+  /** The rows the trigger committed: one per screen it took over, with the alert's id. */
+  const reached = (alertId: string, ...ids: string[]) => {
+    for (const id of ids) w.overrides.push({ screenId: id, tenantId: w.screens.get(id)!.tenantId, alertId });
+  };
+
+  it('the location’s own setting: local time with the zone, for the admin (en) and the district admin (es)', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record());
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+    expect(timeBlock(bodyTo(email, 'superintendent@example.org'))).toEqual(['Hora: lun, 23 nov 2026, 14:41 hora estándar central']);
+    expect(bodyTo(email, 'principal@example.org')).not.toContain('UTC');
+  });
+
+  it('no setting, but an address: the zone at the address (what the screens’ manifests use)', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: null, ...CHICAGO });
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record());
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+  });
+
+  it('a school with nothing set: its district’s zone', async () => {
+    Object.assign(w.tenants.get('district')!, { timezone: 'America/Denver' });
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record());
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 1:41 PM MST']);
+  });
+
+  it('nothing set anywhere: UTC, and the line says UTC', async () => {
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record());
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 8:41 PM UTC']);
+  });
+
+  it('one screen with its own zone: the email reads THAT screen’s clock (its override row names it), never the device’s', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    screen(w, 'gym', 'lincoln', { timezone: 'America/New_York', deviceTimeZone: 'Asia/Shanghai' });
+    screen(w, 'lobby', 'lincoln');
+    reached('alert-1', 'gym');
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record({ screenCount: 1 }));
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 3:41 PM EST']);
+    // Both reads are constrained to the tenants the email is about.
+    const ovWhere = w.client.screenEmergencyOverride.findMany.mock.calls[0][0].where;
+    expect(ovWhere).toEqual({ tenantId: { in: ['lincoln'] }, alertId: 'alert-1' });
+    const scrCall = w.client.screen.findMany.mock.calls.find((c: any[]) => c[0].where.id?.in)![0];
+    expect(scrCall.where).toEqual({ id: { in: ['gym'] }, tenantId: { in: ['lincoln'] } });
+    expect(scrCall.take).toBeLessThanOrEqual(1_000);
+  });
+
+  it('a screen of ANOTHER tenant named by a stray row is never read', async () => {
+    screen(w, 'acme-tv', 'acme', { timezone: 'Asia/Tokyo' });
+    w.overrides.push({ screenId: 'acme-tv', tenantId: 'lincoln', alertId: 'alert-1' });
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record());
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+  });
+
+  it('a school whose screens all carry another zone: their zone, not the school’s', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    for (const id of ['a', 'b']) screen(w, id, 'lincoln', { timezone: 'America/Denver' });
+    reached('alert-1', 'a', 'b');
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record());
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 1:41 PM MST']);
+  });
+
+  it('a school-wide alert with no per-screen rows reaches every screen there: their clocks are read, constrained to the location', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    screen(w, 'lobby', 'lincoln');
+    screen(w, 'gym', 'lincoln', { timezone: 'America/New_York' });
+    screen(w, 'acme-tv', 'acme', { timezone: 'Asia/Tokyo' });
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record());
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual([
+      'Time:',
+      '  • Mon, Nov 23, 2026, 2:41 PM CST — Lincoln Elementary',
+      '  • Mon, Nov 23, 2026, 3:41 PM EST — Lincoln Elementary',
+    ]);
+    const wholeRead = w.client.screen.findMany.mock.calls.map((c: any[]) => c[0]).find((a: any) => a.select?.screenGroup && !a.where.id);
+    expect(wholeRead.where).toEqual({ tenantId: { in: ['lincoln'] } });
+    expect(wholeRead.take).toBeLessThanOrEqual(1_000);
+  });
+
+  it('a district alert: only the locations with no rows of their own have all their screens read', async () => {
+    Object.assign(w.tenants.get('district')!, { timezone: 'America/Chicago' });
+    screen(w, 'l1', 'lincoln', { timezone: 'America/New_York' });
+    screen(w, 'l2', 'lincoln', { timezone: 'America/Denver' });
+    screen(w, 'a1', 'adams', { timezone: 'America/Denver' });
+    reached('alert-1', 'l1'); // lincoln wrote per-screen rows (location-based content on); l2 was not reached
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record({ tenantIds: ['district', 'lincoln', 'adams'] }));
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 3:41 PM EST']);
+    expect(timeBlock(bodyTo(email, 'adams-admin@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 1:41 PM MST']);
+    const wholeRead = w.client.screen.findMany.mock.calls.map((c: any[]) => c[0]).find((a: any) => a.select?.screenGroup && !a.where.id);
+    expect(wholeRead.where).toEqual({ tenantId: { in: ['district', 'adams'] } });
+  });
+
+  it('when the location read fails, the screens already read keep their clocks; the rest state their location’s zone', async () => {
+    Object.assign(w.tenants.get('district')!, { timezone: 'America/Chicago' });
+    Object.assign(w.tenants.get('adams')!, { timezone: 'America/Denver' });
+    screen(w, 'l1', 'lincoln', { timezone: 'America/New_York' });
+    screen(w, 'a1', 'adams', { timezone: 'Pacific/Honolulu' });
+    reached('alert-1', 'l1');
+    const real = w.client.screen.findMany.getMockImplementation()!;
+    w.client.screen.findMany.mockImplementation(async (args: any) => {
+      if (!args.where.id && args.select?.screenGroup) throw new Error('db down');
+      return real(args);
+    });
+    const { svc, email } = build(w);
+    expect(await svc.sendEmergencyRecord(record({ tenantIds: ['district', 'lincoln', 'adams'] }))).toBe(1);
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 3:41 PM EST']);
+    expect(timeBlock(bodyTo(email, 'adams-admin@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 1:41 PM MST']);
+  });
+
+  it('a district alert across a zone line: each admin sees their own locations; the district admin sees both clocks', async () => {
+    Object.assign(w.tenants.get('district')!, { timezone: 'America/Chicago' });
+    Object.assign(w.tenants.get('adams')!, { timezone: 'America/Denver' });
+    screen(w, 'l1', 'lincoln');
+    screen(w, 'a1', 'adams');
+    reached('alert-1', 'l1', 'a1');
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record({ tenantIds: ['district', 'lincoln', 'adams'] }));
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+    expect(timeBlock(bodyTo(email, 'adams-admin@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 1:41 PM MST']);
+    expect(timeBlock(bodyTo(email, 'superintendent@example.org'))).toEqual([
+      'Hora:',
+      '  • lun, 23 nov 2026, 14:41 hora estándar central — Springfield District y 1 ubicación más',
+      '  • lun, 23 nov 2026, 13:41 hora estándar de las Montañas Rocosas — Adams Middle',
+    ]);
+  });
+
+  it('the all-clear reads the clocks the trigger read (its rows are gone by then)', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    screen(w, 'gym', 'lincoln', { timezone: 'America/New_York' });
+    reached('alert-1', 'gym');
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record());
+    w.overrides.length = 0; // the all-clear deleted them
+    email.sendCustomerAlert.mockClear();
+    await svc.sendEmergencyRecord(record({ event: 'CLEARED', atMs: AT + 30 * MIN }));
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 4:11 PM EST']);
+    // Kept for one all-clear only.
+    email.sendCustomerAlert.mockClear();
+    await svc.sendEmergencyRecord(record({ event: 'CLEARED', atMs: AT + 30 * MIN }));
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 3:11 PM CST']);
+  });
+
+  it('an all-clear this process never saw the trigger of (a restart): the location’s zone', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    const { svc, email } = build(w);
+    await svc.sendEmergencyRecord(record({ event: 'CLEARED' }));
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+    expect(w.client.screenEmergencyOverride.findMany).not.toHaveBeenCalled();
+  });
+
+  it('a read that fails still sends, with the location’s zone', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    w.client.screenEmergencyOverride.findMany.mockRejectedValueOnce(new Error('db down'));
+    const { svc, email } = build(w);
+    expect(await svc.sendEmergencyRecord(record())).toBe(1);
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+    screen(w, 'gym', 'lincoln', { timezone: 'America/New_York' });
+    reached('alert-2', 'gym');
+    w.client.screen.findMany.mockRejectedValueOnce(new Error('db down'));
+    email.sendCustomerAlert.mockClear();
+    expect(await svc.sendEmergencyRecord(record({ overrideId: 'alert-2' }))).toBe(1);
+    expect(timeBlock(bodyTo(email, 'principal@example.org'))).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+  });
+
+  it('shadow mode: the owner’s copy shows the same local line the customer would get', async () => {
+    process.env.CUSTOMER_ALERT_EMAILS_MODE = 'shadow';
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    const { svc, email, mailer } = build(w);
+    await svc.sendEmergencyRecord(record());
+    expect(email.sendCustomerAlert).not.toHaveBeenCalled();
+    const [, body, kind] = mailer.sendAlert.mock.calls[0] as unknown as [string, string, string];
+    expect(kind).toBe('ALERT_SHADOW_EMERGENCY');
+    expect(body).toContain('Time: Mon, Nov 23, 2026, 2:41 PM CST');
+    expect(body).not.toContain('UTC');
+  });
+
+  it('the time is the moment the controller queued the copy, not the moment the mail left', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    const { svc } = build(w);
+    w.clock.now = AT;
+    const spy = jest.spyOn(svc, 'sendEmergencyRecord').mockResolvedValue(0);
+    svc.recordEmergency({ event: 'TRIGGERED', overrideId: 'alert-9', alertType: 'LOCKDOWN', isDrill: true, tenantIds: ['lincoln'] });
+    w.clock.now = AT + 7 * MIN; // the reads took a while
+    await new Promise((r) => setImmediate(r));
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0].atMs).toBe(AT);
+  });
+});
+
+describe('screen-problem emails — "offline since" on the screen’s clock (2026-11-23)', () => {
+  const CHICAGO = { latitude: 41.8781, longitude: -87.6298 };
+  const principalBody = (email: any) => email.sendCustomerAlert.mock.calls.find((c: any[]) => c[0].to === 'principal@example.org')![0].body as string;
+  const dropAndConfirm = async (svc: CustomerAlertEmailsService) => {
+    goOffline(w, 'lobby', w.clock.now);
+    w.clock.now += 15 * MIN;
+    await scan(w, svc, 0);
+    await scan(w, svc);
+  };
+
+  it('a location with an address and no setting: local time (it used to read "3:00 PM UTC")', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: null, ...CHICAGO });
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    await dropAndConfirm(svc);
+    // T0 = 15:00 UTC on 2026-10-21 = 10:00 AM CDT.
+    expect(principalBody(email)).toContain('lobby — offline since 10:00 AM (16 minutes)');
+  });
+
+  it('a screen with its own zone: that zone; the read is constrained to the problem’s tenants', async () => {
+    Object.assign(w.tenants.get('lincoln')!, { timezone: 'America/Chicago' });
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln', { timezone: 'America/New_York' });
+    await dropAndConfirm(svc);
+    expect(principalBody(email)).toContain('lobby — offline since 11:00 AM (16 minutes)');
+    const clockRead = w.client.screen.findMany.mock.calls.map((c: any[]) => c[0]).find((a: any) => a.select?.screenGroup);
+    expect(clockRead.where).toEqual({ id: { in: ['lobby'] }, tenantId: { in: ['lincoln'] } });
+  });
+
+  it('a school with nothing set: its district’s zone', async () => {
+    Object.assign(w.tenants.get('district')!, { timezone: 'America/Denver' });
+    const { svc, email } = build(w);
+    screen(w, 'lobby', 'lincoln');
+    await dropAndConfirm(svc);
+    expect(principalBody(email)).toContain('lobby — offline since 9:00 AM (16 minutes)');
   });
 });
 

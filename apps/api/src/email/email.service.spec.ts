@@ -222,6 +222,45 @@ describe('EmailService - customer-facing copy', () => {
   });
 });
 
+// 2026-11-23 — a customer alert email (the emergency record copy now states
+// the screen's local time): the durable email_logs row holds EXACTLY what was
+// sent — it is not a redacted kind.
+describe('EmailService.sendCustomerAlert — the email_logs row is the email as sent', () => {
+  const saved = { RESEND_API_KEY: process.env.RESEND_API_KEY, EMAIL_FROM: process.env.EMAIL_FROM };
+  let fetchMock: jest.Mock;
+  let create: jest.Mock;
+
+  beforeEach(() => {
+    process.env.RESEND_API_KEY = 're_test_not_real';
+    process.env.EMAIL_FROM = 'VenueOS <noreply@venueos.example>';
+    fetchMock = jest.fn(async () => ({ ok: true, text: async () => '' }));
+    (global as any).fetch = fetchMock;
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    delete (global as any).fetch;
+  });
+
+  it.each([
+    ['ALERT_EMERGENCY', 'VenueOS: Lockdown drill started at Lincoln Elementary', 'Time: Mon, Nov 23, 2026, 2:41 PM CST'],
+    ['ALERT_ALL_CLEAR', 'VenueOS: Simulacro terminado en Lincoln Elementary', 'Hora: lun, 23 nov 2026, 14:41 hora estándar central'],
+    ['ALERT_EMERGENCY', 'VenueOS：Lincoln Elementary 已开始封锁演练', '时间: 2026年11月23日周一 北美中部标准时间下午2:41'],
+  ])('%s: subject and body in the row equal the dispatched message', async (kind, subject, timeLine) => {
+    create = jest.fn(async ({ data }: any) => ({ id: 'log-1', ...data }));
+    const prisma = { client: { emailLog: { create, update: jest.fn(async () => ({})) } } };
+    const body = `A record copy.\n\n${timeLine}\n\n— The VenueOS team`;
+    await new EmailService(prisma as unknown as PrismaService).sendCustomerAlert({ to: 'principal@example.org', subject, body, kind });
+    const sent = JSON.parse((fetchMock.mock.calls[0] as any[])[1].body) as { subject: string; text: string };
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0].data).toMatchObject({ toEmail: 'principal@example.org', kind, subject: sent.subject, body: sent.text });
+    expect(sent.text).toBe(body);
+    expect(sent.subject).toBe(subject);
+  });
+});
+
 // The durable email_logs row never holds a usable one-time link token.
 describe('EmailService — one-time link tokens are redacted in email_logs', () => {
   const saved = {
