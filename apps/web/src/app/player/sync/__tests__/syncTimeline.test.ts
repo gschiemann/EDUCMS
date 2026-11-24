@@ -10,6 +10,8 @@ import {
   effectiveDurationMs,
   videoTargetMs,
   advanceCounterTo,
+  classifySyncFlip,
+  type SyncFlipKind,
 } from '../syncTimeline';
 
 const ITEMS = [
@@ -129,5 +131,75 @@ describe('advanceCounterTo', () => {
   });
   it('guards empty playlists', () => {
     expect(advanceCounterTo(7, 0, 0)).toBe(7);
+  });
+});
+
+describe('classifySyncFlip — engage snap vs boundary crossing', () => {
+  const base = { evalT: 10_016, boundaryT: 10_000, step: 1, loopDurationMs: 30_000 };
+
+  it('the first locked tick is always an engage, even a one-step one', () => {
+    // The CI failure (2026-11-23): B's first locked tick landed 95 ms after a
+    // boundary with its free-running counter one behind, so it logged a
+    // one-step flip the old harness took for a boundary crossing.
+    expect(classifySyncFlip({ ...base, prevEvalT: null })).toBe('engage');
+    expect(classifySyncFlip({ ...base, prevEvalT: Number.NaN })).toBe('engage');
+  });
+
+  it('a one-step flip after a tick in the previous slot is a boundary crossing', () => {
+    expect(classifySyncFlip({ ...base, prevEvalT: 9_999 })).toBe('boundary');
+    // A stalled frame across the boundary is still a real crossing: its
+    // lateness is what a viewer sees, so it must stay in the lockstep data.
+    expect(classifySyncFlip({ ...base, evalT: 10_190, prevEvalT: 9_990 })).toBe('boundary');
+  });
+
+  it('a multi-slot jump is a resync, never a boundary', () => {
+    expect(classifySyncFlip({ ...base, step: 2, prevEvalT: 9_999 })).toBe('engage');
+  });
+
+  it('a one-step move with no boundary since the previous tick is not a crossing', () => {
+    // The previous evaluation was already inside the new slot: the counter
+    // was moved out of band, so nothing crossed a boundary on this tick.
+    expect(classifySyncFlip({ ...base, prevEvalT: 10_000 })).toBe('engage');
+    expect(classifySyncFlip({ ...base, prevEvalT: 10_008 })).toBe('engage');
+  });
+
+  it('a stall of a whole loop or more is a resync even when it comes out as one step', () => {
+    expect(classifySyncFlip({ ...base, evalT: 40_016, boundaryT: 40_000, prevEvalT: 9_999 })).toBe('engage');
+    expect(classifySyncFlip({ ...base, evalT: 40_016, boundaryT: 40_000, prevEvalT: 10_017 })).toBe('boundary');
+  });
+
+  it('a simulated conductor: one engage at lock, then only boundary crossings', () => {
+    // 3 × 2.5 s slots, 60 Hz ticks, a screen that locks mid-slot 1 with its
+    // free-running counter still on slot 0, plus one 181 ms stall across a
+    // boundary (the post-engage stall seen in CI).
+    const items = [{ durationMs: 2_500 }, { durationMs: 2_500 }, { durationMs: 2_500 }];
+    const lead = 24;
+    let counter = 0;
+    let prevEvalT: number | null = null;
+    const kinds: Array<{ kind: SyncFlipKind; toIdx: number; boundaryT: number }> = [];
+    let t = 1_795_466_612_595; // first locked tick, 95 ms after a boundary
+    const end = t + 12_000;
+    while (t < end) {
+      const evalT = t + lead;
+      const pos = resolveTimeline(items, evalT)!;
+      const next = advanceCounterTo(counter, pos.index, items.length);
+      if (next !== counter) {
+        const boundaryT = evalT - pos.offsetInItemMs;
+        kinds.push({
+          kind: classifySyncFlip({ prevEvalT, evalT, boundaryT, step: next - counter, loopDurationMs: pos.loopDurationMs }),
+          toIdx: pos.index,
+          boundaryT,
+        });
+        counter = next;
+      }
+      prevEvalT = evalT;
+      // One stall that straddles the 1_795_466_615_000 boundary.
+      t += t > 1_795_466_614_900 && t < 1_795_466_614_920 ? 181 : 1000 / 60;
+    }
+    expect(kinds[0]).toMatchObject({ kind: 'engage', toIdx: 1 });
+    expect(kinds.slice(1).every((k) => k.kind === 'boundary')).toBe(true);
+    expect(kinds.length).toBeGreaterThanOrEqual(5);
+    // Every boundary sits on the epoch grid by construction.
+    for (const k of kinds) expect(((k.boundaryT % 2_500) + 2_500) % 2_500).toBeCloseTo(0, 3);
   });
 });

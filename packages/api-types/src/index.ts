@@ -1211,3 +1211,10 @@ export * from './time-zone';
 // so the API can grade the `em:<identity>` a drill must paint. The player keeps
 // its own; a web parity test holds the two identical.
 export * from './emergency-paint-identity';
+
+// Organisation identity keys per React widget (2026-11-23, rebrand follow-up) —
+// which config keys of a themed widget hold the organisation's name, tagline,
+// initials or logo, and the placeholder text its renderer paints when the key
+// is absent. One list for the API's "Apply to templates" / clone paths and the
+// editor's "Brand this template" (no PARITY copy).
+export * from './brand-identity-keys';

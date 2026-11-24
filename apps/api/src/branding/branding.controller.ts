@@ -1047,19 +1047,25 @@ export class BrandingController {
    *     keys flow into the universal scoped <style> override on the
    *     player render so every text descendant inherits the brand.
    *   - Identity (2026-11-23): the organisation name, tagline, initials
-   *     and logo go into the board text fields / logo slots and the
-   *     LOGO / HS_* / schoolName widgets (brand-identity.ts).
+   *     and logo go into the board text fields / logo slots and into the
+   *     keys each themed widget's renderer reads (LOGO, HS_*, MS_*,
+   *     FITNESS_*, ANIMATED_* — the WIDGET_IDENTITY_KEYS registry in
+   *     @cms/api-types; brand-identity.ts).
    *
    * Two modes:
-   *   - 'fill-blanks' (default, safe): set keys that are unset, AND keys
-   *     that still hold what the template's previous brand (its
-   *     Template.brandKit snapshot) stamped — so a rebrand replaces the old
-   *     brand, while anything typed by hand stays.
+   *   - 'fill-blanks' (default, safe): set keys that are unset, keys that
+   *     still hold what the template's previous brand (its Template.brandKit
+   *     snapshot) stamped, and identity keys that still show the widget's
+   *     own placeholder (a preset's sample name nobody typed) — so a rebrand
+   *     replaces the old brand and the sample text, while anything typed by
+   *     hand stays.
    *   - 'override' (bold): force the brand on every zone, replacing
    *     existing colors/fonts/name/tagline/logo. Demo-friendly.
    *
    * Every template's brandKit becomes the new brand's snapshot, in the
-   * same transaction as the patches and the audit row.
+   * same transaction as the patches and the audit row. Each zone write is
+   * constrained to the caller's own (non-preset) template and must hit
+   * exactly one row, or the whole transaction rolls back.
    *
    * System presets are EXCLUDED — those are the gold-standard
    * canonical templates and shouldn't drift per-tenant. Only custom
@@ -1088,8 +1094,11 @@ export class BrandingController {
     // OR when it still equals what this template's PREVIOUS brand (its own
     // Template.brandKit snapshot) produced — so a second brand replaces the
     // first brand's colours, fonts, name, tagline, initials and logo, while
-    // anything an operator typed by hand survives 'fill-blanks'. A template
-    // with no snapshot keeps the old behaviour: blanks only.
+    // anything an operator typed by hand survives 'fill-blanks'. An identity
+    // key that still shows its widget's own placeholder (registry in
+    // @cms/api-types) is replaced too, snapshot or not, except a GENERIC one
+    // ('WILDCATS', 'WHS') on a template a brand has already named: that word
+    // was typed. Otherwise a template with no snapshot gets blanks only.
     const style = styleFromBrand(branding as BrandLike, true);
     // `appliedDefaults`: this pass stamps the default ink / surface where the
     // palette has none, so the next rebrand must recognise those defaults.
@@ -1156,7 +1165,19 @@ export class BrandingController {
           const named = patchZoneIdentity({ widgetType: z.widgetType, cfg: styled.cfg }, branding as BrandLike, previous, mode);
           if (!styled.changed && named.changed.length === 0) continue;
           for (const f of named.changed) identity[f] += 1;
-          await tx.templateZone.update({ where: { id: z.id }, data: { defaultConfig: JSON.stringify(named.cfg) } });
+          // The zone is written only through its parent template's tenant
+          // scope (the template was read with { tenantId, isSystem: false }),
+          // so a zone id can never reach another tenant's or a preset's zone.
+          // Anything but exactly one row aborts the whole rebrand: the
+          // transaction rolls back with the audit row (an invariant failure,
+          // so a plain 500 the exception filter reports, not a user message).
+          const written = await tx.templateZone.updateMany({
+            where: { id: z.id, templateId: tpl.id, template: { tenantId, isSystem: false } },
+            data: { defaultConfig: JSON.stringify(named.cfg) },
+          });
+          if (written.count !== 1) {
+            throw new Error(`apply-to-templates: zone ${z.id} of template ${tpl.id} wrote ${written.count} rows, expected 1`);
+          }
           zonesPatched += 1;
         }
       }

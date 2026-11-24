@@ -14,6 +14,9 @@
  *     logo; a selected Clock gets "Selected Clock: Background"
  *   - EXTERNAL_HTML board: Brand this template reaches INSIDE the sandboxed
  *     board (brand accent CSS var + the logo in its `brand.logo` slot)
+ *   - an MS scene: its sample name is replaced and its logo slot filled; a
+ *     long organisation name in Arcade / Studio / Fieldnotes and the hallway
+ *     tagline, screenshotted for the owner
  *
  *   E2E_BASE=http://localhost:3517 pnpm exec playwright test -c playwright.sandbox.config.ts tests/e2e/builder-brand-tab.spec.ts
  *
@@ -257,5 +260,41 @@ test.describe('builder — Brand tab', () => {
       try { return await f.evaluate(() => getComputedStyle(document.querySelector('[data-imgslot="brand.logo"]') as Element).backgroundImage); } catch { return ''; }
     }, { timeout: 20_000 }).toContain('venue-os-256.png');
     await shot(page, '11-board-branded', browserName);
+  });
+
+  // 2026-11-23 — a themed scene gets the identity keys its renderer reads
+  // (the shared registry in @cms/api-types): an MS scene's flat
+  // 'school.name' and 'school.logoUrl' replace its sample "WESTRIDGE.MS".
+  test('MS scene: Brand this template replaces the sample name and fills the logo slot', async ({ page, browserName }) => {
+    await openBuilder(page, template('brand-ms', [
+      { id: 'arcade', name: 'Arcade', widgetType: 'MS_ARCADE', x: 0, y: 0, width: 100, height: 100, defaultConfig: {} },
+    ]), ORG_BRAND);
+    await expect(panel(page)).toBeVisible({ timeout: 30_000 });
+    const name = page.locator('[data-zone-id="arcade"] [data-field="school.name"]').first();
+    await expect(name).toContainText('WESTRIDGE.MS', { timeout: 30_000 });
+    await page.getByRole('button', { name: 'Brand this template' }).click();
+    await expect(name).toContainText('RIVERSIDE ACADEMY', { timeout: 10_000 });
+    await expect(page.locator('[data-zone-id="arcade"] img').first()).toHaveAttribute('src', LOGO_URL, { timeout: 10_000 });
+    await shot(page, '12-ms-arcade-branded', browserName);
+  });
+
+  // Owner rows (handoff 2026-11-23-rebrand-placeholders): how a LONG
+  // organisation name reads in the fixed slots, and the hallway tagline.
+  test('long organisation name: Arcade, Studio, Fieldnotes and the hallway tagline (screenshots)', async ({ page, browserName }) => {
+    const LONG = { ...ORG_BRAND, displayName: 'Riverside Academy of Science and Technology', tagline: 'Where curious minds grow into confident leaders' };
+    await openBuilder(page, template('brand-long', [
+      { id: 'arcade', name: 'Arcade', widgetType: 'MS_ARCADE', x: 0, y: 0, width: 50, height: 50, defaultConfig: {} },
+      { id: 'studio', name: 'Studio', widgetType: 'MS_STUDIO', x: 50, y: 0, width: 50, height: 50, defaultConfig: {} },
+      { id: 'fieldnotes', name: 'Fieldnotes', widgetType: 'MS_FIELDNOTES', x: 0, y: 50, width: 50, height: 50, defaultConfig: {} },
+      { id: 'hallway', name: 'Hallway', widgetType: 'ANIMATED_HALLWAY_SCHEDULE', x: 50, y: 50, width: 50, height: 50, defaultConfig: {} },
+    ]), LONG);
+    await expect(panel(page)).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: 'Brand this template' }).click();
+    const field = (zone: string, key: string) => page.locator(`[data-zone-id="${zone}"] [data-field="${key}"]`).first();
+    await expect(field('arcade', 'school.name')).toContainText('RIVERSIDE ACADEMY OF SCIENCE AND TECHNOLOGY', { timeout: 10_000 });
+    await expect(field('studio', 'school.name')).toContainText('RIVERSIDE ACADEMY OF SCIENCE AND TECHNOLOGY');
+    await expect(field('fieldnotes', 'school.name')).toContainText('Riverside Academy of Science and Technology');
+    await expect(field('hallway', 'tagline')).toContainText('Where curious minds grow into confident leaders');
+    await shot(page, '13-long-name-ms-hallway', browserName);
   });
 });

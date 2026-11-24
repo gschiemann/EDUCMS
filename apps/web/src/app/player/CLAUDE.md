@@ -275,7 +275,10 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
     download is not on the glass yet, and a playlist already set aside is never set aside again
     while its backup downloads). With no other playlist scheduled, or when every one is set
     aside, nothing changes: the card, proven as `idle:content-unavailable`. A template is never
-    set aside but may be the fallback. One `PLAYLIST_FALLBACK` log line per change.
+    set aside but may be the fallback. One `PLAYLIST_FALLBACK` log line per change: the decision
+    line says a backup took the screen (keyed by both playlist ids and its text, so two backups
+    with one name are still two changes), and the episode adds a line only when the first choice
+    is tried again and when it is back (`fallbackDecisionLog`, `fallbackEpisodeLogLine`).
     **It comes back by itself.** Keyed by playlist + content signature, in memory: a re-publish
     is tried at once, a page reload starts clean, otherwise the first choice is tried again
     after 15, 30, 60, then 120 minutes (`FALLBACK_RETRY_STEPS_MS`) — unless every file of it is
@@ -338,8 +341,10 @@ touching the player or realtime layer:
    `syncActiveRef.current` — one screen advancing out-of-band breaks the whole
    group's phase. The rAF conductor in `player/page.tsx` owns advancement.
 2. Pure math lives in `apps/web/src/app/player/sync/` (`syncClock.ts`,
-   `syncTimeline.ts`) — unit-tested without mounting the 16k-line page (`player/page.tsx`). Keep
-   it pure (no React/DOM/network).
+   `syncTimeline.ts`, `renderLead.ts`) — unit-tested without mounting the 16k-line page (`player/page.tsx`). Keep
+   it pure (no React/DOM/network). An engage snap (a screen joining or
+   re-locking mid-slot, `classifySyncFlip`) is not a boundary crossing: it never
+   feeds the flip-error telemetry or the render-lead estimate.
 3. Clock transport: WS `TIME_PING`→`TIME_PONG` (direct socket reply, like
    AUTH_OK) + HTTP `GET /api/v1/realtime/time` fallback. Server time comes from
    `TimeSyncService` (Redis-TIME-aligned so multi-replica agrees) — never raw
