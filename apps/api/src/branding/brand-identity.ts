@@ -22,8 +22,31 @@
  *   Only a value the brand actually has is ever written — an empty name,
  *   tagline or logo never blanks out existing content.
  *
+ *   A zone identity value is also brand-owned when it still equals one of its
+ *   renderer's OWN placeholders for that key (the DEFAULTS / FALLBACK /
+ *   `|| 'literal'` text the widget paints when the key is absent): nobody
+ *   typed it, so the organisation's identity replaces it — at clone time and
+ *   on every "Apply to templates", for templates cloned before this rule too.
+ *   The keys and placeholders are the shared, renderer-proven registry in
+ *   `@cms/api-types` (brand-identity-keys.ts). Placeholder matching collapses
+ *   whitespace and NBSP (normaliseIdentityText); previous-brand and style
+ *   comparisons stay trimmed + case-insensitive (sameText), as before.
+ *
+ *   A GENERIC placeholder ('WILDCATS', 'WHS', 'HS', 'CENTRAL ADMINISTRATION':
+ *   a word a tenant could type as their own) matches only on a template
+ *   whose brand history has no value for that role. Once a brand has named
+ *   the template, clone and apply wrote it over the placeholder, so the same
+ *   word back in the key was typed and survives fill-blanks.
+ *
  * No DB, no Nest: the controllers own transactions and audit rows.
  */
+
+import {
+  identityKeyApplies,
+  identityKeysFor,
+  normaliseIdentityText,
+  placeholdersFor,
+} from '@cms/api-types';
 
 export type BrandApplyMode = 'fill-blanks' | 'override';
 
@@ -437,20 +460,68 @@ export function isBrandOwned(
   return previousValues.some((p) => sameText(current, p));
 }
 
-/** Write `value` into `obj[key]` when it is brand-owned and differs. Returns true when it wrote. */
+/**
+ * Is `current` one of the renderer's own placeholders for this key? Compared
+ * as a person reads it (normaliseIdentityText: NBSP, collapsed whitespace,
+ * trimmed, lowercased), so an innerText capture still matches. An image slot
+ * may hold a one-item list, as in sameText.
+ */
+export function isPlaceholder(
+  current: unknown,
+  placeholders: readonly string[],
+): boolean {
+  if (placeholders.length === 0) return false;
+  let c: unknown = current;
+  if (Array.isArray(c)) {
+    const items = c.filter((x) => typeof x === 'string' && x.trim());
+    if (items.length !== 1) return false;
+    c = items[0];
+  }
+  const n = normaliseIdentityText(c);
+  if (!n) return false;
+  return placeholders.some((p) => normaliseIdentityText(p) === n);
+}
+
+/**
+ * Write `value` into `obj[key]` when it is brand-owned (blank, a previous
+ * brand's, 'override') or still one of the renderer's `placeholders`, and
+ * differs. Returns true when it wrote.
+ */
 function put(
   obj: Record<string, unknown>,
   key: string,
   value: string | null,
   previousValues: Array<string | null | undefined>,
   mode: BrandApplyMode,
+  placeholders: readonly string[] = [],
 ): boolean {
   if (!value) return false;
   const current = obj[key];
   if (current === value) return false;
-  if (!isBrandOwned(current, previousValues, mode)) return false;
+  if (
+    !isBrandOwned(current, previousValues, mode) &&
+    !isPlaceholder(current, placeholders)
+  )
+    return false;
   obj[key] = value;
   return true;
+}
+
+/**
+ * The nested copy of a dotted key (`cfg.school.name` for 'school.name'), or
+ * undefined. BuilderZone's inline edit (setByPath, 2026-05-03 to 2026-10-27)
+ * saved MS dotted fields nested, where pick() — which reads the FLAT key —
+ * never sees them; the shadow still records what the operator meant.
+ */
+function nestedShadow(cfg: Record<string, unknown>, key: string): unknown {
+  if (!key.includes('.')) return undefined;
+  let v: unknown = cfg;
+  for (const part of key.split('.')) {
+    const r = asRecord(v);
+    if (!r || !Object.prototype.hasOwnProperty.call(r, part)) return undefined;
+    v = r[part];
+  }
+  return v;
 }
 
 function asRecord(v: unknown): Record<string, unknown> | null {
@@ -462,6 +533,40 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 export interface ZoneIdentityInput {
   widgetType: string | null | undefined;
   cfg: Record<string, unknown>;
+}
+
+export interface ZoneIdentityOptions {
+  /**
+   * Brands this template's zones have carried, read ONLY to decide whether a
+   * generic placeholder can still be nobody's (rolesWithHistory); their values
+   * are not made replaceable (that is `previous`). `previous` always counts.
+   * The duplicate path passes the SOURCE template's brand history here with
+   * `previous` = null, so a copy keeps exactly what the source would keep.
+   */
+  history?: PreviousBrands;
+  /**
+   * false: never match a generic placeholder. For zones whose provenance is
+   * unknown (POST /templates: the editor's "Save as copy" of the tenant's
+   * own template, an import), where a generic word may well have been typed.
+   * Default true.
+   */
+  genericPlaceholders?: boolean;
+}
+
+/** The identity roles any of `brands` has a value for (initials come from the name). */
+export function rolesWithHistory(
+  ...brands: PreviousBrands[]
+): Set<IdentityField> {
+  const out = new Set<IdentityField>();
+  for (const list of brands)
+    for (const b of prevList(list)) {
+      const id = identityFromBrand(b);
+      if (id.name) out.add('name');
+      if (id.tagline) out.add('tagline');
+      if (id.initials) out.add('initials');
+      if (id.logoUrl) out.add('logo');
+    }
+  return out;
 }
 
 export interface ZoneIdentityResult {
@@ -479,9 +584,23 @@ export interface ZoneIdentityResult {
  *                                 school.initials / brand.initials / brand.mark ← initials
  *                                 brand.monogram                             ← first letter
  *                  imageOverrides brand.logo / school.logo                   ← logo
- *   LOGO           logoUrl, assetUrl ← logo; schoolName ← name; tagline ← tagline;
- *                  initials ← initials (only when the zone already has that key)
- *   HS_*           schoolName ← NAME (uppercase); schoolInitials ← initials
+ *   a type in WIDGET_IDENTITY_KEYS (@cms/api-types) — the keys its renderer
+ *                  reads, e.g.
+ *                  LOGO       logoUrl, assetUrl ← logo; schoolName ← name;
+ *                             tagline ← tagline; initials ← initials (only
+ *                             where the key exists, or on the athletics crest)
+ *                  HS_*       schoolName ← NAME (uppercase); schoolInitials on
+ *                             Varsity; nothing on Terminal / Transit
+ *                  MS_*       'school.name' / 'brand.name' ← name (flat keys);
+ *                             'school.logoUrl' / 'brand.logoUrl' /
+ *                             'masthead.logoUrl' ← logo
+ *                  FITNESS_*  gymLogoUrl ← logo
+ *                  ANIMATED_WELCOME*  logoUrl ← logo;
+ *                  ANIMATED_HALLWAY_SCHEDULE*  tagline ← tagline
+ *                  A value still equal to that renderer's own placeholder
+ *                  for the key counts as brand-owned; a generic one only
+ *                  when no previous brand (nor `opts.history`) has a value
+ *                  for that role.
  *   anything else  only when the config already carries `schoolName`:
  *                  schoolName, and tagline / initials / schoolInitials where
  *                  those keys exist
@@ -493,6 +612,7 @@ export function patchZoneIdentity(
   next: BrandLike | null | undefined,
   previous: PreviousBrands,
   mode: BrandApplyMode,
+  opts: ZoneIdentityOptions = {},
 ): ZoneIdentityResult {
   const id = identityFromBrand(next);
   const prev = prevList(previous).map(identityFromBrand);
@@ -504,6 +624,7 @@ export function patchZoneIdentity(
   const prevMonogram = prev.map((p) => p.monogram);
   const prevLogo = prev.map((p) => p.logoUrl);
   const type = String(zone.widgetType || '');
+  const specs = identityKeysFor(type);
 
   if (type === 'EXTERNAL_HTML') {
     const text: Record<string, unknown> = {
@@ -542,30 +663,53 @@ export function patchZoneIdentity(
         changed.add('logo');
       }
     if (imgChanged) cfg.imageOverrides = img;
-  } else if (type === 'LOGO') {
-    if (put(cfg, 'logoUrl', id.logoUrl, prevLogo, mode)) changed.add('logo');
-    if (put(cfg, 'assetUrl', id.logoUrl, prevLogo, mode)) changed.add('logo');
-    if (put(cfg, 'schoolName', id.name, prevName, mode)) changed.add('name');
-    if (put(cfg, 'tagline', id.tagline, prevTagline, mode))
-      changed.add('tagline');
-    if (
-      'initials' in cfg &&
-      put(cfg, 'initials', id.initials, prevInitials, mode)
-    )
-      changed.add('initials');
-  } else if (type.startsWith('HS_')) {
-    if (
-      put(
-        cfg,
-        'schoolName',
-        id.name ? id.name.toUpperCase() : null,
-        prevName,
-        mode,
+  } else if (specs) {
+    const valueOf: Record<IdentityField, string | null> = {
+      name: id.name,
+      tagline: id.tagline,
+      initials: id.initials,
+      logo: id.logoUrl,
+    };
+    const prevOf: Record<IdentityField, Array<string | null>> = {
+      name: prevName,
+      tagline: prevTagline,
+      initials: prevInitials,
+      logo: prevLogo,
+    };
+    // Selectors (variant / theme) read the zone as it was, before any write.
+    const zoneCfg = { ...cfg };
+    // A generic placeholder ('WILDCATS', 'WHS') is nobody's only while no
+    // brand has named this role on the template: after that, clone / apply
+    // wrote the brand over it, so the word back in the key was typed.
+    const named = rolesWithHistory(previous, opts.history);
+    const genericOk = (role: IdentityField) =>
+      opts.genericPlaceholders !== false && !named.has(role);
+    for (const spec of specs) {
+      const raw = valueOf[spec.role];
+      const value = raw && spec.upper ? raw.toUpperCase() : raw;
+      if (!value) continue;
+      if (!identityKeyApplies(spec, zoneCfg)) continue;
+      const placeholders = placeholdersFor(spec, zoneCfg, {
+        generic: genericOk(spec.role),
+      });
+      const prevValues = prevOf[spec.role];
+      // A nested shadow of a dotted key (an old inline edit pick() never
+      // read) that holds typed text means the operator wrote something
+      // there: fill-blanks leaves the flat key alone. A shadow that is
+      // blank, a previous brand's or a placeholder changes nothing. A
+      // non-string shadow (a number, an object) is not blank, so it counts
+      // as typed too: conservative, nothing is overwritten.
+      const shadow = nestedShadow(zoneCfg, spec.key);
+      if (
+        mode !== 'override' &&
+        shadow !== undefined &&
+        !isBrandOwned(shadow, prevValues, mode) &&
+        !isPlaceholder(shadow, placeholders)
       )
-    )
-      changed.add('name');
-    if (put(cfg, 'schoolInitials', id.initials, prevInitials, mode))
-      changed.add('initials');
+        continue;
+      if (put(cfg, spec.key, value, prevValues, mode, placeholders))
+        changed.add(spec.role);
+    }
   } else if ('schoolName' in cfg) {
     if (put(cfg, 'schoolName', id.name, prevName, mode)) changed.add('name');
     if ('tagline' in cfg && put(cfg, 'tagline', id.tagline, prevTagline, mode))

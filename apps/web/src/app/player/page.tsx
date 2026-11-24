@@ -242,8 +242,9 @@ import { getServiceWorkerContainer, isServiceWorkerAvailable } from '../../lib/s
 // 2026-07-28 — frame-locked multi-screen sync (docs/research/2026-07-28-multiscreen-sync/).
 // Pure modules (no React/DOM) so the math is unit-tested without mounting this page.
 import { SyncClock } from './sync/syncClock';
-import { resolveTimeline, advanceCounterTo, videoTargetMs, type TimelinePosition } from './sync/syncTimeline';
+import { resolveTimeline, advanceCounterTo, classifySyncFlip, videoTargetMs, type TimelinePosition } from './sync/syncTimeline';
 import { createVideoServoState, servoDecide, servoSeekLanded } from './sync/videoServo';
+import { RENDER_LEAD_MAX_MS, RENDER_LEAD_SEED_MS, nextRenderLead } from './sync/renderLead';
 // Sprint 13 — scoreboard console bridge (CTS / Daktronics serial). Mounts
 // when the manifest binds this screen to a game (K12-F32 — set up in the
 // game's console, no URL), or on the legacy `?cts=1` kiosk URL; regular
@@ -4518,7 +4519,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   // the PAINT — not the decision — lands on the shared boundary. Seeded
   // at one 60Hz frame; measured per flip via double-rAF.
   const syncRenderLeadRef = useRef<number>(
-    typeof window !== 'undefined' ? readStoredLeadMs(LS_SYNC_RENDER_LEAD, 16, 150) : 16,
+    typeof window !== 'undefined'
+      ? readStoredLeadMs(LS_SYNC_RENDER_LEAD, RENDER_LEAD_SEED_MS, RENDER_LEAD_MAX_MS)
+      : RENDER_LEAD_SEED_MS,
   );
   const syncRenderLeadSavedAtRef = useRef<number>(0);
   const [syncEnabled, setSyncEnabled] = useState(false);
@@ -11719,29 +11722,41 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const SYNC_FLIP_LEAD_MS = 8; // ~half a 60Hz frame
     let raf = 0;
     let stopped = false;
+    // The previous locked tick of the current active streak (2026-11-23):
+    // its synced time and its evaluation instant (synced time + flip lead).
+    // Null while the conductor stands down, so the first locked tick after a
+    // (re)lock is known to be the engage snap, not a boundary crossing.
+    let prevActiveT: number | null = null;
+    let prevEvalT: number | null = null;
+    const standDown = () => {
+      prevActiveT = null;
+      prevEvalT = null;
+      setSyncActive(false);
+    };
     const tick = () => {
       if (stopped) return;
       raf = requestAnimationFrame(tick);
       const clock = syncClockRef.current;
       const sorted = sortedItemsRef.current;
       if (!clock || !sorted.length) {
-        setSyncActive(false);
+        standDown();
         return;
       }
       const mono = performance.now();
       if (!clock.isLocked(mono, SYNC_MAX_UNCERTAINTY_MS)) {
-        setSyncActive(false);
+        standDown();
         return;
       }
       const serverNow = clock.now(mono);
       if (serverNow === null) {
-        setSyncActive(false);
+        standDown();
         return;
       }
-      const t = serverNow + syncConfigRef.current.trimMs;
+      const trimMs = syncConfigRef.current.trimMs;
+      const t = serverNow + trimMs;
       const posNow = resolveTimeline(sorted, t);
       if (!posNow) {
-        setSyncActive(false);
+        standDown();
         return;
       }
       setSyncActive(true);
@@ -11762,58 +11777,114 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // the viewer and the camera see — lands on the shared boundary. A
       // slow SoC leads more, a fast one less; glass-side alignment
       // improves automatically with zero operator involvement.
-      const flipLeadMs = SYNC_FLIP_LEAD_MS + Math.max(0, Math.min(150, syncRenderLeadRef.current));
-      const posFlip = resolveTimeline(sorted, t + flipLeadMs)!;
+      const flipLeadMs = SYNC_FLIP_LEAD_MS + Math.max(0, Math.min(RENDER_LEAD_MAX_MS, syncRenderLeadRef.current));
+      const evalT = t + flipLeadMs;
+      const posFlip = resolveTimeline(sorted, evalT)!;
       const cur = currentIndexRef.current;
       const next = advanceCounterTo(cur, posFlip.index, sorted.length);
+      const prevT = prevActiveT;
+      const prevEval = prevEvalT;
+      prevActiveT = t;
+      prevEvalT = evalT;
       if (next === cur) return;
+      // The start of the slot this tick resolved, in this screen's synced
+      // time: the true shared boundary (on the epoch grid by construction).
+      const boundaryT = evalT - posFlip.offsetInItemMs;
+      // Engage snap (first locked tick, or a resync jump) vs a real boundary
+      // crossing — see classifySyncFlip.
+      const kind = classifySyncFlip({
+        prevEvalT: prevEval,
+        evalT,
+        boundaryT,
+        step: next - cur,
+        loopDurationMs: posFlip.loopDurationMs,
+      });
       // Sync wraps also keep the running document; a deploy must not
       // interrupt a live wall or move it out of phase during navigation.
       // Flip-error telemetry: offset into the new item at decision time,
       // minus the deliberate lead ≈ how late this flip is vs the shared
-      // boundary. Only meaningful for single-step advances.
-      if (next - cur === 1) {
+      // boundary. Only meaningful for a boundary crossing (2026-11-23): an
+      // engage that happened to be one step used to seed the EWMA with its
+      // mid-slot offset — up to a whole slot — and the dashboard's
+      // "sync ±N ms" chip showed it for many flips after every boot.
+      if (kind === 'boundary') {
         const err = Math.max(0, posFlip.offsetInItemMs - flipLeadMs);
         const s = syncStatsRef.current;
         s.lastFlipErrMs = err;
         s.flipErrEwmaMs = s.flipErrEwmaMs === null ? err : s.flipErrEwmaMs * 0.7 + err * 0.3;
-        // Measure THIS flip's decision→paint latency: double-rAF fires
-        // after the browser paints the frame containing the new slide.
-        // EWMA (α=0.2) smooths raster jitter; clamp guards a stalled tab
-        // from poisoning the lead; persisted at most every 10s.
-        const decisionMono = mono;
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const measured = performance.now() - decisionMono;
-            if (!Number.isFinite(measured) || measured < 0 || measured > 400) return;
-            const prev = syncRenderLeadRef.current;
-            const nextLead = Math.max(0, Math.min(150, prev * 0.8 + measured * 0.2));
-            syncRenderLeadRef.current = nextLead;
-            const nowMono = performance.now();
-            if (nowMono - syncRenderLeadSavedAtRef.current > 10_000) {
-              syncRenderLeadSavedAtRef.current = nowMono;
-              storeLeadMs(LS_SYNC_RENDER_LEAD, nextLead);
-            }
-          });
-        });
       }
-      // Flip log for the two-screen Playwright harness + field debugging:
-      // server-time-stamped flips let two screens' logs be compared
-      // directly (both clocks converge on the same server clock, so
-      // |tA - tB| for the same boundary IS the sync skew, independent of
-      // when an observer happens to sample either page). Bounded to 40.
+      // Flip log for the two-screen Playwright harness + field debugging.
+      // Bounded to 40. Per entry (2026-11-23):
+      //   kind       'engage' | 'boundary' (classifySyncFlip)
+      //   boundaryT  the slot start this flip resolved, synced time
+      //              (itemStartT is the same value, kept for old readers)
+      //   serverT    synced time of the decision (led by leadMs on purpose)
+      //   leadMs     the flip lead this decision used (8 + render lead)
+      //   prevT      synced time of the previous locked tick (null at an
+      //              engage) — t - prevT is the frame gap
+      //   wallT      the decision instant on this device's own wall clock
+      //   paintWallT / paintT  the paint, written by the double-rAF below
+      // serverT/boundaryT/paintT are this screen's OWN estimate of server
+      // time, so they cannot show clock-estimate error between screens;
+      // wallT/paintWallT are performance.timeOrigin-based and can, wherever
+      // the observer shares one wall clock (two pages on one machine).
+      let flipEntry: any = null;
       try {
+        const origin = typeof performance.timeOrigin === 'number' ? performance.timeOrigin : null;
+        flipEntry = {
+          toIdx: posFlip.index,
+          kind,
+          serverT: t,
+          boundaryT,
+          itemStartT: boundaryT,
+          leadMs: flipLeadMs,
+          prevT,
+          wallT: origin !== null ? origin + mono : null,
+          paintWallT: null,
+          paintT: null,
+        };
         const flips: any[] = ((window as any).__eduSyncFlips ||= []);
-        flips.push({ toIdx: posFlip.index, serverT: t, itemStartT: t + SYNC_FLIP_LEAD_MS - posFlip.offsetInItemMs });
+        flips.push(flipEntry);
         if (flips.length > 40) flips.splice(0, flips.length - 40);
       } catch { /* no-op */ }
+      // Measure THIS flip's decision→paint latency: double-rAF fires
+      // after the browser paints the frame containing the new slide.
+      // sync/renderLead.ts owns the estimate (EWMA, a stalled sample capped
+      // so one stall cannot drag the lead); persisted at most every 10s.
+      // Sampled on boundary crossings only: an engage's commit mounts the
+      // new slide mid-slot, often across a post-boot stall, and is not the
+      // steady-state pipeline the lead calibrates. The same callback stamps
+      // the paint onto the flip-log entry for every flip.
+      const decisionMono = mono;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const paintMono = performance.now();
+          if (flipEntry) {
+            try {
+              const origin = typeof performance.timeOrigin === 'number' ? performance.timeOrigin : null;
+              flipEntry.paintWallT = origin !== null ? origin + paintMono : null;
+              const paintServer = clock.now(paintMono);
+              flipEntry.paintT = paintServer !== null ? paintServer + trimMs : null;
+            } catch { /* no-op */ }
+          }
+          if (kind !== 'boundary') return;
+          const nextLead = nextRenderLead(syncRenderLeadRef.current, paintMono - decisionMono);
+          if (nextLead === null) return;
+          syncRenderLeadRef.current = nextLead;
+          const nowMono = performance.now();
+          if (nowMono - syncRenderLeadSavedAtRef.current > 10_000) {
+            syncRenderLeadSavedAtRef.current = nowMono;
+            storeLeadMs(LS_SYNC_RENDER_LEAD, nextLead);
+          }
+        });
+      });
       setCurrentIndex(next);
     };
     raf = requestAnimationFrame(tick);
     return () => {
       stopped = true;
       cancelAnimationFrame(raf);
-      setSyncActive(false);
+      standDown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, playlistItemsSig, syncEnabled]);

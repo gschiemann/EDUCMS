@@ -4,6 +4,7 @@
  * every button does one thing to the canvas regardless of what is selected.
  * Everything here is free of React and the store so it is unit-testable.
  */
+import { identityKeyApplies, identityKeysFor } from '@cms/api-types';
 import type { MediaDimensions } from './media-sizing';
 import type { Zone } from './types';
 
@@ -172,11 +173,33 @@ function textOverridesOf(cfg: Record<string, unknown>): Record<string, unknown> 
   return t && typeof t === 'object' && !Array.isArray(t) ? (t as Record<string, unknown>) : {};
 }
 
-/** A comparable snapshot of the identity fields of one config (did the name / tagline change?). */
-export function identitySnapshot(cfg: Record<string, unknown> | null | undefined): string {
+/**
+ * A comparable snapshot of the identity TEXT fields of one config (did the
+ * name / tagline / initials change?). With the zone's widget type it also
+ * covers the text keys that widget's renderer reads (the registry in
+ * @cms/api-types: 'school.name' on MS_ARCADE, 'tagline' on the hallway
+ * schedule, ...). Logo keys are counted separately (zoneLogoChanged).
+ */
+export function identitySnapshot(cfg: Record<string, unknown> | null | undefined, widgetType?: string | null): string {
   const c = cfg || {};
   const text = textOverridesOf(c);
-  return JSON.stringify([IDENTITY_CONFIG_KEYS.map((k) => c[k] ?? null), IDENTITY_BOARD_FIELDS.map((k) => text[k] ?? null)]);
+  const zoneKeys = (identityKeysFor(widgetType) || []).filter((s) => s.role !== 'logo').map((s) => s.key);
+  return JSON.stringify([
+    IDENTITY_CONFIG_KEYS.map((k) => c[k] ?? null),
+    IDENTITY_BOARD_FIELDS.map((k) => text[k] ?? null),
+    zoneKeys.map((k) => c[k] ?? null),
+  ]);
+}
+
+/** Did a logo key the widget's renderer reads (registry) change between the two configs? */
+export function zoneLogoChanged(
+  widgetType: string | null | undefined,
+  before: Record<string, unknown> | null | undefined,
+  after: Record<string, unknown> | null | undefined,
+): boolean {
+  return (identityKeysFor(widgetType) || []).some(
+    (s) => s.role === 'logo' && ((before || {})[s.key] ?? null) !== ((after || {})[s.key] ?? null),
+  );
 }
 
 // ── Colour maths ─────────────────────────────────────────────────────────
@@ -467,30 +490,37 @@ export function brandTemplateBackground(kit: BrandKitLike): { bgColor: string; b
 export const BOARD_LOGO_SLOTS = ['brand.logo', 'school.logo'] as const;
 
 /**
- * The name, tagline and initials for ONE React widget. "Brand this template"
- * is an explicit per-template action, so what the brand has replaces what is
- * there — but only in keys that mean the ORGANISATION:
- *   - LOGO: schoolName + tagline (the v2 logo variants render both); initials
- *     only where the config already carries them (the themed crests derive
- *     their own from schoolName otherwise).
- *   - HS_*: schoolName (uppercase, as a new template gets it) + schoolInitials.
+ * The name, tagline, initials and logo for ONE React widget. "Brand this
+ * template" is an explicit per-template action, so what the brand has
+ * replaces what is there — but only in keys that mean the ORGANISATION:
+ *   - A widget in the shared registry (WIDGET_IDENTITY_KEYS in
+ *     @cms/api-types, the list the API's "Apply to templates" uses): every
+ *     key its renderer reads, uppercased where the design is all-caps.
+ *     LOGO: logo, schoolName, tagline; initials only where the config already
+ *     carries them (the themed crests derive their own from schoolName), or
+ *     on the athletics crest, which does not. HS_*: schoolName (uppercase),
+ *     schoolInitials on Varsity, nothing on Terminal / Transit. MS_*: the
+ *     flat 'school.name' / 'brand.name' and logo keys pick() reads.
+ *     FITNESS_* scenes: gymLogoUrl. Animated welcome scenes: logoUrl; the
+ *     hallway schedule: tagline.
  *   - Anything else: only when the config carries `schoolName`, and then only
  *     the keys it already has. `initials` / `tagline` alone can mean a person
  *     (staff spotlight) or a sponsor (ribbon sponsor) — never touched.
  */
-function applyWidgetIdentity(widgetType: string, cfg: Record<string, unknown>, id: BrandIdentity): void {
+function applyWidgetIdentity(widgetType: string, cfg: Record<string, unknown>, id: BrandIdentity, logoUrl: string | null): void {
+  const specs = identityKeysFor(widgetType);
+  if (specs) {
+    // Selectors (variant / theme, onlyIfPresent) read the zone as it was.
+    const zone = { ...cfg };
+    const valueOf = { name: id.name, tagline: id.tagline, initials: id.initials, logo: logoUrl };
+    for (const spec of specs) {
+      const raw = valueOf[spec.role];
+      if (!raw || !identityKeyApplies(spec, zone)) continue;
+      cfg[spec.key] = spec.upper ? raw.toUpperCase() : raw;
+    }
+    return;
+  }
   const has = (k: string) => Object.prototype.hasOwnProperty.call(cfg, k);
-  if (widgetType === 'LOGO') {
-    if (id.name) cfg.schoolName = id.name;
-    if (id.tagline) cfg.tagline = id.tagline;
-    if (id.initials && has('initials')) cfg.initials = id.initials;
-    return;
-  }
-  if (widgetType.startsWith('HS_')) {
-    if (id.name) cfg.schoolName = id.name.toUpperCase();
-    if (id.initials) cfg.schoolInitials = id.initials;
-    return;
-  }
   if (!has('schoolName')) return;
   if (id.name) cfg.schoolName = id.name;
   if (id.tagline && has('tagline')) cfg.tagline = id.tagline;
@@ -514,7 +544,7 @@ function applyBoardIdentity(cfg: Record<string, unknown>, id: BrandIdentity): vo
  * The branded config for ONE zone — what "Brand this template" writes. Pure:
  * returns a new config object (equal by value to the old one when nothing
  * applies). Widgets the kit does not model only get keys they already have.
- * The organisation's name, tagline and initials go wherever a widget or
+ * The organisation's name, tagline, initials and logo go wherever a widget or
  * board has a field for them (applyWidgetIdentity / applyBoardIdentity).
  */
 export function brandZoneConfig(zone: Pick<Zone, 'widgetType' | 'defaultConfig'>, kit: BrandKitLike): Record<string, unknown> {
@@ -617,7 +647,7 @@ export function brandZoneConfig(zone: Pick<Zone, 'widgetType' | 'defaultConfig'>
       if (primary && has('accentColor')) cfg.accentColor = primary;
       break;
   }
-  if (zone.widgetType && zone.widgetType !== 'EXTERNAL_HTML') applyWidgetIdentity(zone.widgetType, cfg, identity);
+  if (zone.widgetType && zone.widgetType !== 'EXTERNAL_HTML') applyWidgetIdentity(zone.widgetType, cfg, identity, logoUrl);
   return cfg;
 }
 

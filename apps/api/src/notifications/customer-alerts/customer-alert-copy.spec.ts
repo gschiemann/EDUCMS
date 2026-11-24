@@ -75,9 +75,15 @@ describe('digest + emergency', () => {
     const at = new Date('2026-10-23T15:42:00Z');
     const e = renderEmergencyEmail('en', { event: 'TRIGGERED', alertType: 'LOCKDOWN', isDrill: false, locationNames: ['Lincoln Elementary'], screenCount: 12, at }, { emergencyUrl: 'u', manageUrl: 'm' });
     expect(e.subject).toBe('VenueOS: Lockdown alert sent to Lincoln Elementary');
-    expect(e.body).toContain('Time: 2026-10-23 15:42 UTC');
+    // No clocks given: the time is stated in UTC, and labelled UTC (2026-11-23).
+    expect(e.body).toContain('Time: Fri, Oct 23, 2026, 3:42 PM UTC');
     const d = renderEmergencyEmail('en', { event: 'TRIGGERED', alertType: 'EVACUATE', isDrill: true, locationNames: ['District', 'A', 'B'], at }, { emergencyUrl: 'u', manageUrl: 'm' });
     expect(d.subject).toBe('VenueOS: Evacuate drill started at District and 2 other locations');
+    // Spanish plural (2026-11-23): "ubicaciones", never "ubicaciónes"; one is "ubicación".
+    const dEs = renderEmergencyEmail('es', { event: 'TRIGGERED', alertType: 'EVACUATE', isDrill: true, locationNames: ['District', 'A', 'B'], at }, { emergencyUrl: 'u', manageUrl: 'm' });
+    expect(dEs.subject).toBe('VenueOS: Simulacro de Evacuación iniciado en District y 2 ubicaciones más');
+    const oneEs = renderEmergencyEmail('es', { event: 'CLEARED', isDrill: true, locationNames: ['District', 'A'], at }, { emergencyUrl: 'u', manageUrl: 'm' });
+    expect(oneEs.subject).toBe('VenueOS: Simulacro terminado en District y 1 ubicación más');
     const c = renderEmergencyEmail('en', { event: 'CLEARED', isDrill: false, locationNames: ['Lincoln Elementary'], at }, { emergencyUrl: 'u', manageUrl: 'm' });
     expect(c.subject).toBe('VenueOS: All clear sent to Lincoln Elementary');
     for (const l of LOCALES) {
@@ -160,5 +166,120 @@ describe('offline duration is the true elapsed time at send (2026-11-02)', () =>
   it('NO_CONTENT says picture, not offline', () => {
     const e = renderScreenAlertEmail('en', { kind: 'NO_CONTENT', locationName: 'L', items: [{ ...it1, kind: 'NO_CONTENT' }], nowMs }, links);
     expect(e.body).toContain('no picture confirmed since 4:39 PM (3 h 12 min)');
+  });
+});
+
+describe('emergency record copy: the time as the screens’ clocks show it (2026-11-23)', () => {
+  // The owner, after a live demo: "My alert email give me utc time but I want local time of the screen".
+  const at = new Date('2026-11-23T20:41:00Z');
+  const jul = new Date('2026-07-23T20:41:00Z');
+  const L = { emergencyUrl: 'u', manageUrl: 'm' };
+  const render = (l: AlertLocale, locationNames: string[], clocks: Array<{ name: string; zone: string | null }>, when = at, event: 'TRIGGERED' | 'CLEARED' = 'TRIGGERED') =>
+    renderEmergencyEmail(l, { event, alertType: 'LOCKDOWN', isDrill: true, locationNames, at: when, clocks }, L).body;
+  const timeBlock = (body: string) => {
+    const lines = body.split('\n');
+    const i = lines.findIndex((x) => /^(Time|Hora|时间):/.test(x));
+    const out = [lines[i]];
+    for (let j = i + 1; j < lines.length && lines[j].startsWith('  '); j++) out.push(lines[j]);
+    return out;
+  };
+
+  it('one location: one line, local time, zone named — en / es / zh; trigger, drill and all-clear alike', () => {
+    const one = [{ name: 'Lincoln Elementary', zone: 'America/Chicago' }];
+    expect(timeBlock(render('en', ['Lincoln Elementary'], one))).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+    expect(timeBlock(render('es', ['Lincoln Elementary'], one))).toEqual(['Hora: lun, 23 nov 2026, 14:41 hora estándar central']);
+    expect(timeBlock(render('zh', ['Lincoln Elementary'], one))).toEqual(['时间: 2026年11月23日周一 北美中部标准时间下午2:41']);
+    expect(timeBlock(render('en', ['Lincoln Elementary'], one, at, 'CLEARED'))).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+    const live = renderEmergencyEmail('en', { event: 'TRIGGERED', alertType: 'LOCKDOWN', isDrill: false, locationNames: ['Lincoln Elementary'], at, clocks: one }, L).body;
+    expect(timeBlock(live)).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+    for (const l of LOCALES) expect(render(l, ['Lincoln Elementary'], one)).not.toContain('UTC');
+  });
+
+  it('several locations whose clocks agree: still one line', () => {
+    const body = render('en', ['Springfield District', 'Lincoln Elementary', 'Adams Middle'], [
+      { name: 'Springfield District', zone: 'America/Chicago' },
+      { name: 'Lincoln Elementary', zone: 'America/Chicago' },
+      { name: 'Adams Middle', zone: 'America/Chicago' },
+    ]);
+    expect(timeBlock(body)).toEqual(['Time: Mon, Nov 23, 2026, 2:41 PM CST']);
+  });
+
+  it('clocks that disagree: one line per reading, the alert’s own target first, naming who reads it', () => {
+    const clocks = [
+      { name: 'Springfield District', zone: 'America/Chicago' },
+      { name: 'Mesa Campus', zone: 'America/Denver' },
+      { name: 'Lincoln Elementary', zone: 'America/Chicago' },
+      { name: 'Adams Middle', zone: 'America/Chicago' },
+    ];
+    const names = clocks.map((c) => c.name);
+    expect(timeBlock(render('en', names, clocks))).toEqual([
+      'Time:',
+      '  • Mon, Nov 23, 2026, 2:41 PM CST — Springfield District and 2 other locations',
+      '  • Mon, Nov 23, 2026, 1:41 PM MST — Mesa Campus',
+    ]);
+    expect(timeBlock(render('es', names, clocks))).toEqual([
+      'Hora:',
+      '  • lun, 23 nov 2026, 14:41 hora estándar central — Springfield District y 2 ubicaciones más',
+      '  • lun, 23 nov 2026, 13:41 hora estándar de las Montañas Rocosas — Mesa Campus',
+    ]);
+    expect(timeBlock(render('zh', names, clocks))).toEqual([
+      '时间:',
+      '  • 2026年11月23日周一 北美中部标准时间下午2:41 — Springfield District 及其他 2 个地点',
+      '  • 2026年11月23日周一 北美山区标准时间下午1:41 — Mesa Campus',
+    ]);
+  });
+
+  it('Denver and Phoenix read the same in winter (one line) and differ in summer (two)', () => {
+    const clocks = [
+      { name: 'Denver Campus', zone: 'America/Denver' },
+      { name: 'Phoenix Campus', zone: 'America/Phoenix' },
+    ];
+    expect(timeBlock(render('en', ['Denver Campus', 'Phoenix Campus'], clocks, at))).toEqual(['Time: Mon, Nov 23, 2026, 1:41 PM MST']);
+    expect(timeBlock(render('en', ['Denver Campus', 'Phoenix Campus'], clocks, jul))).toEqual([
+      'Time:',
+      '  • Thu, Jul 23, 2026, 2:41 PM MDT — Denver Campus',
+      '  • Thu, Jul 23, 2026, 1:41 PM MST — Phoenix Campus',
+    ]);
+  });
+
+  it('one location whose screens show two zones (a per-screen override) is named on both lines', () => {
+    const body = render('en', ['Lincoln Elementary'], [
+      { name: 'Lincoln Elementary', zone: 'America/Chicago' },
+      { name: 'Lincoln Elementary', zone: 'America/New_York' },
+    ]);
+    expect(timeBlock(body)).toEqual([
+      'Time:',
+      '  • Mon, Nov 23, 2026, 2:41 PM CST — Lincoln Elementary',
+      '  • Mon, Nov 23, 2026, 3:41 PM EST — Lincoln Elementary',
+    ]);
+  });
+
+  it('no zone known, an unknown zone, or no clocks at all: UTC, labelled UTC, never a bare time', () => {
+    for (const clocks of [[], [{ name: 'L', zone: null }], [{ name: 'L', zone: 'Not/AZone' }]]) {
+      expect(timeBlock(render('en', ['L'], clocks))).toEqual(['Time: Mon, Nov 23, 2026, 8:41 PM UTC']);
+      expect(timeBlock(render('es', ['L'], clocks))).toEqual(['Hora: lun, 23 nov 2026, 20:41 tiempo universal coordinado']);
+      expect(timeBlock(render('zh', ['L'], clocks))).toEqual(['时间: 2026年11月23日周一 协调世界时下午8:41']);
+    }
+    const legacy = renderEmergencyEmail('en', { event: 'CLEARED', isDrill: false, locationNames: ['L'], at }, L).body;
+    expect(timeBlock(legacy)).toEqual(['Time: Mon, Nov 23, 2026, 8:41 PM UTC']);
+  });
+
+  it('a known zone and an unknown one at once: each says which it is', () => {
+    expect(timeBlock(render('en', ['A', 'B'], [{ name: 'A', zone: 'America/Chicago' }, { name: 'B', zone: null }]))).toEqual([
+      'Time:',
+      '  • Mon, Nov 23, 2026, 2:41 PM CST — A',
+      '  • Mon, Nov 23, 2026, 8:41 PM UTC — B',
+    ]);
+  });
+
+  it('the rest of the copy is unchanged: subject, record line, links, signature; no odd spaces anywhere', () => {
+    for (const l of LOCALES) {
+      const e = renderEmergencyEmail(l, { event: 'TRIGGERED', alertType: 'LOCKDOWN', isDrill: true, locationNames: ['Lincoln Elementary'], at, clocks: [{ name: 'Lincoln Elementary', zone: 'America/Chicago' }] }, L);
+      expect(e.subject).toMatch(/^VenueOS[:：]/);
+      expect(e.subject).not.toMatch(/\d:\d\d/);
+      expect(e.body).toContain('u');
+      expect(e.body).toContain('m');
+      expect(e.body + e.subject).not.toMatch(/[\u202f\u00a0]/);
+    }
   });
 });

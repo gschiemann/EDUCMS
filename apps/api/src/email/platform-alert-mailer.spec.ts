@@ -158,4 +158,23 @@ describe('PlatformAlertMailer — sendAlert', () => {
     expect(update.mock.calls[0][0].data.status).toBe('FAILED');
     expect(update.mock.calls[0][0].data.error).toContain('422');
   });
+
+  // 2026-11-23 — the shadow copy of an emergency record email carries the
+  // screen's local time; the email_logs row must hold exactly what was sent.
+  it('the email_logs row holds the subject and body exactly as sent (a shadow emergency copy)', async () => {
+    process.env.PLATFORM_ALERT_EMAILS = 'owner@personal.test';
+    process.env.RESEND_API_KEY = 're_test_key';
+    process.env.EMAIL_FROM = 'VenueOS <alerts@venueos.example>';
+    const fetchMock = jest.fn(async () => ({ ok: true, text: async () => '' })) as any;
+    global.fetch = fetchMock;
+    const subject = '[shadow] would have sent to 2 admins at Springfield: VenueOS: Lockdown drill started at Lincoln Elementary';
+    const body = 'A Lockdown DRILL was started at Lincoln Elementary.\n\nTime: Mon, Nov 23, 2026, 2:41 PM CST\n';
+
+    const { mailer, create } = makeMailer();
+    await mailer.sendAlert(subject, body, 'ALERT_SHADOW_EMERGENCY');
+
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(create.mock.calls[0][0].data).toMatchObject({ subject: payload.subject, body: payload.text, kind: 'ALERT_SHADOW_EMERGENCY' });
+    expect(payload.text).toBe(body);
+  });
 });
