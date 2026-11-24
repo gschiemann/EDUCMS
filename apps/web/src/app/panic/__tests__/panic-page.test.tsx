@@ -548,3 +548,142 @@ describe('6 — ending an alert that was replaced meanwhile', () => {
   });
 });
 
+
+// 2026-11-23 — on a short screen the six trigger buttons own the space. The
+// 2026-11-16 train put the panic-phone row ABOVE the `flex-1 min-h-0` grid,
+// so its height came off the buttons (65 px at 390 × 664, under the 88 px
+// floor emergency-targeting.spec.ts holds them to). Under 800 px tall the row
+// now follows the grid; 800 px and taller is unchanged. jsdom has no layout,
+// so this pins the DOM order; the geometry is the e2e spec's.
+describe('7 — short screens: the panic-phone row follows the buttons', () => {
+  const SHORT = '(max-height: 799px)';
+  const DEVICE_STATUS = { device: { id: 'pd-1', label: 'iPhone · Safari' }, user: TEACHER };
+  let shortMatches: boolean;
+  let listeners: Array<() => void>;
+  // jsdom has no matchMedia (the hook then reads false, today's layout).
+  const realMatchMedia: unknown = window.matchMedia;
+  const setMatchMedia = (value: unknown) =>
+    Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value });
+
+  beforeEach(() => {
+    shortMatches = false;
+    listeners = [];
+    setMatchMedia(
+      jest.fn(
+        (query: string) =>
+          ({
+            get matches() {
+              return query === SHORT && shortMatches;
+            },
+            media: query,
+            onchange: null,
+            addEventListener: (_: string, fn: () => void) => listeners.push(fn),
+            removeEventListener: (_: string, fn: () => void) => {
+              listeners = listeners.filter((l) => l !== fn);
+            },
+            addListener: (fn: () => void) => listeners.push(fn),
+            removeListener: (fn: () => void) => {
+              listeners = listeners.filter((l) => l !== fn);
+            },
+            dispatchEvent: () => true,
+          }) as unknown as MediaQueryList,
+      ),
+    );
+  });
+
+  afterEach(() => {
+    setMatchMedia(realMatchMedia);
+  });
+
+  const triggerButtons = () => screen.getAllByRole('button', { name: /^Trigger .* emergency/ });
+  const follows = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+  /** A signed-in admin without a ready phone: the keep-ready card shows. */
+  async function renderSignedIn() {
+    act(() => {
+      useUIStore.setState({ token: 'fresh.jwt', user: TEACHER as never });
+    });
+    render(<MobilePanicPage />);
+    await flush();
+    expect(triggerButtons()).toHaveLength(6);
+    return screen.getByTestId('panic-keep-ready');
+  }
+
+  it('matching (max-height: 799px): the keep-ready card comes AFTER all six buttons, inside the below-grid row', async () => {
+    shortMatches = true;
+    const card = await renderSignedIn();
+    for (const b of triggerButtons()) expect(follows(b, card)).toBe(true);
+    expect(screen.getByTestId('panic-phone-row-below')).toContainElement(card);
+    // Same card, same copy, same handlers.
+    expect(card).toHaveTextContent(/Keep this phone ready for emergencies/);
+    expect(screen.getByTestId('panic-keep-ready-button')).toBeEnabled();
+    // The root scrolls so the card is reachable.
+    expect(card.closest('.fixed')?.className).toContain('overflow-y-auto');
+  });
+
+  it('not matching: today’s order — the card comes BEFORE the buttons, no below-grid row, no scrolling root', async () => {
+    shortMatches = false;
+    const card = await renderSignedIn();
+    for (const b of triggerButtons()) expect(follows(card, b)).toBe(true);
+    expect(screen.queryByTestId('panic-phone-row-below')).toBeNull();
+    expect(card.closest('.fixed')?.className).not.toContain('overflow-y-auto');
+  });
+
+  it('no below-grid row is rendered when no panic-phone row shows (the card dismissed)', async () => {
+    shortMatches = true;
+    await renderSignedIn();
+    expect(screen.getByTestId('panic-phone-row-below')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Not now/i }));
+    expect(screen.queryByTestId('panic-keep-ready')).toBeNull();
+    expect(screen.queryByTestId('panic-phone-row-below')).toBeNull();
+    expect(triggerButtons()).toHaveLength(6);
+  });
+
+  it('a set-up phone on a short screen: the ready line follows the buttons, with its Turn off control', async () => {
+    shortMatches = true;
+    document.cookie = 'venueos_pm=1; Path=/';
+    onPanic = (action) => {
+      if (action === 'status') return res(200, DEVICE_STATUS);
+      if (action === 'active') return res(200, { alerts: [] });
+      if (action === 'targets') return res(200, TARGETS);
+      return res(404, {});
+    };
+    render(<MobilePanicPage />);
+    await flush();
+    const line = screen.getByTestId('panic-phone-ready');
+    expect(line).toHaveTextContent('iPhone · Safari');
+    for (const b of triggerButtons()) expect(follows(b, line)).toBe(true);
+    expect(screen.getByTestId('panic-phone-row-below')).toContainElement(screen.getByTestId('panic-phone-turn-off'));
+  });
+
+  it('crossing 800 px mid-hold moves the card but never remounts a trigger button: an early release still cancels', async () => {
+    shortMatches = false;
+    const card = await renderSignedIn();
+    const before = triggerButtons();
+    expect(follows(card, before[0])).toBe(true);
+
+    // Start a hold, then the screen gets shorter (a rotation) one second in.
+    const pressed = lockdown();
+    fireEvent.keyDown(pressed, { key: ' ' });
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    shortMatches = true;
+    act(() => {
+      for (const l of listeners) l();
+    });
+    const after = triggerButtons();
+    after.forEach((b, i) => expect(b).toBe(before[i]));
+    const moved = screen.getByTestId('panic-keep-ready');
+    for (const b of after) expect(follows(b, moved)).toBe(true);
+
+    // Released before 3 s on the SAME element: nothing is sent.
+    fireEvent.keyUp(pressed, { key: ' ' });
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+    });
+    await flush();
+    expect(broadcastEmergency).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Broadcasted/i)).toBeNull();
+  });
+});

@@ -495,6 +495,53 @@ export function nextFallbackEpisode(prev: FallbackEpisode | null, o: EpisodeObse
   return prev.state === 'retrying' ? prev : { ...prev, state: 'retrying' };
 }
 
+// ── What the console says: ONE `PLAYLIST_FALLBACK` line per change ──────────
+//
+// Two places see a fallback: the page's selection (which playlist takes the
+// screen) and the episode (what is proven on the glass). Each change is said
+// by exactly one of them. A backup taking the screen (the first time, again
+// after a failed retry, or a move to another backup) is the selection's
+// decision line, which names both playlists. The episode adds a line only for
+// what the selection cannot know: the first choice back on the glass being
+// tried, and the first choice back for good. The token is what operators and
+// the e2e search for; never rename or recase it.
+
+/** What the decision line reads of a manifest playlist. */
+export interface FallbackLogPlaylist {
+  id?: unknown;
+  name?: unknown;
+  template?: { name?: unknown } | null;
+}
+
+export interface FallbackDecisionLog {
+  /** The page logs again only when this changes ('' = not on a fallback). Ids AND text: two backups with the same name are still two changes. */
+  key: string;
+  /** The line to print, or null when the screen is not on a fallback. */
+  line: string | null;
+}
+
+/** The selection's decision line, and the key the page deduplicates it by. */
+export function fallbackDecisionLog(
+  fellBack: boolean,
+  primary: FallbackLogPlaylist | null | undefined,
+  winner: FallbackLogPlaylist | null | undefined,
+): FallbackDecisionLog {
+  if (!fellBack || !primary || !winner) return { key: '', line: null };
+  const line = `[Player] PLAYLIST_FALLBACK nothing in "${String(primary.name || primary.id)}" can be shown on this screen — showing "${String(winner.name || winner.template?.name || winner.id)}" instead; the first is tried again later or as soon as its content changes`;
+  return { key: `${String(primary.id)}>${String(winner.id)}\n${line}`, line };
+}
+
+/**
+ * The episode's own line for `prev` → `next`, or null. Null on entry to (or
+ * a move within) `backup` — the decision line said that — when nothing the
+ * line names changed, and when there is no episode.
+ */
+export function fallbackEpisodeLogLine(prev: FallbackEpisode | null | undefined, next: FallbackEpisode | null | undefined): string | null {
+  if (!next || next.state === 'backup') return null;
+  if (prev && prev.state === next.state && prev.toId === next.toId && prev.fromId === next.fromId) return null;
+  return `[Player] PLAYLIST_FALLBACK episode ${next.state}: scheduled ${next.fromId}, ${next.state === 'recovered' ? 'playing' : 'backup'} ${next.toId}`;
+}
+
 // ── What the routine report says while an episode lasts ─────────────────────
 
 /** The `playlistFallback` block of the telemetry report. Ids only — the server looks the names up. */

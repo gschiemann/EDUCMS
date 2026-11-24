@@ -277,11 +277,15 @@ test.describe('a playlist with nothing playable gives the screen to the next sch
     expect(block).toMatchObject({ fromPlaylistId: 'pl-4k', toPlaylistId: 'pl-everyday', state: 'backup' });
     expect(typeof block.forMs).toBe('number');
     expect(JSON.stringify(block)).not.toContain('Everyday');
+    // Still said once: the backup being proven on the glass, and the reports, add no line.
+    expect(lines, 'one PLAYLIST_FALLBACK line for one fallback').toHaveLength(1);
   });
 
   test('the first choice is fixed: it takes the screen back at once, and five minutes later the report says it recovered', async ({ page }) => {
     test.setTimeout(240_000);
     guardPageErrors(page);
+    const lines: string[] = [];
+    page.on('console', (msg) => { if (msg.text().includes('PLAYLIST_FALLBACK')) lines.push(msg.text()); });
     const tag = 'fallback-back';
     await page.clock.install();
     const booted = await bootMockPlayer(page, { tag, kind: 'images', manifest: rankedManifest(tag, 'good'), extraRoutes: brokenRoutes });
@@ -313,6 +317,12 @@ test.describe('a playlist with nothing playable gives the screen to the next sch
     await page.waitForTimeout(3_000);
     const all = await samples(page);
     expect(all.filter((s) => shows(s, FIXED_IMAGE)).length / all.length, 'the fixed first choice stays on the glass').toBeGreaterThan(0.9);
+    // One line per change, in words an operator can search for: the backup
+    // took the screen, the first choice is tried again, it is back.
+    expect(lines, 'one PLAYLIST_FALLBACK line per change').toHaveLength(3);
+    expect(lines[0]).toContain('nothing in "4k" can be shown on this screen — showing "Everyday" instead');
+    expect(lines[1]).toContain('PLAYLIST_FALLBACK episode retrying: scheduled pl-4k, backup pl-everyday');
+    expect(lines[2]).toContain('PLAYLIST_FALLBACK episode recovered: scheduled pl-4k, playing pl-4k');
   });
 
   test('no other playlist scheduled: nothing changes — the card stays, proven as such, and nothing is reported', async ({ page }) => {

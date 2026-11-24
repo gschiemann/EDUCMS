@@ -275,7 +275,10 @@ Incident: `docs/incidents/2026-08-28-player-1-1-6-fleet-failure.md`
     download is not on the glass yet, and a playlist already set aside is never set aside again
     while its backup downloads). With no other playlist scheduled, or when every one is set
     aside, nothing changes: the card, proven as `idle:content-unavailable`. A template is never
-    set aside but may be the fallback. One `PLAYLIST_FALLBACK` log line per change.
+    set aside but may be the fallback. One `PLAYLIST_FALLBACK` log line per change: the decision
+    line says a backup took the screen (keyed by both playlist ids and its text, so two backups
+    with one name are still two changes), and the episode adds a line only when the first choice
+    is tried again and when it is back (`fallbackDecisionLog`, `fallbackEpisodeLogLine`).
     **It comes back by itself.** Keyed by playlist + content signature, in memory: a re-publish
     is tried at once, a page reload starts clean, otherwise the first choice is tried again
     after 15, 30, 60, then 120 minutes (`FALLBACK_RETRY_STEPS_MS`) — unless every file of it is
