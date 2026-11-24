@@ -83,6 +83,7 @@ import {
   type ScreenItemKind,
 } from './customer-alert-copy';
 import { gradeScreenRow } from './render-trust-grade';
+import { alertZoneForLocation, alertZoneForScreen, SCREEN_CLOCK_SELECT, type ScreenClockRow } from './alert-time';
 import { otaWindowOf, windowsForScreen, type DisplayScheduleRowLike } from './schedule-windows';
 // 2026-11-01 — the synthetic emergency drill (apps/api/src/emergency/drill/):
 // its own alerts get no customer record copy, and a problem that begins while
@@ -99,6 +100,14 @@ const MIN = 60_000;
 /** Ledger kinds that mean "rebooting / updating right now" (screens/events/screen-events.ts). */
 const MAINTENANCE_LEDGER_KINDS = ['app-relaunch', 'ota-download', 'ota-install', 'ota-installed', 'ota-needs-tap'];
 const ADMIN_ROLES = [AppRole.DISTRICT_ADMIN, AppRole.SCHOOL_ADMIN] as string[];
+/**
+ * Most screens one email reads the clocks of (2026-11-23). A location whose
+ * screens fall outside the read states its own zone instead — the same zone
+ * as its screens unless one of them carries its own override.
+ */
+const CLOCK_SCREEN_MAX = 1_000;
+/** Trigger copies whose clocks the matching all-clear copy reuses (the oldest is forgotten first). */
+const ALERT_CLOCK_MEMO_MAX = 500;
 
 export interface TenantMeta {
   id: string;
@@ -111,6 +120,12 @@ export interface TenantMeta {
   otaWindowTimezone: string | null;
   /** The location's own time zone (IANA), for the clock times emails state. */
   timezone?: string | null;
+  /**
+   * The location's coordinates (2026-11-23): with no setting, its zone is the
+   * zone at its address — exactly what its screens' manifests use.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 interface Recipient {
@@ -215,6 +230,12 @@ export interface EmergencyRecordInput {
   /** Every tenant the alert reached (a district alert: the district + its schools). */
   tenantIds: string[];
   screenCount?: number;
+  /**
+   * When the action happened (2026-11-23). `recordEmergency` stamps it at
+   * the call — right after the action committed — so the email states the
+   * alert's moment, not the moment the mail left after its reads.
+   */
+  atMs?: number;
 }
 
 @Injectable()
@@ -238,6 +259,8 @@ export class CustomerAlertEmailsService {
   private fleetCache: { at: number; n: number } | null = null;
   private lastPruneAt = 0;
   private readonly emergencySeen = new Map<string, number>();
+  /** overrideId → per location, the zones its reached screens showed when the trigger copy read them. */
+  private readonly alertClocks = new Map<string, Map<string, Array<string | null>>>();
   private lastNotConfiguredLog = 0;
 
   /** Clock + uptime seams for tests. */
@@ -282,8 +305,9 @@ export class CustomerAlertEmailsService {
       if (this.emergencySeen.has(key)) return;
       if (this.emergencySeen.size > 1_000) this.emergencySeen.clear();
       this.emergencySeen.set(key, now);
+      const stamped: EmergencyRecordInput = { ...input, atMs: input.atMs ?? this.now() };
       setImmediate(() => {
-        this.sendEmergencyRecord(input).catch((e) =>
+        this.sendEmergencyRecord(stamped).catch((e) =>
           this.logger.warn(`[alert-email] emergency record copy failed: ${(e as Error)?.message ?? e}`),
         );
       });
@@ -304,7 +328,8 @@ export class CustomerAlertEmailsService {
       const org = this.rootOf(id, tenants);
       byOrg.set(org, [...(byOrg.get(org) ?? []), id]);
     }
-    const at = new Date();
+    const at = new Date(input.atMs ?? this.now());
+    const clocks = await this.emergencyClockZones(input, tenants);
     let sends = 0;
     for (const [orgId, ids] of byOrg) {
       const sent = await this.deliver({
@@ -317,7 +342,9 @@ export class CustomerAlertEmailsService {
         render: (locale, covered, r) => {
           // A recipient sees the locations they administer, the alert's own
           // target first (the district, for a district alert).
-          const names = ids.filter((id) => covered.includes(id)).map((id) => tenants.get(id)?.name ?? '—');
+          const mine = ids.filter((id) => covered.includes(id));
+          const nameOf = (id: string) => tenants.get(id)?.name ?? '—';
+          const names = mine.map(nameOf);
           if (names.length === 0) return null;
           return renderEmergencyEmail(
             locale,
@@ -328,6 +355,11 @@ export class CustomerAlertEmailsService {
               locationNames: names,
               screenCount: ids.length === 1 ? input.screenCount : undefined,
               at,
+              // The time as the reached screens' clocks show it, location by
+              // location, in the same order as the names.
+              clocks: mine.flatMap((id) =>
+                (clocks.get(id) ?? [alertZoneForLocation(id, tenants)]).map((zone) => ({ name: nameOf(id), zone })),
+              ),
             },
             { emergencyUrl: this.url(`/${r.homeSlug}/emergency`), manageUrl: this.manageUrl(r) },
           );
@@ -336,6 +368,140 @@ export class CustomerAlertEmailsService {
       if (sent) sends++;
     }
     return sends;
+  }
+
+  /**
+   * The zones the alert's screens show, per location (2026-11-23). Never
+   * throws; every location gets at least one zone (null = UTC, labelled).
+   *
+   *   TRIGGERED — the screens the alert took over. A group or one-screen
+   *     alert writes one `screen_emergency_overrides` row per screen it
+   *     reached, with `alertId` = the alert's id (newest wins, so the row
+   *     shows it), committed before the controller queues this copy; so
+   *     does a school-wide alert where location-based emergency content is
+   *     on. Elsewhere a school-wide alert reaches every screen of the
+   *     location through the location's own row, so a location in the alert
+   *     with no row of its own has its screens read instead. Read-only and
+   *     bounded; each screen's zone is exactly its manifest's
+   *     (`alertZoneForScreen`). The answer is kept for the all-clear copy.
+   *   CLEARED — the all-clear deleted those rows, so the zones the trigger's
+   *     copy read, when this process sent it; else each location's own.
+   *
+   * A location the reads did not reach (no screens, a failed read, past the
+   * cap) states its own zone (`alertZoneForLocation`).
+   */
+  private async emergencyClockZones(
+    input: EmergencyRecordInput,
+    tenants: Map<string, TenantMeta>,
+  ): Promise<Map<string, Array<string | null>>> {
+    const read = new Map<string, Array<string | null>>();
+    const collect = (zones: { byScreen: Map<string, string | null>; tenantOf: Map<string, string> }) => {
+      for (const [screenId, zone] of zones.byScreen) {
+        const tenantId = zones.tenantOf.get(screenId);
+        if (!tenantId) continue;
+        const list = read.get(tenantId) ?? [];
+        if (!list.includes(zone)) list.push(zone);
+        read.set(tenantId, list);
+      }
+    };
+    if (input.event === 'CLEARED') {
+      const memo = this.alertClocks.get(input.overrideId);
+      this.alertClocks.delete(input.overrideId);
+      for (const [id, zones] of memo ?? []) read.set(id, zones);
+    } else {
+      try {
+        const rows = (await this.prisma.client.screenEmergencyOverride.findMany({
+          where: { tenantId: { in: input.tenantIds }, alertId: input.overrideId },
+          select: { screenId: true, tenantId: true },
+          take: CLOCK_SCREEN_MAX,
+        })) as Array<{ screenId: string; tenantId: string }>;
+        collect(await this.screenClockZones(rows.map((r) => r.screenId), input.tenantIds, tenants));
+        // A school-wide alert with no per-screen rows at a location: every
+        // screen there is showing it.
+        const withRows = new Set(rows.map((r) => r.tenantId));
+        const wholeLocations = input.tenantIds.filter((id) => !withRows.has(id));
+        if (wholeLocations.length > 0) collect(await this.locationScreenClockZones(wholeLocations, tenants));
+      } catch (e) {
+        // Whatever was read before the failure stands; every other location
+        // states its own zone.
+        this.logger.warn(`[alert-email] reached-screen clocks unavailable, stating each location's zone: ${(e as Error)?.message ?? e}`);
+      }
+    }
+    const out = new Map<string, Array<string | null>>();
+    for (const id of input.tenantIds) {
+      const own = alertZoneForLocation(id, tenants);
+      const zones = read.get(id);
+      if (!zones || zones.length === 0) {
+        out.set(id, [own]);
+        continue;
+      }
+      // The location's own zone first, a zone over UTC, then by name: the
+      // order is the same on every send.
+      const rank = (z: string | null) => (z === own ? 0 : z === null ? 2 : 1);
+      out.set(id, [...zones].sort((a, b) => rank(a) - rank(b) || String(a).localeCompare(String(b))));
+    }
+    if (input.event === 'TRIGGERED') {
+      if (this.alertClocks.size >= ALERT_CLOCK_MEMO_MAX) {
+        const oldest = this.alertClocks.keys().next().value;
+        if (oldest !== undefined) this.alertClocks.delete(oldest);
+      }
+      this.alertClocks.set(input.overrideId, out);
+    }
+    return out;
+  }
+
+  /**
+   * Each screen's clock zone (`alertZoneForScreen`), from one bounded read
+   * constrained to the tenants the email is about. Throws only when the read
+   * does; callers fall back to the location's zone.
+   */
+  private async screenClockZones(
+    screenIds: readonly string[],
+    tenantIds: readonly string[],
+    tenants: Map<string, TenantMeta>,
+  ): Promise<{ byScreen: Map<string, string | null>; tenantOf: Map<string, string> }> {
+    const ids = [...new Set(screenIds)].filter(Boolean).slice(0, CLOCK_SCREEN_MAX);
+    const scope = [...new Set(tenantIds)].filter(Boolean);
+    if (ids.length === 0 || scope.length === 0) return this.clockZonesOf([], tenants);
+    const rows = (await this.prisma.client.screen.findMany({
+      where: { id: { in: ids }, tenantId: { in: scope } },
+      select: SCREEN_CLOCK_SELECT,
+      take: CLOCK_SCREEN_MAX,
+    })) as ScreenClockRow[];
+    return this.clockZonesOf(rows, tenants);
+  }
+
+  /**
+   * The clock zones of every screen at these locations (a school-wide
+   * alert), from one read bounded by `CLOCK_SCREEN_MAX`. Throws only when
+   * the read does.
+   */
+  private async locationScreenClockZones(
+    tenantIds: readonly string[],
+    tenants: Map<string, TenantMeta>,
+  ): Promise<{ byScreen: Map<string, string | null>; tenantOf: Map<string, string> }> {
+    const scope = [...new Set(tenantIds)].filter(Boolean);
+    if (scope.length === 0) return this.clockZonesOf([], tenants);
+    const rows = (await this.prisma.client.screen.findMany({
+      where: { tenantId: { in: scope } },
+      select: SCREEN_CLOCK_SELECT,
+      take: CLOCK_SCREEN_MAX,
+    })) as ScreenClockRow[];
+    return this.clockZonesOf(rows, tenants);
+  }
+
+  private clockZonesOf(
+    rows: readonly ScreenClockRow[],
+    tenants: Map<string, TenantMeta>,
+  ): { byScreen: Map<string, string | null>; tenantOf: Map<string, string> } {
+    const byScreen = new Map<string, string | null>();
+    const tenantOf = new Map<string, string>();
+    for (const row of rows) {
+      if (!row.tenantId) continue;
+      byScreen.set(row.id, alertZoneForScreen(row, tenants));
+      tenantOf.set(row.id, row.tenantId);
+    }
+    return { byScreen, tenantOf };
   }
 
   // ═════════════════════════════════════════════════════════════════════
@@ -1208,6 +1374,7 @@ export class CustomerAlertEmailsService {
       ...heldRows.map((h) => this.rootOf(h.tenantId, tenants)),
     ]);
     const limit = orgHourlyLimit();
+    const zoneOf = await this.problemClockZones([...toSend, ...heldRows], tenants);
 
     for (const orgId of orgs) {
       let capacity = Math.max(0, limit - (await this.sentLastHour(orgId, now)));
@@ -1230,7 +1397,7 @@ export class CustomerAlertEmailsService {
           }
           continue;
         }
-        const ok = await this.sendDigest({ orgId, tenants, mode, now, held: orgHeld, problems: orgProblems, recoveries: orgRecoveries });
+        const ok = await this.sendDigest({ orgId, tenants, mode, now, held: orgHeld, problems: orgProblems, recoveries: orgRecoveries, zoneOf });
         if (ok) {
           sends++;
           opened += orgProblems.length;
@@ -1273,7 +1440,7 @@ export class CustomerAlertEmailsService {
             locationName: location?.name ?? '—',
             minutes: Math.max(1, Math.round((now - p.startedAtMs) / MIN)),
             sinceMs: p.startedAtMs,
-            timeZone: location?.timezone ?? null,
+            timeZone: zoneOf(p.screenId, p.tenantId),
             contentUnavailable: p.contentUnavailable,
             missedOnTime: p.missedOnTime,
           })),
@@ -1315,6 +1482,36 @@ export class CustomerAlertEmailsService {
     return { opened, held, sends };
   }
 
+  /**
+   * The zone each problem screen's clock shows, for the "offline since 4:39
+   * PM" times (2026-11-23): the screen's manifest zone, else its location's
+   * (setting > address > the organisation above). Until now only the
+   * location's own setting counted, so a location that relied on its
+   * address — the documented default — read "3:00 PM UTC". One bounded read
+   * per scan that has something to send; a failed read falls back to the
+   * location's zone.
+   */
+  private async problemClockZones(
+    items: ReadonlyArray<{ screenId: string; tenantId: string }>,
+    tenants: Map<string, TenantMeta>,
+  ): Promise<(screenId: string, tenantId: string) => string | null> {
+    let byScreen = new Map<string, string | null>();
+    if (items.length > 0) {
+      try {
+        byScreen = (
+          await this.screenClockZones(
+            items.map((i) => i.screenId),
+            items.map((i) => i.tenantId),
+            tenants,
+          )
+        ).byScreen;
+      } catch (e) {
+        this.logger.warn(`[alert-email] screen clocks unavailable, stating each location's zone: ${(e as Error)?.message ?? e}`);
+      }
+    }
+    return (screenId, tenantId) => (byScreen.has(screenId) ? byScreen.get(screenId)! : alertZoneForLocation(tenantId, tenants));
+  }
+
   private async sendDigest(args: {
     orgId: string;
     tenants: Map<string, TenantMeta>;
@@ -1323,8 +1520,10 @@ export class CustomerAlertEmailsService {
     held: IncidentRow[];
     problems: NewProblem[];
     recoveries: Array<{ incident: IncidentRow; recoveredAtMs: number; sendMode: AlertMode }>;
+    /** The zone each screen's clock shows (`problemClockZones`). */
+    zoneOf: (screenId: string, tenantId: string) => string | null;
   }): Promise<boolean> {
-    const { orgId, tenants, mode, now } = args;
+    const { orgId, tenants, mode, now, zoneOf } = args;
     const items: Array<ScreenAlertItem & { tenantId: string }> = [];
     const nameOf = (tid: string) => tenants.get(tid)?.name ?? '—';
     const heldRecoveries: IncidentRow[] = [];
@@ -1336,7 +1535,7 @@ export class CustomerAlertEmailsService {
           screenName: h.screenName,
           locationName: nameOf(h.tenantId),
           sinceMs: h.startedAt.getTime(),
-          timeZone: tenants.get(h.tenantId)?.timezone ?? null,
+          timeZone: zoneOf(h.screenId, h.tenantId),
         });
       } else if (mode === 'shadow' || h.emailedMode === 'on') {
         // A customer hears "back online" only if the problem email reached them.
@@ -1359,7 +1558,7 @@ export class CustomerAlertEmailsService {
         locationName: nameOf(p.tenantId),
         missedOnTime: p.missedOnTime,
         sinceMs: p.startedAtMs,
-        timeZone: tenants.get(p.tenantId)?.timezone ?? null,
+        timeZone: zoneOf(p.screenId, p.tenantId),
       });
     }
     for (const r of args.recoveries) {
@@ -1587,6 +1786,8 @@ export class CustomerAlertEmailsService {
           otaWindowEnd: true,
           otaWindowTimezone: true,
           timezone: true,
+          latitude: true,
+          longitude: true,
         },
       })) as TenantMeta[];
       for (const r of rows) out.set(r.id, r);
