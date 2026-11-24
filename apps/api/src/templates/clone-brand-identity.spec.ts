@@ -374,4 +374,61 @@ describe('clone from a preset — identity + snapshot', () => {
     });
     expect(replaced[1].schoolName).toBe('Buena Park Academy');
   });
+
+  // #347 round-2 review of the placeholders branch: the AI generator writes
+  // its zones from the tenant's prompt, so a generic word it emitted is the
+  // tenant's text, as in POST /templates.
+  it('an AI-generated LOGO keeps a generic word; a sample organisation and blanks still fill', async () => {
+    const zoneCreates: any[] = [];
+    const tx = {
+      template: {
+        create: jest.fn().mockResolvedValue({ id: 'ai-new' }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'ai-new' }),
+      },
+      templateScene: {
+        create: jest.fn().mockResolvedValue({ id: 'scene-1' }),
+      },
+      templateZone: {
+        create: jest.fn().mockImplementation(async (args: any) => {
+          zoneCreates.push(args.data);
+          return {};
+        }),
+      },
+    };
+    prisma.client.$transaction = jest.fn((fn: any) => fn(tx));
+    const zone = (widgetType: string, defaultConfig: unknown) => ({
+      name: widgetType,
+      widgetType,
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      defaultConfig,
+    });
+    await (controller as any).persistGeneratedTemplate(
+      req,
+      {
+        name: 'Front office',
+        zones: [
+          zone('LOGO', { theme: 'office-dashboard', schoolName: 'Central Administration' }),
+          zone('LOGO', { variant: 'logo-neon', schoolName: 'Roosevelt Academy' }),
+          zone('LOGO', {}),
+        ],
+      },
+      1920,
+      1080,
+      false,
+    );
+    expect(tx.template.create.mock.calls[0][0].data.tenantId).toBe('ten1');
+    const [office, neon, blank] = zoneCreates.map((d) =>
+      JSON.parse(d.defaultConfig),
+    );
+    expect(office.schoolName).toBe('Central Administration');
+    expect(office.assetUrl).toBe('https://cdn.example/new-logo.png');
+    expect(neon.schoolName).toBe('Buena Park Academy');
+    expect(blank).toMatchObject({
+      schoolName: 'Buena Park Academy',
+      tagline: 'Learning without limits',
+    });
+  });
 });

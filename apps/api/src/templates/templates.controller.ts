@@ -593,8 +593,9 @@ export class TemplatesController {
     // Generic placeholders ('WILDCATS', 'WHS', 'CENTRAL ADMINISTRATION'):
     // the duplicate passes the SOURCE template's brand history (a copy keeps
     // what the source's own rebrand would keep; those values are not made
-    // replaceable); POST /templates passes genericPlaceholders: false (its
-    // zones may be the tenant's own: Save as copy, import).
+    // replaceable); POST /templates and the AI generator pass
+    // genericPlaceholders: false (their zones may be the tenant's own: Save
+    // as copy, import, text the AI took from the tenant's prompt).
     identityOpts: ZoneIdentityOptions = {},
   ): any {
     const cfg = (() => {
@@ -2413,7 +2414,11 @@ export class TemplatesController {
 
       for (let i = 0; i < parsed.zones.length; i++) {
         const z = parsed.zones[i];
-        const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType);
+        // The AI writes these zones from the tenant's own prompt, so a
+        // generic word in them ('Central Administration' on a LOGO) is the
+        // tenant's text, as in POST /templates; a sample organisation and
+        // blanks still take the brand.
+        const cfg = this.applyBrandToZoneConfig(z.defaultConfig, brand, z.widgetType, { genericPlaceholders: false });
         await tx.templateZone.create({
           data: {
             templateId: tpl.id,
