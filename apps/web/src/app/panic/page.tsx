@@ -64,7 +64,7 @@ import { LiveDrillSwitch } from '@/components/emergency/LiveDrillSwitch';
 import { EmergencyTargetPicker } from '@/components/emergency/EmergencyTargetPicker';
 import { PanicActiveAlertsSheet } from '@/components/emergency/PanicActiveAlertsSheet';
 import { appConfirm } from '@/components/ui/app-dialog';
-import { useShortPanicScreen } from '@/hooks/use-short-panic-screen';
+import { usePanicLayout, type PanicLayout } from '@/hooks/use-panic-layout';
 
 // 2026-05-03 BUG FIX (cycle 1 emergency BUG-001) — was 1500ms, but
 // apps/api/src/emergency/CLAUDE.md "Key Safeguards #5: Hold-to-Trigger UX" requires
@@ -136,6 +136,64 @@ const PAGE_STYLE: React.CSSProperties = {
 };
 const PAGE_CLS =
   'fixed top-0 right-0 bottom-0 left-0 text-white flex flex-col overscroll-none select-none';
+
+// ── The idle panel's four shapes (2026-11-23; see @/hooks/use-panic-layout) ──
+// Every class string is a module-level literal so Tailwind sees it whole. The
+// TALL strings are the panel's classes from before this change, character for
+// character; 800 px and taller renders exactly what it did.
+//
+// DENSE (compact and both landscapes): spacing only, nothing hidden. About
+// 296.5 px of stack with the alert line at 390 wide (331.9 before), 242.5
+// without (275.9).
+const HEADER_CLS = 'flex justify-between items-center gap-3 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3';
+const HEADER_DENSE_CLS = 'flex justify-between items-center gap-3 px-5 pt-[max(0.5rem,env(safe-area-inset-top))] pb-1';
+const AUTH_LINE_CLS = 'mx-5 mb-1 flex items-center justify-center gap-2 rounded-xl bg-white/[0.04] ring-1 ring-white/10 px-3 py-2 text-[11px] font-semibold text-white/75';
+const AUTH_LINE_DENSE_CLS = 'mx-5 mb-1 flex items-center justify-center gap-2 rounded-xl bg-white/[0.04] ring-1 ring-white/10 px-3 py-1 text-[11px] font-semibold text-white/75';
+const TITLE_CLS = 'px-5 pb-2 text-center';
+const TITLE_DENSE_CLS = 'px-5 pb-1 text-center';
+const H1_CLS = 'text-[1.35rem] font-black tracking-tight text-white';
+const H1_DENSE_CLS = 'text-[1.35rem] font-black tracking-tight text-white leading-tight';
+const HOLD_HINT_CLS = 'text-[11px] mt-1';
+const HOLD_HINT_DENSE_CLS = 'text-[11px] mt-0.5';
+const CONTROLS_CLS = 'px-5 pb-1 space-y-2';
+const CONTROLS_DENSE_CLS = 'px-5 pb-1 space-y-1.5';
+// THE GRID: the same element in the same slot in every shape; only its class
+// and style change. Each button is `h-full` (its row) capped by
+// `--panic-btn-max` (its column, from the viewport width, and 156 px), so it
+// is min(row, column, 156) and round. Longhand sides only, never `inset`.
+const GRID_CLS = 'flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-x-5 gap-y-4 px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] place-items-center';
+const GRID_COMPACT_CLS = 'flex-1 min-h-0 grid grid-cols-3 grid-rows-2 gap-x-4 gap-y-3 px-3 pt-1 pb-[max(0.75rem,env(safe-area-inset-bottom))] place-items-center';
+const GRID_COMPACT_STYLE = { '--panic-btn-max': 'min(156px, calc((100vw - 3.5rem) / 3))' } as React.CSSProperties;
+// Landscape: the grid is `fixed` to the right of the status column, out of
+// the root's flow, so the column can scroll (to the card) while the buttons
+// never move. 3 × 2 fills by row: Hold / Secure / Lockdown on top, Fire /
+// Evacuate / Shelter / Medical below (the SRP reading order, and DOM order).
+const GRID_LAND3X2_CLS = 'fixed top-0 right-0 bottom-0 grid grid-cols-3 grid-rows-2 gap-x-4 gap-y-4 pl-2 pr-[max(1.25rem,env(safe-area-inset-right))] pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] place-items-center';
+const GRID_LAND3X2_STYLE = {
+  left: 'var(--panic-status-w)',
+  '--panic-btn-max': 'min(156px, calc((100vw - var(--panic-status-w) - 0.5rem - max(1.25rem, env(safe-area-inset-right)) - 2rem) / 3))',
+} as React.CSSProperties;
+const GRID_LAND2X3_CLS = 'fixed top-0 right-0 bottom-0 grid grid-cols-2 grid-rows-3 gap-x-4 gap-y-4 pl-2 pr-[max(1.25rem,env(safe-area-inset-right))] pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))] place-items-center';
+const GRID_LAND2X3_STYLE = {
+  left: 'var(--panic-status-w)',
+  '--panic-btn-max': 'min(156px, calc((100vw - var(--panic-status-w) - 0.5rem - max(1.25rem, env(safe-area-inset-right)) - 1rem) / 2))',
+} as React.CSSProperties;
+// Landscape root: its own flow is the status column, 340–400 px wide (the
+// right padding gives the rest of the width to the fixed grid). NEVER add
+// transform, filter, will-change or contain to the root: any of them makes
+// it the containing block of the `fixed` grid, which would then scroll with
+// the status column.
+const LAND_ROOT_STYLE = {
+  ...PAGE_STYLE,
+  '--panic-status-w': 'clamp(340px, 40vw, 400px)',
+  paddingRight: 'calc(100% - var(--panic-status-w))',
+} as React.CSSProperties;
+const GRID_BY_LAYOUT: Record<PanicLayout, { className: string; style: React.CSSProperties | undefined }> = {
+  tall: { className: GRID_CLS, style: undefined },
+  compact: { className: GRID_COMPACT_CLS, style: GRID_COMPACT_STYLE },
+  land3x2: { className: GRID_LAND3X2_CLS, style: GRID_LAND3X2_STYLE },
+  land2x3: { className: GRID_LAND2X3_CLS, style: GRID_LAND2X3_STYLE },
+};
 
 export default function MobilePanicPage() {
   const router = useRouter();
@@ -492,8 +550,16 @@ export default function MobilePanicPage() {
   // 2026-11-23 — on a short screen (under 800 px tall: a phone browser with
   // its toolbars, an installed app on a small phone, a short laptop window)
   // the six trigger buttons own the space and the panic-phone row moves
-  // below them. See the idle return and @/hooks/use-short-panic-screen.
-  const shortScreen = useShortPanicScreen();
+  // below them; on a phone held sideways the buttons get their own area to
+  // the right of a status column. See the idle return and
+  // @/hooks/use-panic-layout.
+  const layout = usePanicLayout();
+  const dense = layout !== 'tall';
+  const landscape = layout === 'land2x3' || layout === 'land3x2';
+  // The panic-phone row sits before the grid where it does not take the
+  // buttons' height: 800 px and taller (as always), and in landscape, where
+  // that slot is in the status column.
+  const rowAbove = layout === 'tall' || landscape;
   const announcedReadyRef = useRef(false);
   useEffect(() => {
     if (authState.status !== 'ready' || announcedReadyRef.current) return;
@@ -1012,18 +1078,33 @@ export default function MobilePanicPage() {
   // away (the root scrolls; DOM, reading and focus order follow). There is no
   // size floor: on a shorter screen the buttons shrink with their rows, as
   // they always did, and never move below the fold.
-  //   The grid keeps the SAME place in the tree in both layouts, so a layout
+  //   The grid keeps the SAME place in the tree in every layout, so a layout
   // change during a hold (a rotation crossing 800 px) updates the pressed
   // button in place and never remounts it under the finger.
   //   800 px and taller: the DOM and classes are exactly what they were.
+  //
+  // 2026-11-23 — UNDER 800 px AND PHONE LANDSCAPE (@/hooks/use-panic-layout).
+  // The stack above the grid was ~330 px; on a phone held sideways (390 px
+  // tall) that left the rows nothing and the buttons measured about 2 px.
+  //   compact (under 800 px, not phone landscape): the same stack with less
+  // spacing (nothing hidden) and the grid three across, so every button is
+  // the column's width (111 px at 390 wide) down to about 547 px tall.
+  //   landscape: the root's own flow becomes a status column on the left
+  // (header, title, LIVE | DRILL, alert line, "Send to", then the phone row);
+  // the grid is `fixed` in the rest of the width, so the column can scroll to
+  // the card while the buttons never move. The buttons' size does not depend
+  // on anything in the column.
+  //   Every change between shapes is a class or style change on the same
+  // elements; only the phone row moves between its two slots.
+  const grid = GRID_BY_LAYOUT[layout];
   return (
-    <div className={shortScreen ? `${PAGE_CLS} overflow-y-auto` : PAGE_CLS} style={PAGE_STYLE}>
+    <div className={dense ? `${PAGE_CLS} overflow-y-auto` : PAGE_CLS} style={landscape ? LAND_ROOT_STYLE : PAGE_STYLE}>
       {LiveRegion}
       {/* Header — brand mark + authorized identity pill */}
       {/* `gap-3` + a non-shrinking brand block: at 390px the three header
           items have zero free space between them, so the wordmark ran straight
           into the Silent pill. The email chip is the one that gives (truncate). */}
-      <div className="flex justify-between items-center gap-3 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3">
+      <div className={dense ? HEADER_DENSE_CLS : HEADER_CLS}>
         <div className="flex items-center gap-2.5 shrink-0">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] ring-1 ring-white/10">
             <ShieldAlert className="w-[18px] h-[18px] text-white/80" />
@@ -1068,7 +1149,7 @@ export default function MobilePanicPage() {
         <p
           role="status"
           data-testid="panic-auth-status"
-          className="mx-5 mb-1 flex items-center justify-center gap-2 rounded-xl bg-white/[0.04] ring-1 ring-white/10 px-3 py-2 text-[11px] font-semibold text-white/75"
+          className={dense ? AUTH_LINE_DENSE_CLS : AUTH_LINE_CLS}
         >
           {authState.status === 'resolving' ? (
             <><Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" aria-hidden /> {t('emergency.panic.checkingSignInHint')}</>
@@ -1078,20 +1159,20 @@ export default function MobilePanicPage() {
         </p>
       )}
 
-      <div className="px-5 pb-2 text-center">
-        <h1 className="text-[1.35rem] font-black tracking-tight text-white" data-testid="panic-title">
+      <div className={dense ? TITLE_DENSE_CLS : TITLE_CLS}>
+        <h1 className={dense ? H1_DENSE_CLS : H1_CLS} data-testid="panic-title">
           {isDrill ? t('emergency.drill.panicTitle') : t('emergency.panic.title')}
         </h1>
         {/* 2026-05-03 BUG FIX (cycle 4 emergency-BUG-013) — copy used to
             say "1.5 seconds" but HOLD_DURATION_MS is 3000 (cycle-1 fix
             restoring the apps/api/src/emergency/CLAUDE.md "Key Safeguards #5" 3-second hold).
             Updated to match actual timer so operators see truthful UX. */}
-        <p className={`text-[11px] mt-1 ${isDrill ? 'text-indigo-200 font-semibold' : 'text-white/60'}`} data-testid="panic-hold-hint">
+        <p className={`${dense ? HOLD_HINT_DENSE_CLS : HOLD_HINT_CLS} ${isDrill ? 'text-indigo-200 font-semibold' : 'text-white/60'}`} data-testid="panic-hold-hint">
           {isDrill ? t('emergency.drill.panicHint') : t('emergency.panic.holdHint')}
         </p>
       </div>
 
-      <div className="px-5 pb-1 space-y-2">
+      <div className={dense ? CONTROLS_DENSE_CLS : CONTROLS_CLS}>
         {/* LIVE | DRILL (2026-10-10). LIVE on every open; back to LIVE after
             a drill is sent. Locked while a send is in flight. */}
         <LiveDrillSwitch
@@ -1139,11 +1220,13 @@ export default function MobilePanicPage() {
         />
       </div>
 
-      {/* 800 px and taller: the panic-phone row above the grid, as before. */}
-      {!shortScreen && phoneReadyRow}
-      {!shortScreen && keepReadyRow}
-      {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger */}
-      <div className="flex-1 min-h-0 grid grid-cols-2 grid-rows-3 gap-x-5 gap-y-4 px-5 pt-2 pb-[max(1.5rem,env(safe-area-inset-bottom))] place-items-center">
+      {/* 800 px and taller: the panic-phone row above the grid, as before.
+          Landscape: the same slot, which is the end of the status column. */}
+      {rowAbove && phoneReadyRow}
+      {rowAbove && keepReadyRow}
+      {/* 2x3 grid — generous spacing so adjacent buttons aren't easy to fat-finger
+          (3 × 2 under 800 px and in wide landscape; see GRID_BY_LAYOUT) */}
+      <div className={grid.className} style={grid.style}>
         {TYPES.map((type) => {
           const isHolding = holdingId === type.id;
           const isTriggering = phase === 'triggering' && firedType === type.id;
@@ -1182,7 +1265,11 @@ export default function MobilePanicPage() {
               // a width-sized circle taller than its row overlapped the next
               // button — exactly what the generous gap exists to prevent. In the
               // installed app at 390×844 this still renders 156 px, as before.
-              className={`relative aspect-square h-full max-h-[156px] max-w-full rounded-full flex flex-col items-center justify-center
+              //   2026-11-23: under 800 px and in landscape the cap is
+              // --panic-btn-max (the column's width, at most 156 px), so the
+              // button is min(row, column, 156) and stays round; max-w-full
+              // stays as the never-overlap safety net.
+              className={`relative aspect-square h-full ${layout === 'tall' ? 'max-h-[156px]' : 'max-h-[var(--panic-btn-max)]'} max-w-full rounded-full flex flex-col items-center justify-center
                 transition-all duration-150 outline-none
                 ${dim ? 'opacity-30' : ''}
                 ${isHolding ? 'scale-95' : ''}
@@ -1245,9 +1332,10 @@ export default function MobilePanicPage() {
           );
         })}
       </div>
-      {/* Under 800 px: the panic-phone row, below the buttons (rendered only
-          when a row will show, so it never takes space for nothing). */}
-      {shortScreen && (phoneReadyRow || keepReadyRow) && (
+      {/* Under 800 px (not phone landscape): the panic-phone row, below the
+          buttons (rendered only when a row will show, so it never takes
+          space for nothing). */}
+      {layout === 'compact' && (phoneReadyRow || keepReadyRow) && (
         <div className="absolute top-full left-0 right-0 pb-[max(1rem,env(safe-area-inset-bottom))]" data-testid="panic-phone-row-below">
           {phoneReadyRow}
           {keepReadyRow}
