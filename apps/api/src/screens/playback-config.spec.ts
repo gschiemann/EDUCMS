@@ -1,4 +1,4 @@
-import { playlistFallbackDisabled, resolveLoopMode, resolvePlaybackConfig } from './playback-config';
+import { bannerRestoreDisabled, playlistFallbackDisabled, resolveLoopMode, resolvePlaybackConfig } from './playback-config';
 
 describe('resolveLoopMode', () => {
   it('pins only named screens to the same-file native backend without changing default enrollment', () => {
@@ -154,5 +154,28 @@ describe('PLAYLIST_FALLBACK_DISABLED — the playlist-fallback kill switch (2026
       expect(playlistFallbackDisabled({ PLAYLIST_FALLBACK_DISABLED: v })).toBe(false);
       expect(resolvePlaybackConfig('s1', { PLAYLIST_FALLBACK_DISABLED: v })).not.toHaveProperty('playlistFallback');
     }
+  });
+});
+
+describe('EMERGENCY_BANNER_RESTORE_DISABLED — the takeover → banner transition kill switch (2026-11-23)', () => {
+  it('unset: nothing is added, so no screen\'s manifest hash moves', () => {
+    expect(bannerRestoreDisabled({})).toBe(false);
+    expect(resolvePlaybackConfig('s1', {})).not.toHaveProperty('bannerRestore');
+  });
+  it('1 / true / yes (any case, trimmed) turns it off in the manifest', () => {
+    for (const v of ['1', 'true', 'TRUE', ' yes ', 'Yes']) {
+      expect(bannerRestoreDisabled({ EMERGENCY_BANNER_RESTORE_DISABLED: v })).toBe(true);
+      expect(resolvePlaybackConfig('s1', { EMERGENCY_BANNER_RESTORE_DISABLED: v })).toEqual({ loopMode: 'continuous', mediaFit: 'fill', bannerRestore: 'off' });
+    }
+  });
+  it('anything else, including a typo, leaves it on (subtractive)', () => {
+    for (const v of ['', '0', 'false', 'off', 'no', 'ture']) {
+      expect(bannerRestoreDisabled({ EMERGENCY_BANNER_RESTORE_DISABLED: v })).toBe(false);
+      expect(resolvePlaybackConfig('s1', { EMERGENCY_BANNER_RESTORE_DISABLED: v })).not.toHaveProperty('bannerRestore');
+    }
+  });
+  it('is independent of the playlist-fallback switch', () => {
+    expect(resolvePlaybackConfig('s1', { EMERGENCY_BANNER_RESTORE_DISABLED: '1', PLAYLIST_FALLBACK_DISABLED: '1' }))
+      .toEqual({ loopMode: 'continuous', mediaFit: 'fill', playlistFallback: 'off', bannerRestore: 'off' });
   });
 });

@@ -4,6 +4,10 @@ History of `CLAUDE.md`, newest first, one entry per stamp. It moved here on 2026
 
 **Keep it current.** When you change `CLAUDE.md`, a nested `CLAUDE.md` or one of the rulebook documents, add an entry here — `CLAUDE.md` carries no footer stamp since 2026-11-01; the entry is the stamp. A stale footer is not cosmetic: `AGENTS.md` carried the IDENTICAL `2026-05-30` stamp while drifting 361 lines from `CLAUDE.md`, which is exactly why nobody noticed it was telling agents to use a forbidden `DATABASE_URL` for three months.
 
+## 2026-11-24
+
+`apps/api/src/emergency/CLAUDE.md` gains "An alert outranks a broadcast banner; its all-clear gives the banner back" (branch `claude/emergency-over-broadcast`; life-safety CHANGE class, the owner waived the different-vendor review in writing, the on-glass bench drill stays the owner's). The owner's 2026-11-23 demo: a broadcast banner stayed drawn over a drill, and after the drill's all-clear the L55VEC's native website stayed dark until the broadcast was cleared. Web player: a tenant alert now holds an INFO / WARN banner without drawing it, the paint receipt certifies the alert, and the first live manifest after the all-clear tells the app the takeover ended. APK (a player release): `BroadcastBanner.hold` honours that one trusted transition behind its guards. Kill switch `EMERGENCY_BANNER_RESTORE_DISABLED`. Record: `docs/handoffs/2026-11-23-emergency-over-broadcast.md`.
+
 ## 2026-11-23 (sync)
 
 `apps/web/src/app/player/CLAUDE.md` sync rule 2 lists `sync/renderLead.ts` as a pure module and says an engage snap (a screen joining or re-locking mid-slot, `classifySyncFlip`) never feeds the flip-error telemetry or the render-lead estimate (branch `claude/sync-engage-measure`). Why: the two-screen sync spec failed first-attempt in 38 of 347 CI shard jobs because it compared a late joiner's engage snap with the other screen's boundary crossing; the same engage seeded the dashboard's sync-error chip with a mid-slot offset. Handoff: `docs/handoffs/2026-11-23-sync-engage-measure.md`.

@@ -276,6 +276,13 @@ class WebAppBridge(
     private val displayEmergencyHoldImpl: (Boolean, Boolean, Boolean) -> String =
         { _, _, _ -> """{"ok":false,"code":"unavailable"}""" },
     /**
+     * 2026-11-23 — the secure channel's banner-posture RAISE that also says the
+     * takeover ended (the page's live manifest; BroadcastBanner.hold). The host
+     * supplies its own face, exactly like [displayEmergencyHoldImpl]. Null = not
+     * wired: the call is the plain banner raise instead — a raise is never lost.
+     */
+    private val displayEmergencyTakeoverEndedImpl: (() -> String)? = null,
+    /**
      * 2026-08-14 — raises the one-time device-ADMIN enrolment dialog.
      * Backed by `MainActivity.requestDeviceAdminEnrollment`, which owns
      * BOTH gates (foreground Activity + recent physical presence). See
@@ -1078,6 +1085,24 @@ class WebAppBridge(
     } catch (ex: Exception) {
         PlayerLogger.e("WebAppBridge", "displayEmergencyHold(secure) FAILED", ex)
         """{"ok":false,"code":"exception"}"""
+    }
+
+    /**
+     * 2026-11-23 — `displayEmergencyHold(true, true, true)` on the channel: the
+     * page's LIVE manifest shows no takeover alert and only the banner remains.
+     * Only a banner-posture RAISE can carry it; anything else (a release, a
+     * takeover) is the plain secure-channel hold, unchanged. If the host does not
+     * wire it, or it throws, the plain banner raise still lands.
+     */
+    internal fun displayEmergencyHoldTakeoverEndedViaSecureChannel(active: Boolean, bannerOnly: Boolean): String {
+        val impl = displayEmergencyTakeoverEndedImpl
+        if (!active || !bannerOnly || impl == null) return displayEmergencyHoldViaSecureChannel(active, bannerOnly)
+        return try {
+            impl()
+        } catch (ex: Exception) {
+            PlayerLogger.e("WebAppBridge", "displayEmergencyHold(secure, takeover ended) FAILED — the plain banner raise is sent", ex)
+            displayEmergencyHoldViaSecureChannel(active, bannerOnly)
+        }
     }
 
     /**

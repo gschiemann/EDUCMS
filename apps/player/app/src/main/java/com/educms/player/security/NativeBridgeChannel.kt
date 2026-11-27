@@ -696,7 +696,14 @@ object NativeBridgeChannel {
             // ⚠️ LIFE SAFETY. ONE argument, on purpose (2026-09-19): the face a
             // hold belongs to is decided by the native host that built this
             // bridge, never by the page. See DisplayEmergency.creditedFace.
-            "displayEmergencyHold" -> bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0), args.opt(1) == true)
+            // 2026-11-23 — a literal `true` third argument is the page's LIVE
+            // manifest saying the takeover ended and only the banner remains
+            // (BroadcastBanner.hold decides it). Still no face from the page.
+            "displayEmergencyHold" -> if (args.opt(2) == true) {
+                bridge.displayEmergencyHoldTakeoverEndedViaSecureChannel(boolAt(args, 0), args.opt(1) == true)
+            } else {
+                bridge.displayEmergencyHoldViaSecureChannel(boolAt(args, 0), args.opt(1) == true)
+            }
             "checkForUpdates" -> bridge.checkForUpdates(bridge.channelNonce())
             "checkForUpdatesUserInitiated" -> bridge.checkForUpdatesUserInitiated(bridge.channelNonce())
             "getRecentLogs" -> bridge.getRecentLogs(bridge.channelNonce())

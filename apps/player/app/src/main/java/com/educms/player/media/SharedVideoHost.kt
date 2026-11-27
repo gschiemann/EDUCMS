@@ -117,6 +117,12 @@ class SharedVideoHost private constructor(internal val face: Int, internal val w
         // broadcast presentation instead of a banner over a stopped video. Additive key on an
         // existing value method (no new bridge method — player rule 9).
         BroadcastBanner.refusal(face)?.let { j.put("broadcastBannerPosture", JSONObject().put("posture", "refused").put("reason", it)) }
+        // 2026-11-23: the page's live manifest said the takeover ended and this app KEPT it
+        // (native-watch raise, or a posture refusal earlier in the hold): the page shows the
+        // full broadcast presentation, never a banner over content the app is still hiding.
+        if (!j.has("broadcastBannerPosture")) BroadcastBanner.takeoverKept(face)?.let {
+            j.put("broadcastBannerPosture", JSONObject().put("posture", "takeover-kept").put("reason", it))
+        }
         // 1.1.42: plus what the default display runs and offers, read live (a mode switch shows when it happens).
         DeviceClassPolicy.displayFacts(ctx)?.writeTo(j.getJSONObject("device"))
         // 1.1.43: plus what the panel firmware itself lists (sysfs, read-only, bounded, refreshed every 30 s).

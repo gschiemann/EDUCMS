@@ -90,3 +90,61 @@ export function decideEmergencySurface(i: EmergencySurfaceInput): EmergencySurfa
   if (i.renderHold && i.playbackHeld !== false) return 'hold';
   return 'content';
 }
+
+/**
+ * 2026-11-23 — A TENANT ALERT OUTRANKS A BANNER (the owner's demo: "I pushed a
+ * broadcast, then pushed an emergency drill but it left the banner up …
+ * emergency alert overrides everything").
+ *
+ * A manifest override (lockdown / weather / evacuate / hold / secure /
+ * medical — live or drill), a signed OVERRIDE still being confirmed, or the
+ * staged emergency board on the glass each take the WHOLE screen. An INFO /
+ * WARN broadcast banner is still HELD (the pushed set, the 12 s reconcile and
+ * the overlay poll keep it exactly as before — nothing here mutates them) but
+ * it is not DRAWN: it used to portal over the takeover at z-index 9999, one
+ * layer above the alert, scale the staged board down beneath it, and own the
+ * paint receipt. At the all-clear it comes back by itself, because nothing
+ * dropped it.
+ *
+ * Only the banner class is affected. A full-screen SOS / MEDIA_ALERT /
+ * CRITICAL text keeps today's draw over a tenant alert — which of those two
+ * outranks the other is the owner's call, and a drill must never hide a real
+ * SOS. PURE — `emergencySurface.test.ts`.
+ */
+export interface TenantAlertInput {
+  /** The manifest's own alert (tenant / per-screen override), drill or live. */
+  activeEmergency: boolean;
+  /** A signed OVERRIDE is still being confirmed by the manifest. */
+  pendingOverrideConfirm: boolean;
+  /** The current playlist IS the emergency content (the staged board). */
+  playlistIsEmergency: boolean;
+}
+
+export function tenantAlertOnGlass(i: TenantAlertInput): boolean {
+  return i.activeEmergency || i.pendingOverrideConfirm || i.playlistIsEmergency;
+}
+
+/**
+ * The pushed message actually DRAWN, given the tenant alert: a banner-class
+ * message under a tenant alert is held but not drawn (null); anything else is
+ * drawn as before. The paint receipt's expected identity follows this.
+ */
+export function drawnPushedMessage<T extends SurfaceMessage>(pushed: T | null | undefined, tenantAlert: boolean): T | null {
+  if (!pushed) return null;
+  return tenantAlert && isBannerEmergencyMessage(pushed) ? null : pushed;
+}
+
+/**
+ * The protective pending surface's words ("EMERGENCY" / the drill mark, while
+ * a signed OVERRIDE awaits its manifest) are hidden by a FULL-SCREEN pushed
+ * message, which paints its own alert over them. Under a tenant alert a banner
+ * never hides them: it is not drawn there. With NO tenant alert a banner-class
+ * message still hides them, as before 2026-11-23: the takeover surface is then
+ * only the full-screen form of an INFO / WARN broadcast (the app refused banner
+ * posture), and the words would claim an emergency that is not there.
+ */
+export function pendingTextHiddenBy(pushed: SurfaceMessage | null | undefined, tenantAlert: boolean): boolean {
+  if (!pushed) return false;
+  if (!isBannerEmergencyMessage(pushed)) return true;
+  return !tenantAlert;
+}

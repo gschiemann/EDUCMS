@@ -13,6 +13,7 @@
  */
 
 import {
+  liveManifestHold,
   signalDisplayEmergencyHold,
   displayEmergencyHoldRaised,
   displayEmergencyPlaybackHeld,
@@ -272,5 +273,99 @@ describe('the app refuses banner posture (2026-11-02, portrait-by-rotation nativ
     noteNativeBannerRefused('display-rotated');
     expect(displayEmergencyBannerRefused()).toBe(false);
     expect(displayEmergencyHoldRaised()).toBe(false);
+  });
+});
+
+describe('the takeover → banner transition (2026-11-23, a drill over a broadcast, then its all-clear)', () => {
+  const holds = () => fireMock.mock.calls.filter((c) => c[0] === DISPLAY_EMERGENCY_HOLD_METHOD).map((c) => c.slice(1));
+  const geometry = () => fireMock.mock.calls
+    .filter((c) => c[0] === 'sharedVideoPrepare')
+    .map((c) => JSON.parse(String(c[1])) as { op: string; active: boolean });
+
+  it('a LIVE manifest that asks for banner posture tells the app the takeover ended; geometry goes first', () => {
+    signalDisplayEmergencyHold(true, true, true); // the broadcast (push path)
+    signalDisplayEmergencyHold(true, true, false); // the drill takes over
+    fireMock.mockClear();
+    liveManifestHold(true, true, () => signalDisplayEmergencyHold(true, true, true)); // the all-clear's live manifest
+    expect(holds()).toEqual([[true, true, true]]);
+    expect(geometry()).toEqual([expect.objectContaining({ op: 'banner', active: true })]);
+    const order = fireMock.mock.calls.map((c) => c[0]);
+    expect(order.indexOf('sharedVideoPrepare')).toBeLessThan(order.indexOf(DISPLAY_EMERGENCY_HOLD_METHOD));
+    expect(displayEmergencyPlaybackHeld()).toBe(false);
+  });
+
+  it('every live banner raise carries it (the flip may have happened on the push path), never a takeover or a release', () => {
+    signalDisplayEmergencyHold(true, true, true); // banner
+    signalDisplayEmergencyHold(true, true, false); // SOS over it
+    signalDisplayEmergencyHold(true, true, true); // the SOS clear — push path, flips back
+    expect(holds().every((a) => a.length <= 2)).toBe(true);
+    fireMock.mockClear();
+    liveManifestHold(true, true, () => signalDisplayEmergencyHold(true, true, true)); // no flip now
+    liveManifestHold(true, true, () => signalDisplayEmergencyHold(true, true, true)); // the next poll
+    expect(holds()).toEqual([[true, true, true], [true, true, true]]);
+    fireMock.mockClear();
+    liveManifestHold(true, true, () => signalDisplayEmergencyHold(true, true, false)); // a live takeover
+    liveManifestHold(true, true, () => signalDisplayEmergencyHold(false, false, false)); // a live release
+    expect(holds()).toEqual([[true], [false]]);
+  });
+
+  it('no other path ever sends it: push, clear, reconcile, effects and the paint reassert stay two arguments', () => {
+    signalDisplayEmergencyHold(true, true, true);
+    signalDisplayEmergencyHold(true, false, true);
+    signalDisplayEmergencyHold(true, true, false);
+    signalDisplayEmergencyHold(true, true, true);
+    reassertDisplayEmergencyHold();
+    liveManifestHold(false, true, () => signalDisplayEmergencyHold(true, true, true));
+    expect(holds().some((a) => a.length > 2)).toBe(false);
+  });
+
+  it('the kill switch (playback.bannerRestore: off) omits it — the app keeps today\'s full takeover', () => {
+    signalDisplayEmergencyHold(true, true, true);
+    signalDisplayEmergencyHold(true, true, false);
+    fireMock.mockClear();
+    liveManifestHold(true, false, () => signalDisplayEmergencyHold(true, true, true));
+    expect(holds()).toEqual([[true, true]]);
+  });
+
+  it('a refused banner never claims the takeover ended', () => {
+    signalDisplayEmergencyHold(true, true, true);
+    noteNativeBannerRefused('display-rotated');
+    fireMock.mockClear();
+    liveManifestHold(true, true, () => signalDisplayEmergencyHold(true, true, true));
+    expect(holds()).toEqual([[true]]);
+    expect(displayEmergencyPlaybackHeld()).toBe(true);
+  });
+
+  it('the app reporting it KEPT the takeover is read like a refusal (full presentation, playback held)', () => {
+    expect(bannerRefusalFromState({ broadcastBannerPosture: { posture: 'takeover-kept', reason: 'native-watch' } })).toBe('native-watch');
+    expect(bannerRefusalFromState({ broadcastBannerPosture: { posture: 'takeover-kept' } })).toBe('refused');
+    liveManifestHold(true, true, () => signalDisplayEmergencyHold(true, true, true));
+    noteNativeBannerRefused(bannerRefusalFromState({ broadcastBannerPosture: { posture: 'takeover-kept', reason: 'native-watch' } }) ?? undefined);
+    expect(displayEmergencyBannerRefused()).toBe(true);
+    expect(displayEmergencyPlaybackHeld()).toBe(true);
+  });
+
+  it('the live-manifest scope covers exactly one call inside it and never outlives it, even when it throws', () => {
+    signalDisplayEmergencyHold(true, true, true);
+    signalDisplayEmergencyHold(true, true, false);
+    fireMock.mockClear();
+    liveManifestHold(true, true, () => {
+      signalDisplayEmergencyHold(true, true, true); // the manifest handler's own call
+      signalDisplayEmergencyHold(true, true, true); // anything else inside: not live
+    });
+    signalDisplayEmergencyHold(true, true, true); // after it: not live
+    expect(() => liveManifestHold(true, true, () => { throw new Error('boom'); })).toThrow('boom');
+    signalDisplayEmergencyHold(true, true, true); // after a throw: not live
+    expect(holds()).toEqual([[true, true, true], [true, true], [true, true], [true, true]]);
+    expect(liveManifestHold(true, true, () => 42)).toBe(42);
+  });
+
+  it('a legacy (Taurus) transport still gets the same call; the bridge slices it to one boolean (nativeBridge legacyArgs)', () => {
+    fireMock.mockReturnValue(LEGACY_OK);
+    signalDisplayEmergencyHold(true, true, true);
+    signalDisplayEmergencyHold(true, true, false);
+    fireMock.mockClear();
+    expect(liveManifestHold(true, true, () => signalDisplayEmergencyHold(true, true, true))).toBe('applied');
+    expect(holds()).toEqual([[true, true, true]]);
   });
 });

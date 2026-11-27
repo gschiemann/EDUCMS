@@ -37,7 +37,7 @@ class HoldReleasePageProofTest {
         fun record(name: String) = fired.add(name)
     }
 
-    private fun bridge(effects: Effects, nonce: BridgeNonce?): WebAppBridge = WebAppBridge(
+    private fun bridge(effects: Effects, nonce: BridgeNonce?, takeoverEnded: (() -> String)? = null): WebAppBridge = WebAppBridge(
         onUnpair = {},
         onReload = {},
         getDeviceInfo = { "{}" },
@@ -56,6 +56,7 @@ class HoldReleasePageProofTest {
             effects.record("hold(active=$active,trusted=$trusted,bannerOnly=$bannerOnly)")
             """{"ok":true}"""
         },
+        displayEmergencyTakeoverEndedImpl = takeoverEnded,
         bridgeNonce = nonce,
     )
 
@@ -304,6 +305,38 @@ class HoldReleasePageProofTest {
             "FacePlayerHost no longer resets the page proof",
             Regex("""onMainFrameDocument = \{[^}]*faceBridge\.resetPageAuthProof\(\)""").containsMatchIn(face),
         )
+    }
+
+    /**
+     * 2026-11-23 — the live manifest's "the takeover ended, only the banner
+     * remains" (`displayEmergencyHold(true, true, true)` on the channel). Only a
+     * banner-posture RAISE carries it; a release or a takeover is the plain hold;
+     * a host that does not wire it, or whose wiring throws, still gets the raise.
+     */
+    @Test
+    fun `the takeover-ended raise reaches its own entry only as a banner raise, and is never lost`() {
+        val effects = Effects()
+        val b = bridge(effects, BridgeNonce(), takeoverEnded = { effects.record("takeoverEnded"); """{"ok":true}""" })
+        b.displayEmergencyHoldTakeoverEndedViaSecureChannel(true, true)
+        b.displayEmergencyHoldTakeoverEndedViaSecureChannel(true, false)
+        b.displayEmergencyHoldTakeoverEndedViaSecureChannel(false, true)
+        assertEquals(
+            listOf(
+                "takeoverEnded",
+                "hold(active=true,trusted=true,bannerOnly=false)",
+                "hold(active=false,trusted=true,bannerOnly=true)",
+            ),
+            effects.fired,
+        )
+
+        val unwired = Effects()
+        bridge(unwired, BridgeNonce()).displayEmergencyHoldTakeoverEndedViaSecureChannel(true, true)
+        assertEquals(listOf("hold(active=true,trusted=true,bannerOnly=true)"), unwired.fired)
+
+        val throwing = Effects()
+        bridge(throwing, BridgeNonce(), takeoverEnded = { throw IllegalStateException("boom") })
+            .displayEmergencyHoldTakeoverEndedViaSecureChannel(true, true)
+        assertEquals(listOf("hold(active=true,trusted=true,bannerOnly=true)"), throwing.fired)
     }
 
     @Test

@@ -62,6 +62,20 @@ export interface PlaybackConfig {
    * hashed manifest and no screen's ETag moves.
    */
   playlistFallback?: 'off';
+  /**
+   * The takeover → banner transition kill switch (2026-11-23):
+   * `EMERGENCY_BANNER_RESTORE_DISABLED` set → `'off'`, and the web player
+   * never sends the app `displayEmergencyHold(true, true, true)` ("the
+   * takeover ended, only the banner remains") — the app keeps a full takeover
+   * after an all-clear for as long as a broadcast lasts, as before. ABSENT
+   * otherwise, so the default adds nothing to the hashed manifest.
+   */
+  bannerRestore?: 'off';
+}
+
+/** `EMERGENCY_BANNER_RESTORE_DISABLED` = 1 / true / yes (any case) turns the transition off; anything else leaves it on. */
+export function bannerRestoreDisabled(env: Record<string, string | undefined> = process.env): boolean {
+  return /^(1|true|yes)$/i.test((env.EMERGENCY_BANNER_RESTORE_DISABLED ?? '').trim());
 }
 
 /** `PLAYLIST_FALLBACK_DISABLED` = 1 / true / yes (any case) turns the fallback off; anything else leaves it on. */
@@ -106,5 +120,6 @@ export function resolvePlaybackConfig(
     loopMode: resolveLoopMode(screenId, env),
     mediaFit: 'fill',
     ...(playlistFallbackDisabled(env) ? { playlistFallback: 'off' as const } : {}),
+    ...(bannerRestoreDisabled(env) ? { bannerRestore: 'off' as const } : {}),
   };
 }

@@ -1250,6 +1250,537 @@ test.describe('Emergency path — P0-8 regression suite', () => {
     expect(page.url()).toBe(url);
   });
 
+  /**
+   * 8e–8h (2026-11-23, the owner's demo on an L55VEC): "I pushed a broadcast,
+   * then pushed an emergency drill but it left the banner up, then when I
+   * stopped the emergency the web url on the l55vec screen never came back
+   * until I killed the broadcast … emergency alert overrides everything and
+   * canceling needs to bring back original content including the broadcast."
+   *
+   * The contract these cases pin:
+   *   • a tenant alert (manifest OVERRIDE, drill or live) outranks a pushed
+   *     INFO / WARN banner — nothing of the banner is on the glass while the
+   *     alert is up, and the paint receipt certifies the ALERT, not the banner;
+   *   • its all-clear brings back what was there: the content, re-shown, and
+   *     the still-active banner over it;
+   *   • clearing the broadcast later removes only the banner.
+   * On our app (8f–8g) the page also tells the APK, from the first LIVE
+   * manifest after the all-clear, that the takeover ended and only the banner
+   * remains (`displayEmergencyHold(true, true, true)` — the third argument,
+   * channel only), which is what lets the APK put the native site view back
+   * under the banner; and Website Tabs posts its site area in CANVAS
+   * coordinates on an app that applies the banner transform to that view
+   * itself (BroadcastContentViews.kt; it says so on `sharedVideoState` as
+   * `broadcastBannerVersion`), and the glass rectangle, as before, on any
+   * other app (stable 1.1.29).
+   */
+  test.describe('8e–8h: an emergency takeover outranks a broadcast banner; its all-clear restores content and banner', () => {
+    test.use({ viewport: { width: 1920, height: 1080 } });
+
+    const SITE = 'https://district.example/';
+    const BANNER_TEXT = 'Early dismissal at 1 PM';
+    const inMinutes = (m: number) => Math.floor(Date.now() / 1000) + m * 60;
+    type Posted = { method: string; args: unknown[]; at: number };
+
+    function websiteManifest() {
+      return baselineManifest({
+        playlists: [
+          {
+            id: 'pl-site',
+            name: 'District website',
+            schedule: { daysOfWeek: null, timeStart: null, timeEnd: null, mutedOverride: null },
+            items: [
+              {
+                item_id: 'item-site', asset_id: 'asset-site', url: SITE,
+                duration_ms: 600_000, sequence: 0, mime_type: 'text/html', transition_type: 'NONE', muted: true,
+              },
+            ],
+          },
+        ],
+      });
+    }
+    // The same Website Tabs template website-tabs.spec.ts plays (one WEBSITE_TABS zone, 100 × 100).
+    function websiteTabsManifest() {
+      return baselineManifest({
+        playlists: [{
+          id: 'pl-webtabs',
+          name: 'Website Tabs probe',
+          template: {
+            id: 'tpl-webtabs', name: 'Website Tabs probe', bgColor: '#0f172a', screenWidth: 1920, screenHeight: 1080, isTouchEnabled: true,
+            zones: [{
+              id: 'z-tabs', x: 0, y: 0, width: 100, height: 100, zIndex: 1, widgetType: 'WEBSITE_TABS',
+              defaultConfig: {
+                tabs: [
+                  { id: 'district', name: 'District', url: 'https://www.district.example/', embed: 'ok' },
+                  { id: 'lunch', name: 'Lunch', url: 'https://lunch.example/menu', embed: 'ok' },
+                ],
+                barPosition: 'top', showHome: true, idleReturnSec: 120, idleWarnSec: 10, incognito: true,
+              },
+            }],
+          },
+          items: [],
+        }],
+      });
+    }
+    const drillManifest = () => baselineManifest({
+      isEmergency: true, emergencyType: 'LOCKDOWN', emergencySeverity: 'CRITICAL',
+      emergencyScopeNote: null, emergencyScope: 'tenant', isDrill: true,
+    });
+    const bannerRow = (id: string, expiresAt: number) => ({
+      id, type: 'TEXT_BROADCAST', severity: 'INFO', textBlob: BANNER_TEXT, mediaUrls: [], audioUrl: null,
+      scopeType: 'tenant', scopeId: FAKE_TENANT_ID, expiresAt, createdAt: new Date().toISOString(), triggeredByUserId: 'u1',
+    });
+
+    /** Routes this group needs on top of the suite's mocks (registered later, so they win). */
+    async function installDemoRoutes(page: Page, messages: { tenantStatus: string; active: unknown[] }) {
+      await page.route('**/api/v1/emergency/messages*', (route) =>
+        route.fulfill({
+          status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
+          body: JSON.stringify({ tenantId: FAKE_TENANT_ID, tenantStatus: messages.tenantStatus, tenantPlaylistId: null, active: messages.active }),
+        }),
+      );
+      const html = '<!doctype html><html><body style="margin:0;background:#fff;font:32px sans-serif"><h1 id="site">District site</h1></body></html>';
+      await page.route('**/api/v1/proxy/web*', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: html }));
+      await page.route(/https:\/\/(www\.)?(district|lunch)\.example\/.*/, (route) => route.fulfill({ status: 200, contentType: 'text/html', body: html }));
+    }
+    /**
+     * Our app: a native channel that records every post (and when), like
+     * website-tabs.spec.ts. With `state`, it also answers `sharedVideoState`
+     * with that object, as an app does (a field build that transforms its
+     * native site views under a banner reports `broadcastBannerVersion: 1`;
+     * stable 1.1.29 has no such key).
+     */
+    async function installNativeChannel(page: Page, state?: Record<string, unknown>) {
+      await page.addInitScript((answer) => {
+        const w = window as unknown as Record<string, unknown>;
+        const posted: Array<Record<string, unknown>> = [];
+        let listener: ((ev: { data: string }) => void) | null = null;
+        w.__posted = posted;
+        w.EduCmsNativeChannel = {
+          postMessage: (m: string) => {
+            let p: Record<string, unknown>;
+            try { p = JSON.parse(m); } catch { return; /* not JSON: ignore */ }
+            posted.push({ ...p, at: Date.now() });
+            if (answer && p.method === 'sharedVideoState' && typeof p.id === 'string') {
+              const reply = JSON.stringify({ id: p.id, ok: true, result: JSON.stringify(answer) });
+              setTimeout(() => listener?.({ data: reply }), 0);
+            }
+          },
+          addEventListener: (type: string, fn: (ev: { data: string }) => void) => { if (type === 'message') listener = fn; },
+        };
+        w.__eduCmsNativeChannelMethods = ['showUrlOverlay', 'hideUrlOverlay', 'webTabsShow', 'webTabsHide', 'heartbeat', ...(answer ? ['sharedVideoState'] : [])];
+      }, state ?? null);
+    }
+    const postsSince = (page: Page, t: number) =>
+      page.evaluate((since) => ((window as unknown as { __posted?: Posted[] }).__posted ?? []).filter((p) => p.at > since), t);
+    const holds = (posts: Posted[]) => posts.filter((p) => p.method === 'displayEmergencyHold').map((p) => p.args);
+    const bannerGeometry = (posts: Posted[]) => posts
+      .filter((p) => p.method === 'sharedVideoPrepare')
+      .map((p) => { try { return JSON.parse(String(p.args[0])) as { op?: string; active?: boolean }; } catch { return {}; } })
+      .filter((g) => g.op === 'banner');
+    const isTakeoverEnded = (args: unknown[]) => args.length === 3 && args[0] === true && args[1] === true && args[2] === true;
+    /** Every ancestor transform of the content (the canvas is scaled under a banner, never while an alert holds the glass). */
+    const ancestorScales = (page: Page, selector: string) => page.evaluate((sel) => {
+      const scales: number[] = [];
+      for (let el = document.querySelector(sel)?.parentElement ?? null; el && el !== document.body; el = el.parentElement) {
+        const t = getComputedStyle(el).transform;
+        const m = /^matrix\(([^,]+),/.exec(t);
+        if (m) scales.push(Number(m[1]));
+      }
+      return scales;
+    }, selector);
+    /** What is on the glass at a point: is it inside the takeover surface? */
+    const insideTakeover = (page: Page, x: number, y: number) => page.evaluate(([px, py]) => {
+      const hit = document.elementFromPoint(px, py);
+      return !!hit?.closest('[data-edu-emergency-transition]');
+    }, [x, y] as const);
+
+    test('8e. browser player, website item: the drill covers everything (no banner); the all-clear restores the site and the banner; clearing the broadcast removes only the banner', async ({ page }) => {
+      test.setTimeout(150_000);
+      const messages = { tenantStatus: 'INACTIVE', active: [] as unknown[] };
+      await installDemoRoutes(page, messages);
+      const proofs: Array<{ emergencyProof?: { painted?: boolean; identity?: string } }> = [];
+      page.on('request', (request) => {
+        if (request.method() === 'POST' && request.url().endsWith('/render-proof')) {
+          const body = request.postDataJSON();
+          if (body?.emergencyProof) proofs.push(body);
+        }
+      });
+      const latestPaintedIdentity = () => [...proofs].reverse().find((p) => p.emergencyProof?.painted === true)?.emergencyProof?.identity ?? null;
+      let n = 0;
+      const send = (type: string, payload: Record<string, unknown>) =>
+        pushWs(page, { type, timestamp: Date.now(), eventId: `e8e-${++n}`, signature: 'fake-sig', payload });
+      const site = page.locator('iframe[src*="/api/v1/proxy/web"]');
+      const banner = page.locator('[data-edu-emergency-root="banner"]');
+      const fallback = page.locator('[data-edu-emergency-root="fallback"]');
+      const transition = page.locator('[data-edu-emergency-transition]');
+
+      manifestRef.value = websiteManifest();
+      await page.goto('/player?fp=' + FAKE_FINGERPRINT);
+      await waitForPlayerReady(page);
+      // 1. Baseline: the website is on the glass, nothing emergency.
+      await expect(site, 'the website item must be on the glass before the broadcast').toBeAttached({ timeout: 20_000 });
+      await expect(page.locator('[data-edu-emergency-root]')).toHaveCount(0);
+
+      // 2. The broadcast: a banner over the running site.
+      const expiresAt = inMinutes(5);
+      messages.active = [bannerRow('bcast-8e', expiresAt)];
+      expect(await send('TEXT_BROADCAST', { messageId: 'bcast-8e', severity: 'INFO', text: BANNER_TEXT, expiresAt })).toBe(true);
+      await expect(banner).toBeVisible({ timeout: 5_000 });
+      const bannerId = await banner.getAttribute('data-edu-emergency-identity');
+      expect(bannerId).toBeTruthy();
+      await expect(transition).toHaveCount(0);
+      await expect(site).toBeAttached();
+
+      // 3. The drill: it takes the WHOLE glass. The owner saw the banner stay up here.
+      manifestRef.value = drillManifest();
+      messages.tenantStatus = 'ACTIVE';
+      expect(await send('OVERRIDE', { overrideId: 'or-8e', severity: 'CRITICAL', textBlob: '', expiresAt: 0, isDrill: true })).toBe(true);
+      const drill = page.locator('[data-edu-emergency-root="fallback"][data-edu-emergency-drill="true"]');
+      await expect(drill).toBeVisible({ timeout: 10_000 });
+      await expect(banner, 'the drill must cover everything — the broadcast banner stayed up over it in the demo').toHaveCount(0);
+      for (const y of [20, 540, 1060]) {
+        expect(await insideTakeover(page, 960, y), `the takeover must own the glass at (960, ${y})`).toBe(true);
+      }
+      await expect(site).toHaveCount(0);
+      const drillId = await fallback.getAttribute('data-edu-emergency-identity');
+      expect(drillId).toBeTruthy();
+      await expect.poll(latestPaintedIdentity, {
+        message: 'the paint receipt must certify the DRILL on the glass, not the broadcast banner',
+        timeout: 10_000,
+      }).toBe(drillId);
+      expect(latestPaintedIdentity()).not.toBe(bannerId);
+
+      // 4. The all-clear while the broadcast is still active: the site AND the banner come back.
+      manifestRef.value = websiteManifest();
+      messages.tenantStatus = 'INACTIVE';
+      expect(await send('ALL_CLEAR', {})).toBe(true);
+      await expect(fallback).toHaveCount(0, { timeout: 10_000 });
+      await expect(transition).toHaveCount(0);
+      await expect(banner, 'the still-active broadcast must come back after the all-clear').toBeVisible({ timeout: 5_000 });
+      await expect(banner).toContainText(BANNER_TEXT);
+      expect(await banner.getAttribute('data-edu-emergency-identity')).toBe(bannerId);
+      await expect(site, 'the original content must come back after the all-clear').toBeAttached({ timeout: 10_000 });
+      await expect.poll(async () => (await ancestorScales(page, 'iframe[src*="/api/v1/proxy/web"]')).some((s) => s > 0 && s < 1), {
+        message: 'the content is inset under the banner again',
+      }).toBe(true);
+      // Past one 12 s reconcile: still both.
+      await page.waitForTimeout(13_000);
+      await expect(banner).toBeVisible();
+      await expect(site).toBeAttached();
+      await expect(transition).toHaveCount(0);
+
+      // 5. The broadcast is cleared: only the banner leaves.
+      messages.active = [];
+      expect(await send('ALL_CLEAR_MESSAGE', { messageId: 'bcast-8e', clearedBy: 'u1' })).toBe(true);
+      await expect(banner).toHaveCount(0, { timeout: 5_000 });
+      await expect(site).toBeAttached();
+      await expect.poll(async () => (await ancestorScales(page, 'iframe[src*="/api/v1/proxy/web"]')).filter((s) => s !== 1)).toEqual([]);
+      await page.waitForTimeout(4_000);
+      await expect(page.locator('[data-edu-emergency-transition], [data-edu-emergency-pending], [data-edu-emergency-root]')).toHaveCount(0);
+      await expect(site).toBeAttached();
+    });
+
+    test('8f. our app, native URL item: the drill hides the site and the banner; the first live manifest after the all-clear tells the app the takeover ended; the site and the banner come back', async ({ page }) => {
+      test.setTimeout(150_000);
+      const messages = { tenantStatus: 'INACTIVE', active: [] as unknown[] };
+      await installDemoRoutes(page, messages);
+      await installNativeChannel(page);
+      let n = 0;
+      const send = (type: string, payload: Record<string, unknown>) =>
+        pushWs(page, { type, timestamp: Date.now(), eventId: `e8f-${++n}`, signature: 'fake-sig', payload });
+      const banner = page.locator('[data-edu-emergency-root="banner"]');
+      const placeholder = page.locator('[aria-label="Native URL overlay active"]');
+      const lastOverlayOp = async (since: number) => {
+        const ops = (await postsSince(page, since)).filter((p) => p.method === 'showUrlOverlay' || p.method === 'hideUrlOverlay');
+        const last = ops[ops.length - 1];
+        return last ? `${last.method}(${last.args.join(',')})` : null;
+      };
+
+      manifestRef.value = websiteManifest();
+      await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android&w=1920&h=1080`);
+      await waitForPlayerReady(page);
+      // Baseline: the app shows the site natively; the page holds a placeholder.
+      await expect.poll(() => lastOverlayOp(0), { timeout: 20_000 }).toBe(`showUrlOverlay(${SITE})`);
+      await expect(placeholder).toBeAttached();
+
+      // The broadcast: banner posture, the site stays up.
+      const tBanner = Date.now();
+      const expiresAt = inMinutes(5);
+      messages.active = [bannerRow('bcast-8f', expiresAt)];
+      expect(await send('TEXT_BROADCAST', { messageId: 'bcast-8f', severity: 'INFO', text: BANNER_TEXT, expiresAt })).toBe(true);
+      await expect(banner).toBeVisible({ timeout: 5_000 });
+      await expect.poll(async () => bannerGeometry(await postsSince(page, tBanner)).some((g) => g.active === true)).toBe(true);
+      await expect.poll(async () => holds(await postsSince(page, tBanner))[0] ?? null, {
+        message: 'the push itself raises banner posture, without the live-manifest takeover-ended argument',
+      }).toEqual([true, true]);
+      expect((await postsSince(page, tBanner)).some((p) => p.method === 'hideUrlOverlay')).toBe(false);
+
+      // The drill: takeover — the site is hidden, the banner leaves the glass.
+      const tDrill = Date.now();
+      manifestRef.value = drillManifest();
+      messages.tenantStatus = 'ACTIVE';
+      expect(await send('OVERRIDE', { overrideId: 'or-8f', severity: 'CRITICAL', textBlob: '', expiresAt: 0, isDrill: true })).toBe(true);
+      await expect(page.locator('[data-edu-emergency-root="fallback"][data-edu-emergency-drill="true"]')).toBeVisible({ timeout: 10_000 });
+      await expect(banner, 'the drill must cover everything, the banner included').toHaveCount(0);
+      await expect.poll(() => lastOverlayOp(tDrill)).toBe('hideUrlOverlay()');
+      await expect.poll(async () => holds(await postsSince(page, tDrill)).some((a) => a.length === 1 && a[0] === true)).toBe(true);
+      await expect.poll(async () => bannerGeometry(await postsSince(page, tDrill)).some((g) => g.active === false)).toBe(true);
+
+      // The all-clear, broadcast still active.
+      const tClear = Date.now();
+      manifestRef.value = websiteManifest();
+      messages.tenantStatus = 'INACTIVE';
+      expect(await send('ALL_CLEAR', {})).toBe(true);
+      await expect(banner).toBeVisible({ timeout: 10_000 });
+      await expect(banner).toContainText(BANNER_TEXT);
+      await expect.poll(() => lastOverlayOp(tClear), { timeout: 10_000 }).toBe(`showUrlOverlay(${SITE})`);
+      await expect(placeholder).toBeAttached();
+      await expect.poll(async () => bannerGeometry(await postsSince(page, tClear)).some((g) => g.active === true)).toBe(true);
+      await expect.poll(async () => holds(await postsSince(page, tClear)).some(isTakeoverEnded), {
+        message: 'the first live manifest after the all-clear must tell the app the takeover ended: displayEmergencyHold(true, true, true)',
+        timeout: 10_000,
+      }).toBe(true);
+
+      // The broadcast is cleared: the hold releases on the next live manifest; the site stays.
+      const tBcastClear = Date.now();
+      messages.active = [];
+      expect(await send('ALL_CLEAR_MESSAGE', { messageId: 'bcast-8f', clearedBy: 'u1' })).toBe(true);
+      await expect(banner).toHaveCount(0, { timeout: 5_000 });
+      expect(await send('SYNC', {})).toBe(true);
+      await expect.poll(async () => holds(await postsSince(page, tBcastClear)).some((a) => a.length === 1 && a[0] === false), { timeout: 10_000 }).toBe(true);
+      expect((await postsSince(page, tBcastClear)).some((p) => p.method === 'hideUrlOverlay')).toBe(false);
+      await expect(placeholder).toBeAttached();
+    });
+
+    /**
+     * 8g: Website Tabs through a broadcast, a drill and its all-clear. On an app
+     * that transforms the site view under a banner itself (`fieldBuild`), the
+     * page must post the site area in CANVAS coordinates (it used to post the
+     * already-transformed rectangle: shrunk and shifted twice). On an app that
+     * does not (stable 1.1.29), the glass rectangle, exactly as before.
+     */
+    async function websiteTabsThroughADrill(page: Page, fieldBuild: boolean) {
+      const messages = { tenantStatus: 'INACTIVE', active: [] as unknown[] };
+      await installDemoRoutes(page, messages);
+      await installNativeChannel(page, fieldBuild ? { broadcastBannerVersion: 1 } : undefined);
+      let n = 0;
+      const send = (type: string, payload: Record<string, unknown>) =>
+        pushWs(page, { type, timestamp: Date.now(), eventId: `e8g-${fieldBuild ? 'f' : 'o'}-${++n}`, signature: 'fake-sig', payload });
+      const banner = page.locator('[data-edu-emergency-root="banner"]');
+      type Show = { url: string; bounds: { left: number; top: number; width: number; height: number } };
+      const lastShow = async (since: number): Promise<Show | null> => {
+        const shows = (await postsSince(page, since)).filter((p) => p.method === 'webTabsShow');
+        return shows.length ? JSON.parse(String(shows[shows.length - 1].args[0])) as Show : null;
+      };
+
+      manifestRef.value = websiteTabsManifest();
+      await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android&w=1920&h=1080`);
+      await waitForPlayerReady(page);
+      await page.getByTestId('website-tabs-bar').waitFor({ state: 'visible', timeout: 60_000 });
+      await expect.poll(async () => (await lastShow(0))?.url ?? null, { timeout: 15_000 }).toBe('https://www.district.example/');
+      await page.waitForTimeout(3_000); // past the widget's settle burst (SETTLE_MS, 2.5 s max)
+      const b0 = (await lastShow(0))!.bounds;
+      expect(b0.width).toBeGreaterThan(0);
+      if (fieldBuild) {
+        await expect.poll(async () => (await postsSince(page, 0)).some((p) => p.method === 'sharedVideoState'), {
+          message: 'the page asks the app what it supports',
+        }).toBe(true);
+      }
+
+      const expiresAt = inMinutes(5);
+      messages.active = [bannerRow(`bcast-8g-${fieldBuild ? 'f' : 'o'}`, expiresAt)];
+      expect(await send('TEXT_BROADCAST', { messageId: `bcast-8g-${fieldBuild ? 'f' : 'o'}`, severity: 'INFO', text: BANNER_TEXT, expiresAt })).toBe(true);
+      await expect(banner).toBeVisible({ timeout: 5_000 });
+
+      const tDrill = Date.now();
+      manifestRef.value = drillManifest();
+      messages.tenantStatus = 'ACTIVE';
+      expect(await send('OVERRIDE', { overrideId: `or-8g-${fieldBuild ? 'f' : 'o'}`, severity: 'CRITICAL', textBlob: '', expiresAt: 0, isDrill: true })).toBe(true);
+      await expect(page.locator('[data-edu-emergency-root="fallback"][data-edu-emergency-drill="true"]')).toBeVisible({ timeout: 10_000 });
+      await expect(banner).toHaveCount(0);
+      await expect.poll(async () => (await postsSince(page, tDrill)).some((p) => p.method === 'webTabsHide')).toBe(true);
+
+      const tClear = Date.now();
+      manifestRef.value = websiteTabsManifest();
+      messages.tenantStatus = 'INACTIVE';
+      expect(await send('ALL_CLEAR', {})).toBe(true);
+      await expect(banner).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId('website-tabs-bar').waitFor({ state: 'visible', timeout: 20_000 });
+      await expect.poll(async () => (await lastShow(tClear))?.url ?? null, { timeout: 15_000 }).toBe('https://www.district.example/');
+      await page.waitForTimeout(3_000);
+      const after = (await lastShow(tClear))!.bounds;
+      if (fieldBuild) {
+        for (const k of ['left', 'top', 'width', 'height'] as const) {
+          expect(Math.abs(after[k] - b0[k]), `webTabsShow bounds.${k} after the all-clear (${after[k]}) must be the canvas rectangle (${b0[k]}) — the app applies the banner transform itself`).toBeLessThanOrEqual(1);
+        }
+      } else {
+        // The glass rectangle under the banner: B0 scaled about the top-centre anchor, below the banner.
+        const s = after.width / b0.width;
+        expect(s, `an app that does not transform its site views gets the rectangle on the glass (scale ${s})`).toBeGreaterThan(0.5);
+        expect(s).toBeLessThan(1);
+        expect(Math.abs(after.height - b0.height * s)).toBeLessThanOrEqual(1);
+        expect(Math.abs(after.left - (b0.left * s + (1920 * (1 - s)) / 2))).toBeLessThanOrEqual(1);
+        expect(after.top).toBeGreaterThan(b0.top);
+      }
+      await expect.poll(async () => holds(await postsSince(page, tClear)).some(isTakeoverEnded), { timeout: 10_000 }).toBe(true);
+
+      const tBcastClear = Date.now();
+      messages.active = [];
+      expect(await send('ALL_CLEAR_MESSAGE', { messageId: `bcast-8g-${fieldBuild ? 'f' : 'o'}`, clearedBy: 'u1' })).toBe(true);
+      await expect(banner).toHaveCount(0, { timeout: 5_000 });
+      await page.waitForTimeout(1_000);
+      expect((await postsSince(page, tBcastClear)).some((p) => p.method === 'webTabsHide'), 'clearing the broadcast must not take the site down').toBe(false);
+    }
+
+    test('8g. our app (a field build that transforms its site views), Website Tabs: after the all-clear the site area is re-shown in canvas coordinates', async ({ page }) => {
+      test.setTimeout(150_000);
+      await websiteTabsThroughADrill(page, true);
+    });
+
+    test('8g-old. our app (an app that does not transform its site views, stable 1.1.29), Website Tabs: the site area stays the glass rectangle, as before', async ({ page }) => {
+      test.setTimeout(150_000);
+      await websiteTabsThroughADrill(page, false);
+    });
+
+    test('8h. our app: a CRITICAL SOS over a held banner, then cleared — the next live manifest (not the clear) tells the app the takeover ended', async ({ page }) => {
+      test.setTimeout(120_000);
+      const messages = { tenantStatus: 'INACTIVE', active: [] as unknown[] };
+      await installDemoRoutes(page, messages);
+      await installNativeChannel(page);
+      let n = 0;
+      const send = (type: string, payload: Record<string, unknown>) =>
+        pushWs(page, { type, timestamp: Date.now(), eventId: `e8h-${++n}`, signature: 'fake-sig', payload });
+      const banner = page.locator('[data-edu-emergency-root="banner"]');
+
+      manifestRef.value = websiteManifest();
+      await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android&w=1920&h=1080`);
+      await waitForPlayerReady(page);
+      const bannerExpires = inMinutes(5);
+      messages.active = [bannerRow('bcast-8h', bannerExpires)];
+      expect(await send('TEXT_BROADCAST', { messageId: 'bcast-8h', severity: 'INFO', text: BANNER_TEXT, expiresAt: bannerExpires })).toBe(true);
+      await expect(banner).toBeVisible({ timeout: 5_000 });
+
+      const tSos = Date.now();
+      expect(await send('SOS', { messageId: 'sos-8h', severity: 'CRITICAL', textBlob: 'SOS — Gym', expiresAt: inMinutes(30) })).toBe(true);
+      await expect(page.getByText('SOS — Gym')).toBeVisible({ timeout: 5_000 });
+      await expect(banner).toHaveCount(0);
+      await expect.poll(async () => holds(await postsSince(page, tSos)).some((a) => a.length === 1 && a[0] === true)).toBe(true);
+
+      // The SOS is cleared: the banner comes back, and the clear itself does NOT claim the takeover ended…
+      const tSosClear = Date.now();
+      expect(await send('ALL_CLEAR_MESSAGE', { messageId: 'sos-8h', clearedBy: 'u1' })).toBe(true);
+      await expect(page.getByText('SOS — Gym')).toBeHidden({ timeout: 5_000 });
+      await expect(banner).toBeVisible({ timeout: 5_000 });
+      await expect.poll(async () => holds(await postsSince(page, tSosClear)).find((a) => a[1] === true) ?? null, {
+        message: 'the clear re-raises banner posture on the push path, without the takeover-ended argument',
+      }).toEqual([true, true]);
+      await expect.poll(async () => bannerGeometry(await postsSince(page, tSosClear)).some((g) => g.active === true)).toBe(true);
+
+      // …the next live manifest does.
+      const tSync = Date.now();
+      expect(await send('SYNC', {})).toBe(true);
+      await expect.poll(async () => holds(await postsSince(page, tSync)).some(isTakeoverEnded), {
+        message: 'the first live manifest after the SOS clear must tell the app the takeover ended',
+        timeout: 10_000,
+      }).toBe(true);
+      await expect(banner).toBeVisible();
+    });
+
+    /**
+     * 8i (the skeptic's amendment 3, added 2026-11-24): an app that REFUSED
+     * banner posture before the drill (a display rotated from its natural
+     * orientation reports `broadcastBannerPosture: refused`). The page then
+     * draws the INFO broadcast in its full-screen form, and that form sat at
+     * z 9999 over the drill's surface (9998): the drill was hidden completely
+     * and the receipt certified the broadcast. The drill must still own the
+     * glass; the all-clear brings the full broadcast back (the refusal is
+     * sticky for the hold, and no takeover-ended is sent for it); clearing the
+     * broadcast releases the hold and the site comes back.
+     */
+    test('8i. our app, banner posture refused before the drill: the full-screen broadcast never covers the drill; the all-clear brings it back; clearing it brings the site back', async ({ page }) => {
+      test.setTimeout(150_000);
+      const messages = { tenantStatus: 'INACTIVE', active: [] as unknown[] };
+      await installDemoRoutes(page, messages);
+      await installNativeChannel(page, { broadcastBannerVersion: 1, broadcastBannerPosture: { posture: 'refused', reason: 'display-rotated' } });
+      let n = 0;
+      const send = (type: string, payload: Record<string, unknown>) =>
+        pushWs(page, { type, timestamp: Date.now(), eventId: `e8i-${++n}`, signature: 'fake-sig', payload });
+      const full = page.locator('[data-edu-emergency-root="full"]');
+      const banner = page.locator('[data-edu-emergency-root="banner"]');
+      const placeholder = page.locator('[aria-label="Native URL overlay active"]');
+      const lastOverlayOp = async (since: number) => {
+        const ops = (await postsSince(page, since)).filter((p) => p.method === 'showUrlOverlay' || p.method === 'hideUrlOverlay');
+        const last = ops[ops.length - 1];
+        return last ? `${last.method}(${last.args.join(',')})` : null;
+      };
+
+      manifestRef.value = websiteManifest();
+      await page.goto(`/player?fp=${FAKE_FINGERPRINT}&client=android&w=1920&h=1080`);
+      await waitForPlayerReady(page);
+      await expect.poll(() => lastOverlayOp(0), { timeout: 20_000 }).toBe(`showUrlOverlay(${SITE})`);
+
+      // The broadcast: the app refuses banner posture, so the page shows the full presentation.
+      const expiresAt = inMinutes(5);
+      messages.active = [bannerRow('bcast-8i', expiresAt)];
+      expect(await send('TEXT_BROADCAST', { messageId: 'bcast-8i', severity: 'INFO', text: BANNER_TEXT, expiresAt })).toBe(true);
+      await expect(full, 'a refused banner posture is shown as the full broadcast presentation').toBeVisible({ timeout: 10_000 });
+      await expect(full).toContainText(BANNER_TEXT);
+      await expect(banner).toHaveCount(0);
+      // Review round 2: with no tenant alert up, the takeover surface under the
+      // full broadcast must not carry the protective "EMERGENCY" words.
+      await expect(page.locator('[data-edu-emergency-pending]'), 'no pending EMERGENCY words under a broadcast when no alert is up').toHaveCount(0);
+      const fullId = await full.getAttribute('data-edu-emergency-identity');
+      expect(fullId).toBeTruthy();
+
+      // The drill: it owns the glass; the full-screen broadcast is held, never drawn over it.
+      const tDrill = Date.now();
+      manifestRef.value = drillManifest();
+      messages.tenantStatus = 'ACTIVE';
+      expect(await send('OVERRIDE', { overrideId: 'or-8i', severity: 'CRITICAL', textBlob: '', expiresAt: 0, isDrill: true })).toBe(true);
+      const drill = page.locator('[data-edu-emergency-root="fallback"][data-edu-emergency-drill="true"]');
+      await expect(drill).toBeVisible({ timeout: 10_000 });
+      await expect(full, 'the full-screen broadcast must not cover the drill').toHaveCount(0);
+      await expect(banner).toHaveCount(0);
+      for (const y of [20, 540, 1060]) {
+        expect(await insideTakeover(page, 960, y), `the takeover must own the glass at (960, ${y})`).toBe(true);
+      }
+      expect(await page.evaluate(() => document.elementFromPoint(960, 540)?.closest('[data-edu-emergency-root]')?.getAttribute('data-edu-emergency-root') ?? null),
+        'the topmost emergency root (the one the paint receipt certifies) is the drill').toBe('fallback');
+      await expect.poll(async () => holds(await postsSince(page, tDrill)).some((a) => a.length === 1 && a[0] === true)).toBe(true);
+
+      // The all-clear, broadcast still active: the full broadcast comes back; no takeover-ended for a refused posture.
+      const tClear = Date.now();
+      manifestRef.value = websiteManifest();
+      messages.tenantStatus = 'INACTIVE';
+      expect(await send('ALL_CLEAR', {})).toBe(true);
+      await expect(drill).toHaveCount(0, { timeout: 10_000 });
+      await expect(full, 'the still-active broadcast comes back after the all-clear').toBeVisible({ timeout: 10_000 });
+      await expect(full).toContainText(BANNER_TEXT);
+      expect(await full.getAttribute('data-edu-emergency-identity')).toBe(fullId);
+      await expect(page.locator('[data-edu-emergency-pending]'), 'no pending EMERGENCY words under the broadcast after the all-clear').toHaveCount(0);
+      const tSync = Date.now();
+      expect(await send('SYNC', {})).toBe(true);
+      await expect.poll(async () => holds(await postsSince(page, tSync)).some((a) => a.length === 1 && a[0] === true), {
+        message: 'the live manifest keeps the takeover hold while the app refuses banner posture',
+        timeout: 10_000,
+      }).toBe(true);
+      expect(holds(await postsSince(page, tClear)).some(isTakeoverEnded), 'no takeover-ended while the app refuses banner posture').toBe(false);
+
+      // The broadcast is cleared: the hold releases on the next live manifest and the site comes back.
+      const tBcastClear = Date.now();
+      messages.active = [];
+      expect(await send('ALL_CLEAR_MESSAGE', { messageId: 'bcast-8i', clearedBy: 'u1' })).toBe(true);
+      await expect(full).toHaveCount(0, { timeout: 5_000 });
+      expect(await send('SYNC', {})).toBe(true);
+      await expect.poll(async () => holds(await postsSince(page, tBcastClear)).some((a) => a.length === 1 && a[0] === false), { timeout: 10_000 }).toBe(true);
+      await expect.poll(() => lastOverlayOp(0), { message: 'the original content comes back once the broadcast is cleared', timeout: 10_000 }).toBe(`showUrlOverlay(${SITE})`);
+      await expect(placeholder).toBeAttached();
+      await page.waitForTimeout(2_000);
+      await expect(page.locator('[data-edu-emergency-root]')).toHaveCount(0);
+    });
+  });
+
   test('9. power-cycle ride-through: cached emergency renders on first paint', async ({
     page,
   }) => {

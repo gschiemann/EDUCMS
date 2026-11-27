@@ -43,6 +43,16 @@ This system triggers immediate lockdown/weather/evacuation alerts across screens
 4. **It is not a cache of alerts.** Nothing derived from a message is kept except its expiry instant; every 200 is live.
 5. **One API process.** The record of what a screen holds lives in the process that sent it. A second replica is safe (a screen that lands on the other one is a database read) but pays for most polls again, and with Redis down it learns of another replica's change only when a record ages out. Decide that design before adding a replica; see `docs/handoffs/2026-11-16-device-messages-fast-304.md`.
 
+### An alert outranks a broadcast banner; its all-clear gives the banner back (2026-11-23)
+
+The owner's demo: a broadcast banner, then a drill; the banner stayed over the drill, and after the all-clear the native website stayed dark until the broadcast was cleared. The rules now:
+
+1. **A tenant alert takes the whole glass.** While a manifest alert (live or drill), a signed OVERRIDE being confirmed or the staged emergency board is up, an INFO / WARN broadcast is HELD but not drawn: no banner, no full-screen broadcast form, no inset (`apps/web/src/app/player/emergencySurface.ts` `tenantAlertOnGlass`, `EmergencyOverlay` `suppressBanner`). Nothing mutates the pushed set, the 12 s reconcile or the overlay poll, so the banner is back by itself at the all-clear. A full-screen SOS / MEDIA_ALERT / CRITICAL text keeps today's draw; which of those outranks a lockdown is the owner's call.
+2. **The paint receipt certifies what is drawn**: the alert, never a held banner.
+3. **The takeover → banner transition comes only from a LIVE manifest.** The page sends `displayEmergencyHold(true, true, true)` from the manifest handler's live 200, live 304 and unconfirmed-OVERRIDE timeout only — never from a cached manifest, a push, a clear, a reconcile or the paint reassert (`emergencyHold.ts`). It is a partial release, so player rule 11 applies to it as to a release.
+4. **The APK honours it only behind its own guards** (`apps/player/app/src/main/java/com/educms/player/media/BroadcastBanner.kt` `hold`): the secure channel, banner posture, a face that held before, no native-watch raise and no posture refusal anywhere in the hold episode. Geometry alone still never downgrades a takeover. In doubt the screen stays a full takeover, and the app says so (`sharedVideoState.broadcastBannerPosture: takeover-kept`). It reaches a screen only in a player release.
+5. **Kill switch** `EMERGENCY_BANNER_RESTORE_DISABLED` → `playback.bannerRestore: 'off'`: the third argument is omitted and the app keeps the takeover until the broadcast ends, as before. Rule 1 is not switched off by it. Record: `docs/handoffs/2026-11-23-emergency-over-broadcast.md`.
+
 ### WARNING: Emergency System Changes
 Any modification to emergency endpoints, payload validation, auth bypass logic, or audit logging requires explicit code review and sign-off. Never weaken the @AllowPanicBypass decorator or skip AuditLog creation. Test trigger/clear flows end-to-end before merging.
 

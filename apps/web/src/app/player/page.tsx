@@ -61,8 +61,8 @@ import {
 } from './pushedMessages';
 // FLT-09 (2026-11-21): the durable REFRESH_WEB waits while an alert is on the glass.
 import { LS_REFRESH_ACK, refreshWaitsForAlert, runDurableRefresh, type DurableRefreshOutcome } from './durableRefresh';
-import { decideEmergencySurface, isBannerEmergencyMessage } from './emergencySurface';
-import { broadcastContentStyle, type BroadcastLayout } from './broadcastLayout';
+import { decideEmergencySurface, drawnPushedMessage, isBannerEmergencyMessage, pendingTextHiddenBy, tenantAlertOnGlass } from './emergencySurface';
+import { broadcastContentStyle, noteNativeBannerSupport, publishBroadcastLayout, type BroadcastLayout } from './broadcastLayout';
 import { cachedManifestWouldClearLiveAlert, emergencyBoardStaysOnGlass, provisionalAlertSurvivesPreCommitManifest } from './emergencyInterlock';
 import {
   USB_IMPORTED_AT_HEADER, USB_IMPORTED_EVENT, USB_PACKAGE_PATH, adoptUsbPackage, applyUsbOverlay, parseImportedAt, parseUsbPackage,
@@ -435,7 +435,7 @@ const OUTCOME_REPORT_COALESCE_MS = 3_000;
 // layer can blank the panel and dim the backlight; while a life-safety
 // alert is on screen it must do neither. See emergencyHold.ts for the
 // raise-eagerly / release-only-from-the-server-of-record rule.
-import { displayEmergencyBannerRefused, displayEmergencyHoldRaised, displayEmergencyPlaybackHeld, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
+import { bannerRestoreAllowed, displayEmergencyBannerRefused, displayEmergencyHoldRaised, displayEmergencyPlaybackHeld, liveManifestHold, openLiveManifestHold, signalDisplayEmergencyHold, subscribeDisplayEmergencyHold } from './emergencyHold';
 // Display CONTROL — the consumer half (2026-08-13). Everything the operator
 // presses on the dashboard (volume / brightness / blank / wake) arrives as a
 // signed DISPLAY_CONTROL push, and every on/off schedule arrives in the
@@ -3017,6 +3017,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   const onBannerLayoutChange = useCallback((next: BroadcastLayout | null) => {
     setBroadcastLayout(previous => previous?.width === next?.width && previous?.height === next?.height && previous?.bannerHeight === next?.bannerHeight ? previous : next);
   }, []);
+  // 2026-11-23 — the layout the DOM now carries, for a native view measured
+  // in canvas coordinates (Website Tabs; broadcastLayout.ts). A layout effect,
+  // so it agrees with the committed transform before any passive measure runs.
+  useLayoutEffect(() => { publishBroadcastLayout(broadcastLayout); }, [broadcastLayout]);
   const emergencyPaintWatcherRef = emergencyMonitor.watcher;
   const emergencyExpectedIdentityRef = emergencyMonitor.expectedIdentity;
   // Preserve the last authenticated reconcile across the error boundary so
@@ -3273,7 +3277,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     // bridge within a bounded startup window while browser content plays.
     if (!isAndroidWebView() && !nativeHas('sharedVideoState')) return;
     return discoverNativeVideoProtocol({
-      has: () => nativeHas('sharedVideoState'), state: () => nativeCall('sharedVideoState'),
+      has: () => nativeHas('sharedVideoState'),
+      // 2026-11-23 — the same boot read also says whether the app transforms
+      // its native site views under a banner itself (broadcastLayout.ts).
+      state: () => nativeCall('sharedVideoState').then((reply) => { noteNativeBannerSupport(reply); return reply; }),
     }, setNativeVideoProtocol);
   }, []);
   useEffect(() => {
@@ -3288,7 +3295,8 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     const face = nativeFirstFaceRef.current ?? (nativeFirstFaceRef.current = new NativeFirstFace({
       has: (m) => nativeHas(m),
       fire: (m, arg) => nativeFire(m, arg),
-      state: () => nativeCall('sharedVideoState'),
+      // 2026-11-24 — also the banner-support note, in case the boot discovery read timed out (broadcastLayout.ts).
+      state: () => nativeCall('sharedVideoState').then((reply) => { noteNativeBannerSupport(reply); return reply; }),
     }));
     const unsubscribe = face.subscribe((facts) => {
       setNativeFirstSig(nativeFirstDecisionSignature(facts));
@@ -5090,8 +5098,22 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
     pushedEmergencyMessageRef.current = pushedEmergencyMessage;
   }, [pushedEmergencyMessage]);
   emergencyMonitor.screenId.current = screenId;
-  emergencyExpectedIdentityRef.current = pushedEmergencyMessage
-    ? emergencyPaintIdentity(pushedEmergencyMessage)
+  // 2026-11-23 — a tenant alert (manifest override, drill or live; a signed
+  // OVERRIDE being confirmed; the staged emergency board) outranks an INFO /
+  // WARN banner: the banner stays HELD but is not drawn while it is up
+  // (`emergencySurface.ts` `tenantAlertOnGlass`, the overlay's
+  // `suppressBanner`). The paint receipt's expected identity follows what is
+  // drawn: the alert, never a banner that is not on the glass. (The scan
+  // certifies the topmost visible root first; with the banner not drawn that
+  // root is the alert.)
+  const tenantAlertUp = tenantAlertOnGlass({
+    activeEmergency: !!activeEmergency,
+    pendingOverrideConfirm: !!pendingOverrideConfirmRef.current,
+    playlistIsEmergency: playlist?.isEmergency === true,
+  });
+  const drawnPushed = drawnPushedMessage(pushedEmergencyMessage, tenantAlertUp);
+  emergencyExpectedIdentityRef.current = drawnPushed
+    ? emergencyPaintIdentity(drawnPushed)
     : activeEmergency ? emergencyPaintIdentity(activeEmergency) : null;
   const emergencyRenderExtrasAllowedRef = useRef(true);
 
@@ -7644,7 +7666,16 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
       // self-closes (confirm or 30s timeout) in the fetch path.
       const holdNow =
         !!em || !!pushedEmergencyMessageRef.current || polledEmergencyHeldRef.current || !!pendingOverrideConfirmRef.current;
-      if (holdNow || !fromCache) signalDisplayEmergencyHold(holdNow, holdNow, bannerHoldFor(!!em));
+      // 2026-11-23 — on a LIVE manifest only, a banner-posture raise also
+      // tells the APK the takeover ended (emergencyHold.ts, "THE TAKEOVER →
+      // BANNER TRANSITION"); a cached replay never does — it may raise, never
+      // release, and this is a partial release.
+      const closeLiveHold = openLiveManifestHold(!fromCache, bannerRestoreAllowed(manifest));
+      try {
+        if (holdNow || !fromCache) signalDisplayEmergencyHold(holdNow, holdNow, bannerHoldFor(!!em));
+      } finally {
+        closeLiveHold();
+      }
       // F8 — ENFORCED overlay interlock: a cached normal manifest replayed
       // during an outage cannot clear a live alert. Previously this was
       // safe only because both stores shared one writer path; now it is a
@@ -8639,7 +8670,9 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
             !!pushedEmergencyMessageRef.current ||
             polledEmergencyHeldRef.current ||
             !!pendingOverrideConfirmRef.current;
-          signalDisplayEmergencyHold(holdNow, holdNow, bannerHoldFor(!!activeEmergencyRef.current));
+          // A live 304 is the server speaking: it may also say the takeover
+          // ended (emergencyHold.ts), under the applied manifest's kill switch.
+          liveManifestHold(true, bannerRestoreAllowed(lastAppliedManifestRef.current), () => signalDisplayEmergencyHold(holdNow, holdNow, bannerHoldFor(!!activeEmergencyRef.current)));
         }
         // FLT-09 (2026-11-21) — a durable REFRESH_WEB that waited for an alert
         // to leave the glass runs on the first live answer after it. A 304
@@ -8754,7 +8787,7 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
                 activeEmergencyRef.current = null;
                 cacheEmergency(null);
                 const stillHeld = !!pushedEmergencyMessageRef.current || polledEmergencyHeldRef.current;
-                signalDisplayEmergencyHold(stillHeld, stillHeld, bannerHoldFor(false));
+                liveManifestHold(true, bannerRestoreAllowed(manifest), () => signalDisplayEmergencyHold(stillHeld, stillHeld, bannerHoldFor(false)));
                 // A staged board raised for that alert was kept through the
                 // window by the board interlock; re-apply the live manifest
                 // now that nothing holds it, so the content follows the alert.
@@ -13590,6 +13623,10 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
           onPolledMessageChange={onPolledEmergencyMessageChange}
           onBannerLayoutChange={onBannerLayoutChange}
           fullPresentation={emergencyBannerRefused}
+          // 2026-11-23 — a tenant alert outranks a banner: held, not drawn
+          // (see `tenantAlertUp`). The message prop stays set, so the
+          // overlay's own poll does not start and re-raise it.
+          suppressBanner={tenantAlertUp}
         />
       ) : null;
 
@@ -13631,9 +13668,14 @@ function PlayerPage({ emergencyMonitor }: { emergencyMonitor: EmergencyPaintMoni
   if ((emergencySurface === 'takeover' || holdOnly) && !playlist?.isEmergency) {
     return (
       <div data-edu-emergency-transition="true" data-edu-emergency-hold={holdOnly ? 'true' : undefined} data-edu-emergency-drill={!holdOnly && pendingSurfaceIsDrill ? 'true' : undefined} style={{ position: 'fixed', top: 0, left: 0, width: emergencyFaceStage?.width ?? 'var(--led-w, 100vw)', height: emergencyFaceStage?.height ?? 'var(--led-h, 100vh)', background: holdOnly ? '#000' : pendingSurfaceIsDrill ? '#3730a3' : '#dc2626', color: '#fff' }}>
-        {emergencyFallback || (!pushedEmergencyMessage && !holdOnly && (
+        {emergencyFallback || (!pendingTextHiddenBy(pushedEmergencyMessage, tenantAlertUp) && !holdOnly && (
           // No alert identity yet: this is a protective pending surface,
-          // never an overlay-painted receipt for an unknown alert.
+          // never an overlay-painted receipt for an unknown alert. A
+          // FULL-SCREEN pushed message (which paints its own alert) hides
+          // these words; a held banner is not drawn over a tenant alert
+          // (2026-11-23), so it never leaves the glass wordless. With no
+          // tenant alert a banner-class message hides them too, as before:
+          // this surface is then only its full-screen form.
           <div role="alert" data-edu-emergency-pending="true" style={{ fontSize: 72, fontWeight: 900, textAlign: 'center', padding: 40 }}>{pendingSurfaceIsDrill ? tEmergency('drill.playerBanner') : tEmergency('trigger').toUpperCase()}</div>
         ))}
         {emergencyMessageOverlay}
